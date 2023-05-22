@@ -1,7 +1,17 @@
 package main
 
-import "fmt"
-
 func main() {
-	fmt.Println("Hello qtap!")
+
+	// fetch registration via URL
+
+	// initialize a watcher
+
+	// initialize a downloader
+
+	// initialize a proxy
+
+	// initialize a runtime
+
+	// initialize a controller
+
 }

@@ -22,8 +22,12 @@ type proxy interface {
 
 // js/ts runtime
 type runtime interface {
-	Start(bundle string, listen string) (string, error)
-	Stop(pid string) error
+	Start(bundle string, listen string) (stoppable, error)
+}
+
+// a stoppable process
+type stoppable interface {
+	Stop() error
 }
 
 // qpoint bundle version
@@ -31,7 +35,7 @@ type bundle struct {
 	id       string
 	location string
 	port     int
-	pid      string
+	proc     stoppable
 }
 
 // Sending events to the controller needs to block the caller until
@@ -118,7 +122,7 @@ func (a *App) runVersion(version string) error {
 	port := findAvailablePort("127.0.0.1", 11001)
 
 	// run bundle
-	pid, err := a.Runtime.Start(location, fmt.Sprintf("127.0.0.1:%d", port))
+	proc, err := a.Runtime.Start(location, fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
 		return fmt.Errorf("failed to run bundle %s: %w", location, err)
 	}
@@ -141,7 +145,7 @@ func (a *App) runVersion(version string) error {
 
 	// stop previous version if running
 	if a.version != nil {
-		err = a.Runtime.Stop(a.version.pid)
+		err = a.version.proc.Stop()
 		if err != nil {
 			return fmt.Errorf("failed to start previous process: %w", err)
 		}
@@ -152,7 +156,7 @@ func (a *App) runVersion(version string) error {
 		id:       version,
 		location: location,
 		port:     port,
-		pid:      pid,
+		proc:     proc,
 	}
 
 	return nil
@@ -160,7 +164,7 @@ func (a *App) runVersion(version string) error {
 
 func (a *App) stop() error {
 	// stop the runtime
-	if err := a.Runtime.Stop(a.version.pid); err != nil {
+	if err := a.version.proc.Stop(); err != nil {
 		return fmt.Errorf("unable to stop running bundle: %w", err)
 	}
 

@@ -130,8 +130,10 @@ func (a *App) runVersion(version string) error {
 
 func (a *App) stop() error {
 	// stop the runtime
-	if err := a.version.proc.Stop(); err != nil {
-		return fmt.Errorf("unable to stop running bundle: %w", err)
+	if a.version != nil {
+		if err := a.version.proc.Stop(); err != nil {
+			return fmt.Errorf("unable to stop running bundle: %w", err)
+		}
 	}
 
 	// stop the proxy

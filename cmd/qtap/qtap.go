@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/qpoint-io/qtap/internal/control"
@@ -25,13 +28,6 @@ var (
 func main() {
 	// parse flags/env
 	kingpin.Parse()
-
-	fmt.Printf("qpointId: %s\n", *qpointId)
-	fmt.Printf("downloadToken: %s\n", *downloadToken)
-	fmt.Printf("notifyToken: %s\n", *notifyToken)
-	fmt.Printf("runtime: %s\n", *engine)
-	fmt.Printf("dataDir: %s\n", *dataDir)
-	fmt.Printf("listen: %s\n", *listen)
 
 	// initialize a watcher
 	ably := &watch.Ably{
@@ -63,5 +59,23 @@ func main() {
 	}
 
 	// start the app
-	app.Start()
+	if err := app.Start(); err != nil {
+		fmt.Printf("Error: failed to start: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	// channel to receive os signals for stopping
+	interrupt := make(chan os.Signal, 1)
+
+	// forward sigint and sigterm signals
+	signal.Notify(interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	// wait for interrupt
+	<-interrupt
+
+	// cleanup
+	if err := app.Stop(); err != nil {
+		fmt.Printf("Error: failed to cleanup: %s\n", err.Error())
+		os.Exit(1)
+	}
 }

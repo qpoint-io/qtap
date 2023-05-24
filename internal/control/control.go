@@ -52,6 +52,9 @@ func (a *App) Start() error {
 	// run internal loop in a goroutine
 	go a.run()
 
+	// drop the initial version
+	a.chVersion <- "latest"
+
 	return nil
 }
 
@@ -91,6 +94,8 @@ func (a *App) runVersion(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch bundle version %s: %w", version, err)
 	}
+
+	return nil
 
 	// find an available port
 	port := findAvailablePort("127.0.0.1", 11001)

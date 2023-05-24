@@ -56,6 +56,7 @@ func main() {
 		Downloader: warehouse,
 		Forwarder:  tcpProxy,
 		Runtime:    jsRuntime,
+		DataDir:    *dataDir,
 	}
 
 	// start the app

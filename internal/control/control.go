@@ -25,6 +25,8 @@ type App struct {
 	proxy.Forwarder
 	runtime.Runtime
 
+	DataDir string
+
 	// internal
 	chEvent   chan *event.Op
 	chVersion chan string
@@ -32,6 +34,11 @@ type App struct {
 }
 
 func (a *App) Start() error {
+	// clean the data dir
+	if err := cleanData(a.DataDir); err != nil {
+		return fmt.Errorf("unable to clean data dir: %w", err)
+	}
+
 	// start the version watcher
 	chVersion, err := a.Watcher.Watch()
 	if err != nil {
@@ -110,11 +117,17 @@ func (a *App) runVersion(version string) error {
 		return fmt.Errorf("failed to update proxy: %w", err)
 	}
 
-	// stop previous version if running
+	// if we have a previous version
 	if a.version != nil {
-		err = a.version.proc.Stop()
-		if err != nil {
+
+		// stop previous version
+		if err = a.version.proc.Stop(); err != nil {
 			return fmt.Errorf("failed to start previous process: %w", err)
+		}
+
+		// clean data dir
+		if err := cleanData(a.version.location); err != nil {
+			return fmt.Errorf("failed to clean previous version: %w", err)
 		}
 	}
 

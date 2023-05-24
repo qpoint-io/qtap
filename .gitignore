@@ -22,3 +22,6 @@ go.work
 
 # final dist
 dist/
+
+# tmp
+tmp/

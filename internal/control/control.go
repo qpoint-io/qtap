@@ -105,11 +105,9 @@ func (a *App) runVersion(version string) error {
 	}
 
 	// update proxy
-	if a.version != nil {
-		err = a.Forwarder.Forward(fmt.Sprintf("127.0.0.1:%d", port))
-		if err != nil {
-			return fmt.Errorf("failed to update proxy: %w", err)
-		}
+	err = a.Forwarder.Forward(fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return fmt.Errorf("failed to update proxy: %w", err)
 	}
 
 	// stop previous version if running

@@ -20,7 +20,7 @@ var (
 	downloadToken = kingpin.Flag("download-token", "Token to download release bundles").Envar("DOWNLOAD_TOKEN").Required().String()
 	notifyToken   = kingpin.Flag("notify-token", "Token to receive update notifications").Envar("NOTIFY_TOKEN").Required().String()
 
-	listen  = kingpin.Flag("listen", "IP:PORT to listen on").Envar("LISTEN").Default("0.0.0.0:3333").String()
+	listen  = kingpin.Flag("listen", "IP:PORT to listen on").Envar("LISTEN").Default("127.0.0.1:3333").String()
 	engine  = kingpin.Flag("runtime", "Javascript runtime").Envar("RUNTIME").Default("deno").String()
 	dataDir = kingpin.Flag("data-dir", "Directory to store state").Envar("DATA_DIR").Default("/tmp/qtap").String()
 )

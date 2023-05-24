@@ -4,33 +4,36 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-)
 
-type procEventOp struct {
-	action string     // the requested action (stop/restart/etc)
-	res    chan error // the response channel to syncronize state
-}
+	"github.com/qpoint-io/qtap/internal/event"
+)
 
 type Process struct {
 	Name     string
 	Args     []string
+	Env      []string
 	cmd      *exec.Cmd
 	stop     bool
 	running  bool
 	restarts int
-	chEvent  chan *procEventOp
+	chEvent  chan *event.Op
 }
 
 func (p *Process) Start() error {
 	// create an event channel if doesn't exist
 	if p.chEvent == nil {
-		p.chEvent = make(chan *procEventOp)
+		p.chEvent = make(chan *event.Op)
 	}
 
 	// init a command
 	cmd := exec.Command(p.Name, p.Args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// merge environment variables
+	if p.Env != nil {
+		cmd.Env = append(os.Environ(), p.Env...)
+	}
 
 	// start the process
 	err := cmd.Start()
@@ -65,16 +68,16 @@ func (p *Process) Start() error {
 
 func (p *Process) Stop() error {
 	// create the 'stop' event
-	event := &procEventOp{
-		action: "stop",
-		res:    make(chan error),
+	event := &event.Op{
+		Action: "stop",
+		Res:    make(chan error),
 	}
 
 	// send the event
 	p.chEvent <- event
 
 	// now wait until we get a response back
-	return <-event.res
+	return <-event.Res
 }
 
 func (p *Process) monitor() {
@@ -84,9 +87,9 @@ func (p *Process) monitor() {
 	// was it supposed to be stopped?
 	if !p.stop {
 		// send restart
-		p.chEvent <- &procEventOp{
-			action: "restart",
-			res:    make(chan error),
+		p.chEvent <- &event.Op{
+			Action: "restart",
+			Res:    make(chan error),
 		}
 	}
 }
@@ -94,13 +97,13 @@ func (p *Process) monitor() {
 func (p *Process) run() {
 	for event := range p.chEvent {
 		// stop
-		if event.action == "stop" {
-			event.res <- p.shutdown()
+		if event.Action == "stop" {
+			event.Res <- p.shutdown()
 			return
 		}
 
 		// restart
-		if event.action == "restart" {
+		if event.Action == "restart" {
 			p.Start()
 		}
 	}

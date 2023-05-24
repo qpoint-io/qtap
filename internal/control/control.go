@@ -95,8 +95,6 @@ func (a *App) runVersion(version string) error {
 		return fmt.Errorf("failed to fetch bundle version %s: %w", version, err)
 	}
 
-	return nil
-
 	// find an available port
 	port := findAvailablePort("127.0.0.1", 11001)
 

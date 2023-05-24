@@ -1,63 +1,32 @@
 package control
 
-import "fmt"
+import (
+	"fmt"
 
-// version watcher
-type watcher interface {
-	Watch() (chan string, error)
-	Stop() error
-}
-
-// bundle downloader
-type downloader interface {
-	Fetch(version string) (string, error)
-}
-
-// network proxy
-type proxy interface {
-	Start(from, to string) error
-	Replace(to string) error
-	Stop() error
-}
-
-// js/ts runtime
-type runtime interface {
-	Start(bundle string, listen string) (stoppable, error)
-}
-
-// a stoppable process
-type stoppable interface {
-	Stop() error
-}
+	"github.com/qpoint-io/qtap/internal/download"
+	"github.com/qpoint-io/qtap/internal/event"
+	"github.com/qpoint-io/qtap/internal/proxy"
+	"github.com/qpoint-io/qtap/internal/runtime"
+	"github.com/qpoint-io/qtap/internal/watch"
+)
 
 // qpoint bundle version
 type bundle struct {
 	id       string
 	location string
 	port     int
-	proc     stoppable
-}
-
-// Sending events to the controller needs to block the caller until
-// the event handler has completed. To do this we need to create
-// a stateful event with an ad-hoc channel to receive the response
-type eventOp struct {
-	action string     // the requested action (stop/resume/etc)
-	res    chan error // the response channel to syncronize state
+	proc     runtime.Stoppable
 }
 
 type App struct {
 	// components
-	Watcher    watcher
-	Downloader downloader
-	Proxy      proxy
-	Runtime    runtime
-
-	// config
-	Address string
+	watch.Watcher
+	download.Downloader
+	proxy.Forwarder
+	runtime.Runtime
 
 	// internal
-	chEvent   chan *eventOp
+	chEvent   chan *event.Op
 	chVersion chan string
 	version   *bundle
 }
@@ -72,8 +41,13 @@ func (a *App) Start() error {
 	// set the version watcher on the struct
 	a.chVersion = chVersion
 
+	// start the proxy
+	if err := a.Forwarder.Start(); err != nil {
+		return fmt.Errorf("failed to start the proxy: %w", err)
+	}
+
 	// create an event channel
-	a.chEvent = make(chan *eventOp)
+	a.chEvent = make(chan *event.Op)
 
 	// run internal loop in a goroutine
 	go a.run()
@@ -83,16 +57,16 @@ func (a *App) Start() error {
 
 func (a *App) Stop() error {
 	// create the 'stop' event
-	event := &eventOp{
-		action: "stop",
-		res:    make(chan error),
+	event := &event.Op{
+		Action: "stop",
+		Res:    make(chan error),
 	}
 
 	// send the event
 	a.chEvent <- event
 
 	// now wait until we get a response back
-	return <-event.res
+	return <-event.Res
 }
 
 func (a *App) run() {
@@ -104,8 +78,8 @@ func (a *App) run() {
 			}
 		case event := <-a.chEvent:
 			// stop?
-			if event.action == "stop" {
-				event.res <- a.stop()
+			if event.Action == "stop" {
+				event.Res <- a.stop()
 			}
 		}
 	}
@@ -127,19 +101,11 @@ func (a *App) runVersion(version string) error {
 		return fmt.Errorf("failed to run bundle %s: %w", location, err)
 	}
 
-	// update proxy if already running
+	// update proxy
 	if a.version != nil {
-		err = a.Proxy.Replace(fmt.Sprintf("127.0.0.1:%d", port))
+		err = a.Forwarder.Forward(fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			return fmt.Errorf("failed to update proxy: %w", err)
-		}
-	}
-
-	// start proxy if not running
-	if a.version == nil {
-		err = a.Proxy.Start(a.Address, fmt.Sprintf("127.0.0.1:%d", port))
-		if err != nil {
-			return fmt.Errorf("failed to start proxy: %w", err)
 		}
 	}
 
@@ -169,7 +135,7 @@ func (a *App) stop() error {
 	}
 
 	// stop the proxy
-	if err := a.Proxy.Stop(); err != nil {
+	if err := a.Forwarder.Stop(); err != nil {
 		return fmt.Errorf("unable to stop the proxy: %w", err)
 	}
 

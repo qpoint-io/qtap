@@ -5,7 +5,7 @@ import "fmt"
 type Deno struct {
 }
 
-func (d *Deno) Start(bundle, listen string) (*Process, error) {
+func (d *Deno) Start(bundle, listen string) (Stoppable, error) {
 	// initialize a process
 	proc := &Process{
 		Name: "deno",

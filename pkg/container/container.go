@@ -40,7 +40,7 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 
 	dr, err := NewDockerAccessor(logger, dockerEndpoint)
 	if err != nil {
-		logger.Info("skipping Docker Engine integration", zap.String("endpoint", dockerEndpoint), zap.String("message", err.Error()))
+		logger.Debug("skipping Docker Engine integration", zap.String("endpoint", dockerEndpoint), zap.String("message", err.Error()))
 	} else {
 		logger.Info("connected to docker engine", zap.Any("path", strings.TrimPrefix(dockerEndpoint, "unix://")))
 		ca.accessors = append(ca.accessors, dr)
@@ -48,7 +48,7 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 
 	cd, err := NewContainerdAccessor(logger, containerdEndpoint)
 	if err != nil {
-		logger.Info("skipping containerd integration", zap.String("endpoint", containerdEndpoint), zap.String("message", err.Error()))
+		logger.Debug("skipping containerd integration", zap.String("endpoint", containerdEndpoint), zap.String("message", err.Error()))
 	} else {
 		logger.Info("connected to containerd", zap.Any("path", containerdEndpoint))
 		ca.accessors = append(ca.accessors, cd)
@@ -56,7 +56,7 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 
 	k8s, criEndpoint, errs := NewKubernetesAccessor(logger, criRuntimeEndpoint)
 	if len(errs) > 0 {
-		logger.Info("skipping kubernetes integration", zap.Errors("messages", errs))
+		logger.Debug("skipping kubernetes integration", zap.Errors("messages", errs))
 	} else {
 		logger.Info("connected to kubernetes runtime service", zap.Any("path", strings.TrimPrefix(criEndpoint, "unix://")))
 		ca.k8s = k8s

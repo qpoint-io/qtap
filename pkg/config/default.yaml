@@ -9,8 +9,8 @@ stacks:
     plugins:
       - type: access_logs
         config:
-          mode: detail
-          format: json
+          mode: details
+          format: console
       - type: report_usage
 tap:
   direction: egress-external

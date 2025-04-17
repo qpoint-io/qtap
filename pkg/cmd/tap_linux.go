@@ -4,14 +4,11 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
-	"unicode"
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/internal/tap"
@@ -42,7 +39,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
-	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
@@ -54,7 +50,6 @@ import (
 
 var (
 	tlsProbes                string
-	httpBufferSize           string
 	sanCertMaxSize           int
 	dockerSocketEndpoint     string
 	containerdSocketEndpoint string
@@ -84,94 +79,68 @@ var (
 	}
 )
 
-var tapCmd = &cobra.Command{
-	Use:   "tap",
-	Short: "Tap into traffic streams and analyze without a proxy",
-	Long: `Tap into traffic streams and analyze without a proxy.
-Example usage:
-  qpoint tap --tls-probes="openssl" --http-buffer-size="1mb"`,
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		// Validate http-buffer-size
-		size, err := parseSizeString(httpBufferSize)
-		if err != nil {
-			return err
-		}
-		maxSize := int64(2 * 1024 * 1024 * 1024) // 2GB
-		if size > maxSize {
-			return errors.New("http-buffer-size exceeds maximum allowed size of 2GB")
-		}
-		return nil
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		logger := initLogger()
-		defer syncLogger(logger)
-
-		runTapCmd(logger)
-	},
-}
-
 func init() {
 	// Common options
-	tapCmd.Flags().StringVar(&qpointConfig, "config",
+	rootCmd.Flags().StringVar(&qpointConfig, "config",
 		getEnvOr("QPOINT_CONFIG", ""),
 		"Configuration file path")
-	tapCmd.Flags().IntVar(&auditLogBufferSize, "audit-log-buffer-size",
+	rootCmd.Flags().IntVar(&auditLogBufferSize, "audit-log-buffer-size",
 		getEnvIntOr("AUDIT_LOG_BUFFER_SIZE", 1000),
 		"Buffer size for audit logs")
-	tapCmd.Flags().StringVar(&deploymentTags, "tags",
+	rootCmd.Flags().StringVar(&deploymentTags, "tags",
 		getEnvOr("QPOINT_DEPLOYMENT_TAGS", ""),
 		"Tags to add to the node")
 
 	// Data directory options
-	tapCmd.PersistentFlags().StringVar(&dataDir, "data-dir",
+	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir",
 		getEnvOr("DATA_DIR", "/tmp/qpoint"),
 		"Directory to store state")
 
 	// BPF trace options
-	tapCmd.Flags().StringVar(&bpfTraceQuery, "bpf-trace",
+	rootCmd.Flags().StringVar(&bpfTraceQuery, "bpf-trace",
 		getEnvOr("BPF_TRACE", ""),
 		"BPF trace query")
 
 	// Certificate injection options
-	tapCmd.Flags().StringVar(&certInjectionStrategy, "cert-injection",
+	rootCmd.Flags().StringVar(&certInjectionStrategy, "cert-injection",
 		getEnvOr("CERT_INJECTION", "inline"),
 		"How should CA certificates be injected for forwarding traffic (inline, ebpf, manual)")
-	tapCmd.Flags().StringVar(&tlsOkStrategy, "set-tls-ok",
+	rootCmd.Flags().StringVar(&tlsOkStrategy, "set-tls-ok",
 		getEnvOr("SET_TLS_OK", "on-cert-inject"),
 		"When to mark forwarded traffic as OK for TLS termination (on-cert-inject, on-cert-read)")
 
 	// Initialize flags with environment variable fallbacks
-	tapCmd.Flags().StringVar(&tlsProbes, "tls-probes",
+	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
 		getEnvOr("TLS_PROBES", "openssl"),
 		"Comma-separated list of TLS probes to use")
 
-	tapCmd.Flags().StringVar(&httpBufferSize, "http-buffer-size",
+	rootCmd.Flags().StringVar(&httpBufferSize, "http-buffer-size",
 		getEnvOr("HTTP_BUFFER_SIZE", "2mb"),
 		"HTTP buffer size (max 2gb)")
 
-	tapCmd.Flags().IntVar(&sanCertMaxSize, "san-cert-max-size",
+	rootCmd.Flags().IntVar(&sanCertMaxSize, "san-cert-max-size",
 		getEnvIntOr("SAN_CERT_MAX_SIZE", 100),
 		"Maximum size for SAN certificates")
 
-	tapCmd.Flags().StringVar(&dockerSocketEndpoint, "docker-socket-endpoint",
+	rootCmd.Flags().StringVar(&dockerSocketEndpoint, "docker-socket-endpoint",
 		getEnvOr("DOCKER_SOCKET", "/var/run/docker.sock"),
 		"Docker socket endpoint")
 
-	tapCmd.Flags().StringVar(&containerdSocketEndpoint, "containerd-socket-endpoint",
+	rootCmd.Flags().StringVar(&containerdSocketEndpoint, "containerd-socket-endpoint",
 		getEnvOr("CONTAINERD_SOCKET", "/run/containerd/containerd.sock"),
 		"Containerd socket endpoint")
 
-	tapCmd.Flags().StringVar(&criRuntimeSocketEndpoint, "cri-runtime-socket-endpoint",
+	rootCmd.Flags().StringVar(&criRuntimeSocketEndpoint, "cri-runtime-socket-endpoint",
 		getEnvOr("CRI_RUNTIME_SOCKET", ""),
 		"CRI runtime socket endpoint")
 
 	// Status options
-	tapCmd.Flags().StringVar(&statusListen, "status-listen",
+	rootCmd.Flags().StringVar(&statusListen, "status-listen",
 		getEnvOr("STATUS_LISTEN", "0.0.0.0:10001"),
 		"IP:PORT of status server to listen on")
 }
 
-// This skeleton version of runTapCmd provides the basic structure
+// This skeleton version of runrootCmd provides the basic structure
 // but will need to be fleshed out with actual implementation
 func runTapCmd(logger *zap.Logger) {
 	ctx := context.Background()
@@ -187,7 +156,7 @@ func runTapCmd(logger *zap.Logger) {
 	}()
 
 	// Log startup information
-	logger.Info("Starting Qpoint Tap",
+	logger.Info("Starting Qtap",
 		zap.String("version", buildinfo.Version()),
 		zap.Strings("tags", strings.Split(deploymentTags, ",")),
 		telemetry.GetSysInfoAsFields(),
@@ -467,49 +436,6 @@ func parseDeploymentTags() (tags.List, error) {
 		}
 	}
 	return t, nil
-}
-
-// parseSizeString converts strings like "1kb", "2mb", "2gb" to bytes
-func parseSizeString(size string) (int64, error) {
-	size = strings.TrimSpace(strings.ToUpper(size))
-
-	units := map[string]int64{
-		"B":  1,
-		"KB": 1024,
-		"MB": 1024 * 1024,
-		"GB": 1024 * 1024 * 1024,
-	}
-
-	var value float64
-	var unit string
-	var err error
-
-	// Find where the numeric part ends and the unit begins
-	i := strings.IndexFunc(size, func(r rune) bool {
-		return !unicode.IsDigit(r) && r != '.'
-	})
-
-	if i == -1 {
-		// If no unit found, assume bytes
-		value, err = strconv.ParseFloat(size, 64)
-		unit = "B"
-	} else {
-		value, err = strconv.ParseFloat(size[:i], 64)
-		unit = strings.TrimSpace(size[i:])
-	}
-
-	if err != nil {
-		return 0, fmt.Errorf("invalid number format: %w", err)
-	}
-
-	multiplier, ok := units[unit]
-	if !ok {
-		return 0, fmt.Errorf("invalid unit: %s", unit)
-	}
-
-	val := int64(value * float64(multiplier))
-
-	return val, nil
 }
 
 func newEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {

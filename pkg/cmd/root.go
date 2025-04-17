@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/spf13/cobra"
@@ -28,13 +29,30 @@ var (
 	bpfTraceQuery         string
 	certInjectionStrategy string
 	tlsOkStrategy         string
+	httpBufferSize        string
 
 	rootCmd = &cobra.Command{
-		Use:     "qpoint",
-		Short:   "A Qpoint utility to tap and/or proxy your web traffic streams",
+		Use:     "qtap",
+		Short:   "Tap into traffic streams and analyze without a proxy.",
+		Long:    "An eBPF agent that captures pre-encrypted network traffic, providing rich context about egress connections and their originating processes.",
 		Version: buildinfo.Version(),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Validate http-buffer-size
+			size, err := parseSizeString(httpBufferSize)
+			if err != nil {
+				return err
+			}
+			maxSize := int64(2 * 1024 * 1024 * 1024) // 2GB
+			if size > maxSize {
+				return errors.New("http-buffer-size exceeds maximum allowed size of 2GB")
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
-			tapCmd.Run(cmd, args)
+			logger := initLogger()
+			defer syncLogger(logger)
+
+			runTapCmd(logger)
 		},
 	}
 )
@@ -56,7 +74,6 @@ func init() {
 		"Log caller")
 
 	// Add commands
-	rootCmd.AddCommand(tapCmd)
 	rootCmd.AddCommand(reloadConfigCmd)
 }
 
@@ -144,4 +161,47 @@ func syncLogger(logger *zap.Logger) {
 		fmt.Fprintf(os.Stderr, "syncing logger: %v\n", err)
 		return
 	}
+}
+
+// parseSizeString converts strings like "1kb", "2mb", "2gb" to bytes
+func parseSizeString(size string) (int64, error) {
+	size = strings.TrimSpace(strings.ToUpper(size))
+
+	units := map[string]int64{
+		"B":  1,
+		"KB": 1024,
+		"MB": 1024 * 1024,
+		"GB": 1024 * 1024 * 1024,
+	}
+
+	var value float64
+	var unit string
+	var err error
+
+	// Find where the numeric part ends and the unit begins
+	i := strings.IndexFunc(size, func(r rune) bool {
+		return !unicode.IsDigit(r) && r != '.'
+	})
+
+	if i == -1 {
+		// If no unit found, assume bytes
+		value, err = strconv.ParseFloat(size, 64)
+		unit = "B"
+	} else {
+		value, err = strconv.ParseFloat(size[:i], 64)
+		unit = strings.TrimSpace(size[i:])
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("invalid number format: %w", err)
+	}
+
+	multiplier, ok := units[unit]
+	if !ok {
+		return 0, fmt.Errorf("invalid unit: %s", unit)
+	}
+
+	val := int64(value * float64(multiplier))
+
+	return val, nil
 }

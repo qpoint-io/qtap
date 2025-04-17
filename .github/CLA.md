@@ -1,6 +1,6 @@
 # Contributor License Agreement
 
-This Contributor License Agreement ("CLA") documents the rights granted by Contributors to Qpoint.
+This Contributor License Agreement ("CLA") documents the rights granted by Contributors to Qtap.
 
 ## 1. Definitions
 
@@ -10,7 +10,7 @@ This Contributor License Agreement ("CLA") documents the rights granted by Contr
 
 "Submit" means any form of electronic, verbal, or written communication sent to the Project, including code, documentation, or issue tracking.
 
-"Project" means Qpoint.
+"Project" means Qtap.
 
 ## 2. Grant of Rights
 

@@ -11,14 +11,14 @@ import (
 	"go.uber.org/zap"
 )
 
-const binaryName = "qpoint"
+const binaryName = "qtap"
 
 var reloadConfigCmd = &cobra.Command{
 	Use:   "reload-config",
 	Short: "Live reload the current config",
 	Long: `Reload the current configuration without restarting the application.
 Example usage:
-  qpoint reload-config`,
+  qtap reload-config`,
 	Run: func(cmd *cobra.Command, args []string) {
 		logger := initLogger()
 		defer syncLogger(logger)
@@ -31,9 +31,9 @@ func runReloadCmd(logger *zap.Logger) {
 	pid, err := findPIDByBinaryName(binaryName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			logger.Fatal("could not find a running qpoint process")
+			logger.Fatal("could not find a running qtap process")
 		}
-		logger.Fatal("error finding running qpoint process", zap.Error(err))
+		logger.Fatal("error finding running qtap process", zap.Error(err))
 	}
 
 	logger.Info("sending SIGHUP signal to process", zap.Int("pid", pid))

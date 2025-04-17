@@ -16,7 +16,7 @@
     </a>
 </div>
 
-# Qpoint Qtap
+# Qtap by [Qpoint.io](https://qpoint.io)
 
 Qtap is an eBPF-based agent that captures and displays pre-encrypted network traffic. It intercepts data at the source before encryption occurs, prints the raw payloads to stdout, and provides context about which processes initiated the connections. Using this information, along with lower level connection data, process data, and over all system data, Qtap creates a context that makes it easy to understand what's going on with your egress traffic.
 
@@ -37,10 +37,10 @@ The tool can be used in a variety of ways, including:
 For more information [see the "How It Works" section of our website](https://docs.qpoint.io/readme/how-it-works).
 
 ## Quick Start
-Want to give Qtap a test run? Spin up a temporary Qpoint instance in Demo mode! See the traffic in real time right in your terminal.
+Want to give Qtap a test run? Spin up a temporary instance in Demo mode! See the traffic in real time right in your terminal.
 
 ```bash
-# Run Qpoint in demo mode
+# Run Qtap in demo mode
 $ curl -s https://get.qpoint.io/demo | sudo sh
 ```
 
@@ -51,7 +51,7 @@ Or install and start running right away!
 $ curl -s https://get.qpoint.io/install | sudo sh
 
 # Run with defaults!
-$ sudo qpoint
+$ sudo qtap
 ```
 
 ## Community

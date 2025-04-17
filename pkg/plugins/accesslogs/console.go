@@ -112,7 +112,7 @@ func (c *ConsolePrinter) printConsoleDetails(includeBody bool) error {
 			if c.ctx.GetRequestBodyBuffer().Length() > 0 {
 				sb.Write(c.ctx.GetRequestBodyBuffer().Copy())
 			} else {
-				sb.WriteString("\t(empty)\n")
+				sb.WriteString("(empty)\n")
 			}
 		}
 	}
@@ -129,7 +129,7 @@ func (c *ConsolePrinter) printConsoleDetails(includeBody bool) error {
 			if c.ctx.GetResponseBodyBuffer().Length() > 0 {
 				sb.Write(c.ctx.GetResponseBodyBuffer().Copy())
 			} else {
-				sb.WriteString("\t(empty)\n")
+				sb.WriteString("(empty)\n")
 			}
 		}
 	}

@@ -24,6 +24,8 @@ The tool works by attaching to OpenSSL library functions in running applications
 
 Qtap operates with minimal overhead and is designed specifically for Linux environments, leveraging kernel-level eBPF technology to efficiently monitor network communications without disrupting application performance.
 
+![Qtap Demo](./.github/assets/qtap_demo.gif)
+
 The tool can be used in a variety of ways, including:
 
 - **Security auditing** - Security professionals can verify sensitive data isn't being unintentionally exposed in network communications.

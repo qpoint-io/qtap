@@ -25,7 +25,7 @@ stacks:
 
       - type: report_usage
 tap:
-  direction: egress-external
+  direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true
   audit_include_dns: false
   http:

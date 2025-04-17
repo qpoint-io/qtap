@@ -9,11 +9,11 @@ stacks:
     plugins:
       - type: access_logs
         config:
-          mode: details
+          mode: full
           format: console
       - type: report_usage
 tap:
-  direction: egress-external
+  direction: egress
   ignore_loopback: true
   audit_include_dns: false
   http:

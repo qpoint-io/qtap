@@ -37,7 +37,14 @@ The tool can be used in a variety of ways, including:
 For more information [see the "How It Works" section of our website](https://docs.qpoint.io/readme/how-it-works).
 
 ## Quick Start
-Want to give Qtap a test run? Use the script below to install on one of your Linux nodes and watch the network traffic flow to your terminal!
+Want to give Qtap a test run? Spin up a temporary Qpoint instance in Demo mode! See the traffic in real time right in your terminal.
+
+```bash
+# Run Qpoint in demo mode
+$ curl -s https://get.qpoint.io/demo | sudo sh
+```
+
+Or install and start running right away!
 
 ```bash
 # Install the Qtap agent

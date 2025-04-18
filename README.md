@@ -1,8 +1,8 @@
 <br/>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
-  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-light.svg">
+  <img alt="Rulekit icon" src="./readme-assets/qtap-header-light.svg">
 </picture>
 
 

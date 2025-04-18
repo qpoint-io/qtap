@@ -2,7 +2,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-light.svg">
-  <img alt="Rulekit icon" src="./readme-assets/qtap-header-light.svg">
+  <img alt="Image showing the Qtap Header" src="./readme-assets/qtap-header-light.svg">
 </picture>
 
 
@@ -34,7 +34,7 @@ Qtap is an eBPF-bassssed agent that captures and displays pre-encrypted network 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-overview-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-overview-light.svg">
-  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./readme-assets/qtap-overview-light.svg">
+  <img alt="Image showing an architectual overview of Qtap" src="./readme-assets/qtap-overview-light.svg">
 </picture>
 <br/><br/><br/>
 

@@ -16,9 +16,16 @@
     </a>
 </div>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
+  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
+</picture>
+
+
 # Qtap by [Qpoint.io](https://qpoint.io)
 
-Qtap is an eBPF-based agent that captures and displays pre-encrypted network traffic. It intercepts data at the source before encryption occurs, prints the raw payloads to stdout, and provides context about which processes initiated the connections. Using this information, along with lower level connection data, process data, and over all system data, Qtap creates a context that makes it easy to understand what's going on with your egress traffic.
+Qtap is an eBPF-bassssed agent that captures and displays pre-encrypted network traffic. It intercepts data at the source before encryption occurs, prints the raw payloads to stdout, and provides context about which processes initiated the connections. Using this information, along with lower level connection data, process data, and over all system data, Qtap creates a context that makes it easy to understand what's going on with your egress traffic.
 
 The tool works by attaching to OpenSSL library functions in running applications, requiring no code modifications or proxy configurations. When applications make encrypted connections, Qtap shows you exactly what data is being sent and received in its original, unencrypted form.
 
@@ -126,6 +133,18 @@ Thank you for checking out our work!
 
 This project is dual-licensed under AGPLv3.0 (for open source use) and a commercial license (for commercial use).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qpoint-open.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qpoint-open-light.svg">
+  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./readme-assets/qpoint-open-light.svg">
+</picture>
+
 ## Contributing
 
 By submitting contributions to this project, you agree to the [Contributor License Agreement](./.github/CLA.md). This agreement allows us to include your contributions in both the open source and commercial versions.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
+  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
+</picture>

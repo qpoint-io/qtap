@@ -1,4 +1,4 @@
-<br/><br/><br/>
+<br/>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">

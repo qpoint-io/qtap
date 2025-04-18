@@ -1,3 +1,13 @@
+<br/><br/><br/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
+  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
+</picture>
+
+
+----------
+
 <div align="center">
     <a href="https://qpoint.io">
         <img  alt="Link to Qpoint website" src="https://img.shields.io/badge/Qpoint.io-grey?style=for-the-badge&link=https%3A%2F%2Fqpoint.io&logo=data:image/svg%2bxml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNjcuMTggNjcuMzQiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICM4OTVhZTg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJtYWluIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik02NC4xMSw2Ny4zNGMtLjczLDAtMS40Ni0uMjgtMi4wMi0uODRsLTEuOTctMS45N2MtMS4xMS0xLjEyLTEuMTEtMi45MiwwLTQuMDQsMS4xMi0xLjExLDIuOTItMS4xMiw0LjA0LDBsMS45NywxLjk3YzEuMTEsMS4xMiwxLjExLDIuOTIsMCw0LjA0LS41Ni41Ni0xLjI5Ljg0LTIuMDIuODRaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTMzLjU5LDBDMTUuMDQsMCwwLDE1LjA0LDAsMzMuNTlzMTUuMDQsMzMuNTksMzMuNTksMzMuNTksMzMuNTktMTUuMDQsMzMuNTktMzMuNTlTNTIuMTQsMCwzMy41OSwwWk01My43OSw1NC4xN2MtLjU2LjU2LTEuMjkuODQtMi4wMi44NHMtMS40Ni0uMjgtMi4wMi0uODRsLTguMzEtOC4zMWMtMS4xMi0xLjEyLTEuMTItMi45MiwwLTQuMDQsMS4xMS0xLjEyLDIuOTMtMS4xMiw0LjA0LDBsOC4zMSw4LjMxYzEuMTIsMS4xMiwxLjEyLDIuOTIsMCw0LjA0WiIvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+" />
@@ -16,16 +26,17 @@
     </a>
 </div>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
-  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
-</picture>
-
-
 # Qtap by [Qpoint.io](https://qpoint.io)
 
 Qtap is an eBPF-bassssed agent that captures and displays pre-encrypted network traffic. It intercepts data at the source before encryption occurs, prints the raw payloads to stdout, and provides context about which processes initiated the connections. Using this information, along with lower level connection data, process data, and over all system data, Qtap creates a context that makes it easy to understand what's going on with your egress traffic.
+
+<br/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-overview-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-overview-light.svg">
+  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./readme-assets/qtap-overview-light.svg">
+</picture>
+<br/><br/><br/>
 
 The tool works by attaching to OpenSSL library functions in running applications, requiring no code modifications or proxy configurations. When applications make encrypted connections, Qtap shows you exactly what data is being sent and received in its original, unencrypted form.
 
@@ -142,9 +153,3 @@ This project is dual-licensed under AGPLv3.0 (for open source use) and a commerc
 ## Contributing
 
 By submitting contributions to this project, you agree to the [Contributor License Agreement](./.github/CLA.md). This agreement allows us to include your contributions in both the open source and commercial versions.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-dark.svg">
-  <img alt="Rulekit icon" src="./readme-assets/qtap-header-dark.svg">
-</picture>

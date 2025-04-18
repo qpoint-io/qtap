@@ -26,9 +26,13 @@
     </a>
 </div>
 
-# Qtap by [Qpoint.io](https://qpoint.io)
+<br />
 
-Qtap is an eBPF-bassssed agent that captures and displays pre-encrypted network traffic. It intercepts data at the source before encryption occurs, prints the raw payloads to stdout, and provides context about which processes initiated the connections. Using this information, along with lower level connection data, process data, and over all system data, Qtap creates a context that makes it easy to understand what's going on with your egress traffic.
+An eBPF agent that captures traffic flowing through the Linux kernel. By attaching to TLS/SSL functions, data is intercepted before and after encryption and then passed to flexible plugins with full visibility along with all of the available context - process/container/host/user/protocol/etc. Qtap makes it possible to understand what's happening with your egress traffic, without modifying apps, installing proxies, or managing certs.
+
+<br />
+
+Qtap shows you exactly what data is being sent and received in its original, unencrypted form while operating out-of-band with minimal overhead, without adding latency or disrupting application performance.
 
 <br/>
 <picture>
@@ -38,13 +42,7 @@ Qtap is an eBPF-bassssed agent that captures and displays pre-encrypted network 
 </picture>
 <br/><br/><br/>
 
-The tool works by attaching to OpenSSL library functions in running applications, requiring no code modifications or proxy configurations. When applications make encrypted connections, Qtap shows you exactly what data is being sent and received in its original, unencrypted form.
-
-Qtap operates with minimal overhead and is designed specifically for Linux environments, leveraging kernel-level eBPF technology to efficiently monitor network communications without disrupting application performance.
-
-![Qtap Demo](./.github/assets/qtap_demo.gif)
-
-The tool can be used in a variety of ways, including:
+Qtap can augment your existing observability piplines or can be used as a foundational component for a custom solution, like [Qpoint](https://www.qpoint.io), in a variety of ways, including:
 
 - **Security auditing** - Security professionals can verify sensitive data isn't being unintentionally exposed in network communications.
 - **Debugging network issues** - When APIs return errors or connections fail, seeing the actual data being sent helps identify misconfigured parameters, malformed requests, or unexpected responses.
@@ -53,6 +51,12 @@ The tool can be used in a variety of ways, including:
 - **Learning and exploration** - Understanding how protocols actually work by observing real traffic between applications and services.
 - **Legacy system investigation** - When working with poorly documented or legacy systems, Qtap provides insights into how they communicate without requiring source code access.
 - **Validation testing** - Confirming that application changes don't unexpectedly alter network communication patterns.
+
+<br />
+
+![Qtap Demo](./.github/assets/qtap_demo.gif)
+
+
 
 For more information [see the "How It Works" section of our website](https://docs.qpoint.io/readme/how-it-works).
 

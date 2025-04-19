@@ -144,16 +144,18 @@ We welcome contributions through GitHub issues and appreciate your understanding
 
 Thank you for checking out our work!
 
+## Contributing
+
+By submitting contributions to this project, you agree to the [Contributor License Agreement](./.github/CLA.md). This agreement allows us to include your contributions in both the open source and commercial versions.
+
 ## Licensing
 
 This project is dual-licensed under AGPLv3.0 (for open source use) and a commercial license (for commercial use).
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qpoint-open.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qpoint-open-light.svg">
-  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./.github/assets/qpoint-open-light.svg">
-</picture>
-
-## Contributing
-
-By submitting contributions to this project, you agree to the [Contributor License Agreement](./.github/CLA.md). This agreement allows us to include your contributions in both the open source and commercial versions.
+<div align="right">
+    <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qpoint-open.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qpoint-open-light.svg">
+    <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./.github/assets/qpoint-open-light.svg">
+    </picture>
+</div>

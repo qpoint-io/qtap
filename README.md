@@ -1,8 +1,8 @@
 <br/>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-header-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-header-light.svg">
-  <img alt="Image showing the Qtap Header" src="./readme-assets/qtap-header-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qtap-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qtap-header-light.svg">
+  <img alt="Image showing the Qtap Header" src="./.github/assets/qtap-header-light.svg">
 </picture>
 
 
@@ -36,9 +36,9 @@ Qtap shows you exactly what data is being sent and received in its original, une
 
 <br/>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qtap-overview-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qtap-overview-light.svg">
-  <img alt="Image showing an architectual overview of Qtap" src="./readme-assets/qtap-overview-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qtap-overview-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qtap-overview-light.svg">
+  <img alt="Image showing an architectual overview of Qtap" src="./.github/assets/qtap-overview-light.svg">
 </picture>
 <br/><br/><br/>
 
@@ -149,9 +149,9 @@ Thank you for checking out our work!
 This project is dual-licensed under AGPLv3.0 (for open source use) and a commercial license (for commercial use).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./readme-assets/qpoint-open.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./readme-assets/qpoint-open-light.svg">
-  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./readme-assets/qpoint-open-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qpoint-open.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qpoint-open-light.svg">
+  <img alt="Image showing 'Qpoint ❤ OpenSource'" src="./.github/assets/qpoint-open-light.svg">
 </picture>
 
 ## Contributing

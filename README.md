@@ -9,21 +9,11 @@
 ----------
 
 <div align="center">
-    <a href="https://qpoint.io">
-        <img  alt="Link to Qpoint website" src="https://img.shields.io/badge/Qpoint.io-grey?style=for-the-badge&link=https%3A%2F%2Fqpoint.io&logo=data:image/svg%2bxml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNjcuMTggNjcuMzQiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICM4OTVhZTg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJtYWluIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik02NC4xMSw2Ny4zNGMtLjczLDAtMS40Ni0uMjgtMi4wMi0uODRsLTEuOTctMS45N2MtMS4xMS0xLjEyLTEuMTEtMi45MiwwLTQuMDQsMS4xMi0xLjExLDIuOTItMS4xMiw0LjA0LDBsMS45NywxLjk3YzEuMTEsMS4xMiwxLjExLDIuOTIsMCw0LjA0LS41Ni41Ni0xLjI5Ljg0LTIuMDIuODRaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTMzLjU5LDBDMTUuMDQsMCwwLDE1LjA0LDAsMzMuNTlzMTUuMDQsMzMuNTksMzMuNTksMzMuNTksMzMuNTktMTUuMDQsMzMuNTktMzMuNTlTNTIuMTQsMCwzMy41OSwwWk01My43OSw1NC4xN2MtLjU2LjU2LTEuMjkuODQtMi4wMi44NHMtMS40Ni0uMjgtMi4wMi0uODRsLTguMzEtOC4zMWMtMS4xMi0xLjEyLTEuMTItMi45MiwwLTQuMDQsMS4xMS0xLjEyLDIuOTMtMS4xMiw0LjA0LDBsOC4zMSw4LjMxYzEuMTIsMS4xMiwxLjEyLDIuOTIsMCw0LjA0WiIvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+" />
-    </a>
-    <a href="https://docs.qpoint.io">
-        <img alt="Link to documentation" src="https://img.shields.io/badge/Documentation-grey?style=for-the-badge&logo=readthedocs&logoColor=%23FFFFFF&link=https%3A%2F%2Fdocs.qpoint.io" />
-    </a>
-    <a href="https://github.com/qpoint-io/qtap/stargazers">
-        <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/qpoint-io/qtap?style=for-the-badge&color=%23e8e85a" />
-    </a>
-    <a href="https://github.com/qpoint-io/qtap/actions/workflows/ci.yaml?query=branch%3Amain">
-        <img alt="GitHub main branch check runs" src="https://img.shields.io/github/check-runs/qpoint-io/qtap/main?style=for-the-badge" />
-    </a>
-    <a href="https://github.com/qpoint-io/qtap/blob/main/LICENSE">
-        <img alt="GitHub License" src="https://img.shields.io/github/license/qpoint-io/qtap?style=for-the-badge" />
-    </a>
+    <a href="https://qpoint.io"><img alt="Link to Qpoint website" src="https://img.shields.io/badge/Qpoint.io-grey?style=for-the-badge&link=https%3A%2F%2Fqpoint.io&logo=data:image/svg%2bxml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNjcuMTggNjcuMzQiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICM4OTVhZTg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJtYWluIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik02NC4xMSw2Ny4zNGMtLjczLDAtMS40Ni0uMjgtMi4wMi0uODRsLTEuOTctMS45N2MtMS4xMS0xLjEyLTEuMTEtMi45MiwwLTQuMDQsMS4xMi0xLjExLDIuOTItMS4xMiw0LjA0LDBsMS45NywxLjk3YzEuMTEsMS4xMiwxLjExLDIuOTIsMCw0LjA0LS41Ni41Ni0xLjI5Ljg0LTIuMDIuODRaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTMzLjU5LDBDMTUuMDQsMCwwLDE1LjA0LDAsMzMuNTlzMTUuMDQsMzMuNTksMzMuNTksMzMuNTksMzMuNTktMTUuMDQsMzMuNTktMzMuNTlTNTIuMTQsMCwzMy41OSwwWk01My43OSw1NC4xN2MtLjU2LjU2LTEuMjkuODQtMi4wMi44NHMtMS40Ni0uMjgtMi4wMi0uODRsLTguMzEtOC4zMWMtMS4xMi0xLjEyLTEuMTItMi45MiwwLTQuMDQsMS4xMS0xLjEyLDIuOTMtMS4xMiw0LjA0LDBsOC4zMSw4LjMxYzEuMTIsMS4xMiwxLjEyLDIuOTIsMCw0LjA0WiIvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+" /></a>&nbsp;
+    <a href="https://docs.qpoint.io"><img alt="Link to documentation" src="https://img.shields.io/badge/Documentation-grey?style=for-the-badge&logo=readthedocs&logoColor=%23FFFFFF&link=https%3A%2F%2Fdocs.qpoint.io" /></a>&nbsp;
+    <a href="https://github.com/qpoint-io/qtap/stargazers"><img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/qpoint-io/qtap?style=for-the-badge&color=%23e8e85a" /></a>&nbsp;
+    <a href="https://github.com/qpoint-io/qtap/actions/workflows/ci.yaml?query=branch%3Amain"><img alt="GitHub main branch check runs" src="https://img.shields.io/github/check-runs/qpoint-io/qtap/main?style=for-the-badge" /></a>&nbsp;
+    <a href="https://github.com/qpoint-io/qtap/blob/main/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/qpoint-io/qtap?style=for-the-badge" /></a>
 </div>
 
 <br />

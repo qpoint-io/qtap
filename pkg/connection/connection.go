@@ -14,6 +14,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
+	servicespkg "github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -22,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -54,6 +57,8 @@ type Connection struct {
 
 	// dependencies
 	services        services
+	serviceRegistry *servicespkg.ServiceRegistry
+	eventStore      eventstore.EventStore
 	controlManager  ControlManager
 	streamProcessor StreamProcessor
 	dnsRecord       *dns.Record
@@ -164,6 +169,12 @@ func WithControlManager(controlManager ControlManager) ConnOpt {
 	}
 }
 
+func WithServiceRegistry(serviceRegistry *servicespkg.ServiceRegistry) ConnOpt {
+	return func(c *Connection) {
+		c.serviceRegistry = serviceRegistry
+	}
+}
+
 func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent, opts ...ConnOpt) *Connection {
 	ctx, cancel := context.WithCancel(ctx)
 	ctx, span := tracer.Start(ctx, "Connection")
@@ -182,12 +193,13 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	t := tags.New()
 	t.Add("ip", openEvent.Local.IP.String())
 
+	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
 	c := &Connection{
 		report: report{
 			ctx: ctx,
 		},
 		cancel:      cancel,
-		logger:      logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie)),
+		logger:      logger,
 		id:          id,
 		cookie:      openEvent.Cookie,
 		connPIDKey:  openEvent.ConnPIDKey,
@@ -201,6 +213,24 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	// apply options
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	if c.serviceRegistry != nil {
+		factory := c.serviceRegistry.Get(eventstore.TypeEventStore)
+		if factory != nil {
+			instance, err := factory.Create(ctx)
+			if err != nil {
+				c.logger.Error("failed to create event store", zap.Error(err))
+			}
+			if l, ok := instance.(servicespkg.LoggerAdapter); ok {
+				l.SetLogger(c.logger)
+			}
+			if es, ok := instance.(eventstore.EventStore); ok {
+				c.eventStore = es
+			} else {
+				c.logger.DPanic("event store factory returned non-eventstore instance")
+			}
+		}
 	}
 
 	return c
@@ -363,8 +393,11 @@ func (c *Connection) Domain() string {
 		c.domainIsIP = true
 	}
 
-	// add to logger
-	c.logger = c.logger.With(zap.String("domain", c.domain))
+	// add to logger. use an object marshaler func for lazy evaluation
+	c.logger = c.logger.With(zap.Inline(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+		enc.AddString("domain", c.domain)
+		return nil
+	})))
 
 	// return from the cache
 	return c.domain

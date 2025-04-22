@@ -12,7 +12,6 @@ import (
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/internal/tap"
-	"github.com/qpoint-io/qtap/pkg/auditlog"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -84,9 +83,8 @@ func init() {
 	rootCmd.Flags().StringVar(&qpointConfig, "config",
 		getEnvOr("QPOINT_CONFIG", ""),
 		"Configuration file path")
-	rootCmd.Flags().IntVar(&auditLogBufferSize, "audit-log-buffer-size",
-		getEnvIntOr("AUDIT_LOG_BUFFER_SIZE", 1000),
-		"Buffer size for audit logs")
+	_ = rootCmd.Flags().Int("audit-log-buffer-size", 0, "[deprecated]")
+	_ = rootCmd.Flags().MarkDeprecated("audit-log-buffer-size", "this flag is no longer applicable to the new audit log implementation")
 	rootCmd.Flags().StringVar(&deploymentTags, "tags",
 		getEnvOr("QPOINT_DEPLOYMENT_TAGS", ""),
 		"Tags to add to the node")
@@ -250,12 +248,6 @@ func runTapCmd(logger *zap.Logger) {
 		pm.SetConfig(cfg)
 	})
 
-	// Audit Log Processor
-	auditLogger := auditlog.New(logger)
-	configManager.Subscribe(func(cfg *config.Config) {
-		auditLogger.SetConfig(cfg)
-	})
-
 	// Initialize container detection
 	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
 	if err := containerManager.Start(ctx); err != nil {
@@ -339,7 +331,7 @@ func runTapCmd(logger *zap.Logger) {
 		connection.SetProcessManager(pm),
 		connection.SetDnsManager(resolv),
 		connection.SetStreamFactory(ds),
-		connection.SetAuditLogger(auditLogger),
+		connection.SetServiceRegistry(svcRegistry),
 		connection.SetConfig(configManager.GetConfig()),
 		connection.SetDeploymentTags(dTags),
 	)

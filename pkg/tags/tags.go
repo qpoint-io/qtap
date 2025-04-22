@@ -3,16 +3,19 @@ package tags
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 )
 
 type List interface {
-	Add(string, string)
+	Add(string, ...string)
 	AddString(string) error
 	List() []string
 	Clone() List
 	Merge(List)
+	Map() map[string][]string
 }
 
 type tags struct {
@@ -28,11 +31,17 @@ func New() *tags {
 
 func FromValues(kv map[string]string) List {
 	t := New()
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	for k, v := range kv {
 		t.add(k, v)
+	}
+	return t
+}
+
+func FromMultiValues(kv map[string][]string) List {
+	t := New()
+
+	for _, k := range slices.Sorted(maps.Keys(kv)) {
+		t.add(k, kv[k]...)
 	}
 	return t
 }
@@ -44,41 +53,26 @@ func FromValues(kv map[string]string) List {
 // The function silently returns without adding if either:
 // - Key or value is empty after trimming
 // - Key or value doesn't start and end with alphanumeric characters
-func (t *tags) Add(key, value string) {
+func (t *tags) Add(key string, values ...string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.add(key, value)
+	t.add(key, values...)
 }
 
-func (t *tags) add(key, value string) {
-	// Trim whitespace from both key and value
-	key = strings.TrimSpace(key)
-	value = strings.TrimSpace(value)
+func (t *tags) add(key string, values ...string) {
+	key = format(key)
 
-	// Validate non-empty strings
-	if key == "" || value == "" {
+	if key == "" {
 		return
 	}
 
-	// Convert to lowercase
-	key = strings.ToLower(key)
-	value = strings.ToLower(value)
-
-	// Replace spaces with hyphens
-	key = strings.ReplaceAll(key, " ", "-")
-	value = strings.ReplaceAll(value, " ", "-")
-
-	// Validate starts and ends with alphanumeric
-	if !isAlphanumeric(rune(key[0])) || !isAlphanumeric(rune(key[len(key)-1])) ||
-		!isAlphanumeric(rune(value[0])) || !isAlphanumeric(rune(value[len(value)-1])) {
-		return
+	for _, v := range values {
+		v = format(v)
+		if v == "" {
+			continue
+		}
+		t.data[key] = append(t.data[key], v)
 	}
-
-	t.data[key] = append(t.data[key], value)
-}
-
-func isAlphanumeric(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 }
 
 func (t *tags) List() []string {
@@ -133,4 +127,34 @@ func (t *tags) Merge(other List) {
 	for _, tag := range other.List() {
 		_ = t.addString(tag)
 	}
+}
+
+func (t *tags) Map() map[string][]string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	m := make(map[string][]string, len(t.data))
+	for k, v := range t.data {
+		m[k] = append(([]string)(nil), v...)
+	}
+	return m
+}
+
+func format(str string) string {
+	// Make lowercase
+	str = strings.ToLower(str)
+
+	// Ensure starts and ends with alphanumeric. This will also trim whitespace.
+	str = strings.TrimFunc(str, func(r rune) bool {
+		return !isAlphanumeric(r)
+	})
+
+	// Replace spaces with hyphens
+	str = strings.ReplaceAll(str, " ", "-")
+
+	return str
+}
+
+func isAlphanumeric(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
 }

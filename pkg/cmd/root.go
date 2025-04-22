@@ -20,7 +20,6 @@ var (
 	// Global flags
 	dataDir               string
 	qpointConfig          string
-	auditLogBufferSize    int
 	deploymentTags        string
 	logLevel              string
 	logEncoding           string

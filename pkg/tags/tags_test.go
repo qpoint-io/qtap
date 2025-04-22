@@ -62,33 +62,33 @@ func TestTags_Add(t *testing.T) {
 			name: "ignores non-alphanumeric start key",
 			adds: [][2]string{
 				{"category", "test"},
-				{"-category", "test"},
+				{"-category2", "test"},
 			},
-			wantTags: []string{"category:test"},
+			wantTags: []string{"category:test", "category2:test"},
 		},
 		{
 			name: "ignores non-alphanumeric end key",
 			adds: [][2]string{
 				{"category", "test"},
-				{"category-", "test"},
+				{"category2-", "test"},
 			},
-			wantTags: []string{"category:test"},
+			wantTags: []string{"category:test", "category2:test"},
 		},
 		{
 			name: "ignores non-alphanumeric start value",
 			adds: [][2]string{
 				{"category", "test"},
-				{"category", "-test"},
+				{"category", "-2test"},
 			},
-			wantTags: []string{"category:test"},
+			wantTags: []string{"category:test", "category:2test"},
 		},
 		{
 			name: "ignores non-alphanumeric end value",
 			adds: [][2]string{
 				{"category", "test"},
-				{"category", "test-"},
+				{"category", "test2-"},
 			},
-			wantTags: []string{"category:test"},
+			wantTags: []string{"category:test", "category:test2"},
 		},
 	}
 
@@ -140,7 +140,7 @@ func TestTags_AddString(t *testing.T) {
 		{
 			name:       "invalid values",
 			tagStrings: []string{"category:-test", "service:api-"},
-			wantTags:   nil,
+			wantTags:   []string{"category:test", "service:api"},
 			wantErrors: []bool{false, false}, // AddString doesn't return errors for validation failures
 		},
 	}
@@ -207,13 +207,83 @@ func TestTags_FromValues(t *testing.T) {
 				"":         "empty",
 				"empty":    "",
 			},
-			wantTags: nil,
+			wantTags: []string{
+				"category:test",
+				"service:api",
+				"invalid:value",
+				"invalid:value",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tags := FromValues(tt.keyValues)
+
+			got := tags.List()
+
+			// Check for empty results
+			if len(got) == 0 && len(tt.wantTags) == 0 {
+				// Both are empty, test passes
+				return
+			}
+
+			sort.Strings(got)
+			sort.Strings(tt.wantTags)
+			assert.Equal(t, tt.wantTags, got)
+		})
+	}
+}
+
+func TestTags_FromMultiValues(t *testing.T) {
+	tests := []struct {
+		name      string
+		keyValues map[string][]string
+		wantTags  []string
+	}{
+		{
+			name:      "empty map",
+			keyValues: map[string][]string{},
+			wantTags:  nil,
+		},
+		{
+			name: "simple key-values",
+			keyValues: map[string][]string{
+				"category": {"test", "test2"},
+				"service":  {"api", "api2"},
+			},
+			wantTags: []string{"category:test", "category:test2", "service:api", "service:api2"},
+		},
+		{
+			name: "with normalization",
+			keyValues: map[string][]string{
+				"CATEGORY":    {"TEST", "TEST2"},
+				"  service  ": {"  api  ", "  api2  "},
+			},
+			wantTags: []string{"category:test", "category:test2", "service:api", "service:api2"},
+		},
+		{
+			name: "with invalid values",
+			keyValues: map[string][]string{
+				"category": {"-test"},
+				"service":  {"api-"},
+				"-invalid": {"value"},
+				"invalid-": {"value"},
+				"":         {"empty"},
+				"empty":    {""},
+			},
+			wantTags: []string{
+				"category:test",
+				"service:api",
+				"invalid:value",
+				"invalid:value",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tags := FromMultiValues(tt.keyValues)
 
 			got := tags.List()
 

@@ -4,6 +4,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/process"
+	servicespkg "github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -24,18 +25,14 @@ type StreamProcessor interface {
 	Closed() bool
 }
 
-type AuditLogger interface {
-	Log(fields ...zap.Field)
-}
-
 type Manager struct {
 	// internal components
-	logger         *zap.Logger
-	processManager *process.Manager
-	dnsManager     *dns.DNSManager
-	streamFactory  ConnectionStreamer
-	auditLogger    AuditLogger
-	controlManager ControlManager
+	logger          *zap.Logger
+	processManager  *process.Manager
+	dnsManager      *dns.DNSManager
+	streamFactory   ConnectionStreamer
+	controlManager  ControlManager
+	serviceRegistry *servicespkg.ServiceRegistry
 
 	// deployment tags
 	deploymentTags tags.List
@@ -67,9 +64,9 @@ func SetStreamFactory(sf ConnectionStreamer) ManagerOpt {
 	}
 }
 
-func SetAuditLogger(logger AuditLogger) ManagerOpt {
+func SetServiceRegistry(sr *servicespkg.ServiceRegistry) ManagerOpt {
 	return func(m *Manager) {
-		m.auditLogger = logger
+		m.serviceRegistry = sr
 	}
 }
 

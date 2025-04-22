@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/qnet"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/tlsutils"
 )
 
 const (
@@ -36,9 +38,9 @@ func (b *BaseEventStore) SetRegistry(registry services.RegistryAccessor) {
 }
 
 type meta struct {
-	ConnectionID string `json:"connectionId"`
-	EndpointId   string `json:"endpointId"`
-	RequestId    string `json:"requestId"`
+	ConnectionID string `json:"connectionId,omitzero"`
+	EndpointId   string `json:"endpointId,omitzero"`
+	RequestId    string `json:"requestId,omitzero"`
 }
 
 func (m *meta) SetConnectionID(id string) {
@@ -211,4 +213,88 @@ type ArtifactRecord struct {
 	Type      ArtifactType `json:"type"`
 	Digest    string       `json:"digest"`
 	URL       string       `json:"url"`
+}
+
+type Direction string
+
+const (
+	Direction_Ingress         Direction = "ingress"
+	Direction_Egress          Direction = "egress"
+	Direction_Egress_Internal Direction = "egress-internal"
+	Direction_Egress_External Direction = "egress-external"
+)
+
+type SocketProtocol string
+
+const (
+	SocketProtocol_TCP  SocketProtocol = "tcp"
+	SocketProtocol_UDP  SocketProtocol = "udp"
+	SocketProtocol_RAW  SocketProtocol = "raw"
+	SocketProtocol_ICMP SocketProtocol = "icmp"
+)
+
+type L7Protocol string
+
+const (
+	L7Protocol_HTTP1 L7Protocol = "http1"
+	L7Protocol_HTTP2 L7Protocol = "http2"
+	L7Protocol_DNS   L7Protocol = "dns"
+	L7Protocol_GRPC  L7Protocol = "grpc"
+	L7Protocol_OTHER L7Protocol = "other"
+)
+
+type Connection struct {
+	meta `json:"meta,omitempty"`
+
+	Tags           map[string][]string `json:"tags,omitzero"`
+	Finalized      bool                `json:"finalized,omitempty"`
+	Timestamp      time.Time           `json:"timestamp,omitempty"`
+	Direction      Direction           `json:"direction,omitempty"`
+	VendorID       string              `json:"vendorId,omitempty"`
+	Part           uint32              `json:"part,omitempty"`
+	SocketProtocol SocketProtocol      `json:"socketProtocol,omitempty"`
+	L7Protocol     L7Protocol          `json:"l7Protocol,omitempty"`
+	TLSVersion     tlsutils.TLSVersion `json:"tlsVersion,omitempty"`
+	System         *ConnectionSystem   `json:"system,omitempty"`
+	Source         ConnectionEndpoint  `json:"source,omitempty"`
+	Destination    ConnectionEndpoint  `json:"destination,omitempty"`
+	BytesReceived  uint64              `json:"bytesReceived,omitempty"`
+	BytesSent      uint64              `json:"bytesSent,omitempty"`
+}
+
+type ConnectionSystem struct {
+	Hostname      string `json:"hostname,omitempty"`
+	Agent         string `json:"agent,omitempty"`
+	AgentInstance string `json:"agentInstance,omitempty"`
+}
+
+type ConnectionEndpoint interface {
+	isConnectionEndpoint()
+}
+
+type ConnectionEndpointLocal struct {
+	Address   qnet.NetAddr `json:"address,omitempty"`
+	Hostname  string       `json:"hostname,omitempty"`
+	Exe       string       `json:"exe,omitempty"`
+	User      string       `json:"user,omitempty"`
+	Container *Container   `json:"container,omitempty"`
+}
+
+type ConnectionEndpointRemote struct {
+	Address qnet.NetAddr `json:"address,omitempty"`
+}
+
+func (c *ConnectionEndpointLocal) isConnectionEndpoint()  {}
+func (c *ConnectionEndpointRemote) isConnectionEndpoint() {}
+
+type Container struct {
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	Image string `json:"image,omitempty"`
+	Pod   *Pod   `json:"pod,omitempty"`
+}
+
+type Pod struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }

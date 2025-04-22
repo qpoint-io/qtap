@@ -1,16 +1,21 @@
 package connection
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/qpoint-io/qtap/pkg/qnet"
+	"github.com/qpoint-io/qtap/pkg/process"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.uber.org/zap"
 )
 
 func (m *Manager) generateAuditLog(conn *Connection) {
+	if conn.eventStore == nil {
+		conn.logger.Debug("generateAuditLog: no event store, skipping")
+		return
+	}
+
 	if conn.HandlerType == HandlerType_FORWARDING {
 		conn.logger.Debug("generateAuditLog: forwarding connection detected, ignoring audit")
 		return
@@ -25,38 +30,9 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 		return
 	}
 
-	// identify directional aspects
-	var direction string
-	var srcAddr qnet.NetAddr
-	var dstAddr qnet.NetAddr
-
-	// set original destination if available
-	if od := conn.OriginalDestination; od != nil {
-		conn.OpenEvent.Remote = *od
-	}
-
-	// client vs server
-	switch conn.OpenEvent.Source {
-	case Client:
-		if conn.OpenEvent.Remote.IP.IsPrivate() {
-			direction = "egress-internal"
-		} else {
-			direction = "egress-external"
-		}
-		srcAddr = conn.OpenEvent.Local
-		dstAddr = conn.OpenEvent.Remote
-	case Server:
-		direction = "ingress"
-		srcAddr = conn.OpenEvent.Remote
-		dstAddr = conn.OpenEvent.Local
-	}
-
-	// get the domain
-	domain := conn.Domain()
-
 	// if the domain is '<nil>' it means the destination IP had a 0 length and something was
 	// interupted in the socket layer. The connection is invalid and we can safely ignore it.
-	if strings.EqualFold(domain, "<nil>") {
+	if strings.EqualFold(conn.Domain(), "<nil>") {
 		m.logger.Debug("generateAuditLog: domain is <nil>, ignoring",
 			zap.String("conn_pid_id", conn.connPIDKey.String()),
 			zap.String("local_addr", conn.OpenEvent.Local.String()),
@@ -75,114 +51,138 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 		}
 	}
 
-	// determine the column name
-	columnName := func(name string) string {
-		if m.config != nil {
-			switch name {
-			case "endpoint":
-				return "endpointId"
-			case "exe":
-				return "sourceExe"
-			case "exeFilename":
-				return "sourceExeFilename"
-			case "containerId":
-				return "sourceContainerId"
-			case "podId":
-				return "sourcePodId"
-			case "hostname":
-				return "sourceHostname"
-			case "systemUser":
-				return "sourceSystemUser"
-			default:
-				return name
-			}
-		}
-
-		return name
+	// set original destination if available
+	if od := conn.OriginalDestination; od != nil {
+		conn.OpenEvent.Remote = *od
 	}
 
-	// assemble the audit log fields
-	fields := []zap.Field{
-		zap.Bool("finalized", conn.CloseEvent != nil),
-		zap.Uint32("part", conn.auditCount),
-		zap.String("connectionId", conn.ID()),
-		zap.String(columnName("timestamp"), time.Now().UTC().Format(time.RFC3339)),
-		zap.String(columnName("endpoint"), domain),
-		zap.String(columnName("direction"), direction),
-		zap.String(columnName("qpointAgent"), "tap"),
-		zap.String(columnName("destinationAddress"), dstAddr.IP.String()),
-		zap.String(columnName("destinationPort"), strconv.FormatUint(uint64(dstAddr.Port), 10)),
-		zap.String(columnName("destinationProtocol"), conn.OpenEvent.SocketType.String()),
-	}
-
-	// telemetry
-	fields = append(fields, zap.String("instanceId", telemetry.InstanceID()))
-	fields = append(fields, zap.String("qpointHostname", telemetry.Hostname()))
-
-	if conn.CloseEvent != nil {
-		fields = append(fields, zap.Int64(columnName("bytesReceived"), conn.CloseEvent.RdBytes))
-		fields = append(fields, zap.Int64(columnName("bytesSent"), conn.CloseEvent.WrBytes))
-	}
-
-	if conn.TLSClientHello != nil {
-		fields = append(fields, zap.String(columnName("tlsVersion"), conn.TLSClientHello.Version.String()))
-	}
-
-	// add src net if we know it
-	if srcAddr.Port > 0 {
-		// get the source IP
-		srcIp := srcAddr.IP.String()
-
-		fields = append(fields, zap.String(columnName("sourceProtocol"), conn.OpenEvent.SocketType.String()))
-		fields = append(fields, zap.String(columnName("sourceAddress"), srcIp))
-		fields = append(fields, zap.String(columnName("sourcePort"), strconv.FormatUint(uint64(srcAddr.Port), 10)))
-	} else {
-		m.logger.Debug("ignoring invalid source address, source port is 0", zap.Any("srcAddr", srcAddr))
-	}
-
-	// find the associated process for extra metadata
-	if proc := conn.process; proc != nil {
-		// add the process executable
-		fields = append(fields, zap.String(columnName("exe"), proc.Exe))
-
-		fields = append(fields, zap.String(columnName("exeFilename"), proc.ExeFilename))
-
-		// // add containerID if exists
-		// if proc.ContainerID != "root" {
-		// 	fields = append(fields, zap.String(columnName("containerId"), proc.ContainerID))
-		// }
-
-		// // add podID if exists
-		// if proc.PodID != "" {
-		// 	fields = append(fields, zap.String(columnName("podId"), proc.PodID))
-		// }
-
-		// hostname
-		if hostname, _ := proc.Hostname(); hostname != "" {
-			// add field
-			fields = append(fields, zap.String(columnName("hostname"), hostname))
-		}
-
-		// system user
-		if user, _ := proc.User(); user != "" {
-			fields = append(fields, zap.String(columnName("systemUser"), user))
-		}
-
-		// container
-		if c := proc.Container; c != nil {
-			fields = append(fields, c.Fields()...)
-		}
-	}
-
-	// add tags
-	fields = append(fields, zap.Strings(columnName("tags"), conn.tags.List()))
+	connection := toEventStoreConnection(conn)
+	connection.Timestamp = time.Now()
 
 	// generate the log
-	m.auditLogger.Log(fields...)
+	conn.eventStore.Save(conn.ctx, connection)
 
 	// debug log
-	conn.logger.Debug("audit log", zap.Any("fields", fields))
+	conn.logger.Debug("audit log", zap.Any("connection", connection))
 
 	// increment report count for next report
 	conn.auditCount++
+}
+
+func toEventStoreConnection(conn *Connection) *eventstore.Connection {
+	c := &eventstore.Connection{
+		Finalized: conn.CloseEvent != nil,
+		Part:      conn.auditCount,
+		System: &eventstore.ConnectionSystem{
+			Hostname:      telemetry.Hostname(),
+			Agent:         "tap",
+			AgentInstance: telemetry.InstanceID(),
+		},
+		L7Protocol: toEventStoreL7Protocol(conn.Protocol),
+	}
+	c.SetConnectionID(conn.ID())
+	c.SetEndpointID(conn.Domain())
+
+	if t := conn.Tags(); t != nil {
+		c.Tags = t.Map()
+	}
+
+	if conn.CloseEvent != nil {
+		c.BytesReceived = uint64(conn.CloseEvent.RdBytes)
+		c.BytesSent = uint64(conn.CloseEvent.WrBytes)
+	}
+
+	if conn.TLSClientHello != nil {
+		c.TLSVersion = conn.TLSClientHello.Version
+	}
+
+	if conn.OpenEvent != nil {
+		c.SocketProtocol = toEventStoreSocketType(conn.OpenEvent.SocketType)
+		localEndpoint := &eventstore.ConnectionEndpointLocal{
+			Address: conn.OpenEvent.Local,
+		}
+		if proc := conn.process; proc != nil {
+			localEndpoint.Exe = proc.Exe
+
+			if hostname, _ := proc.Hostname(); hostname != "" {
+				localEndpoint.Hostname = hostname
+			}
+			if user, _ := proc.User(); user != "" {
+				localEndpoint.User = user
+			}
+			if proc.Container != nil {
+				localEndpoint.Container = toEventStoreContainer(proc.Container, proc.Pod)
+			}
+		}
+
+		remoteEndpoint := &eventstore.ConnectionEndpointRemote{
+			Address: conn.OpenEvent.Remote,
+		}
+
+		// client vs server
+		switch conn.OpenEvent.Source {
+		case Client:
+			if conn.OpenEvent.Remote.IP.IsPrivate() {
+				c.Direction = eventstore.Direction_Egress_Internal
+			} else {
+				c.Direction = eventstore.Direction_Egress_External
+			}
+			c.Source = localEndpoint
+			c.Destination = remoteEndpoint
+
+		case Server:
+			c.Direction = eventstore.Direction_Ingress
+			c.Source = remoteEndpoint
+			c.Destination = localEndpoint
+		}
+	}
+
+	return c
+}
+
+func toEventStoreSocketType(socketType SocketType) eventstore.SocketProtocol {
+	switch socketType {
+	case SocketType_TCP:
+		return eventstore.SocketProtocol_TCP
+	case SocketType_UDP:
+		return eventstore.SocketProtocol_UDP
+	case SocketType_RAW:
+		return eventstore.SocketProtocol_RAW
+	case SocketType_ICMP:
+		return eventstore.SocketProtocol_ICMP
+	default:
+		return ""
+	}
+}
+
+func toEventStoreL7Protocol(protocol Protocol) eventstore.L7Protocol {
+	switch protocol {
+	case Protocol_HTTP1:
+		return eventstore.L7Protocol_HTTP1
+	case Protocol_HTTP2:
+		return eventstore.L7Protocol_HTTP2
+	case Protocol_DNS:
+		return eventstore.L7Protocol_DNS
+	case Protocol_GRPC:
+		return eventstore.L7Protocol_GRPC
+	default:
+		return eventstore.L7Protocol_OTHER
+	}
+}
+
+func toEventStoreContainer(container *process.Container, pod *process.Pod) *eventstore.Container {
+	c := &eventstore.Container{
+		ID:    container.ID,
+		Name:  container.Name,
+		Image: container.Image,
+	}
+
+	if pod != nil {
+		c.Pod = &eventstore.Pod{
+			Name:      pod.Name,
+			Namespace: pod.Namespace,
+		}
+	}
+
+	return c
 }

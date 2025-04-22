@@ -21,9 +21,9 @@ func (f NetFamily) String() string {
 var _ net.Addr = NetAddr{}
 
 type NetAddr struct {
-	Family NetFamily
-	IP     net.IP
-	Port   uint16
+	Family NetFamily `json:"family,omitempty"`
+	IP     net.IP    `json:"ip,omitempty"`
+	Port   uint16    `json:"port,omitempty"`
 }
 
 // Network returns the network type (e.g., "ipv4" or "ipv6")

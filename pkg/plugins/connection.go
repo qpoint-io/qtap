@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/qpoint-io/qtap/pkg/plugins/metadata"
 	"github.com/qpoint-io/qtap/pkg/services"
@@ -97,6 +98,9 @@ func (c *Connection) SetRequest(req *http.Request) {
 func (c *Connection) SetResponse(res *http.Response) {
 	// extract URL pieces and set them as headers
 	res.Header.Set(":status", strconv.Itoa(res.StatusCode))
+	if len(res.TransferEncoding) > 0 {
+		res.Header.Set(":transfer-encoding", strings.Join(res.TransferEncoding, ","))
+	}
 
 	// set the response and response body
 	c.resp = res

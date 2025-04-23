@@ -1,0 +1,19 @@
+{
+  "configurations": [
+    {
+      "name": "libbpf",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${workspaceFolder}/bpf/tap/**",
+      ],
+      "defines": [
+        "__TARGET_ARCH_arm64" // this enables lsp for headers on arm64 when using macos
+      ],
+      "compilerPath": "${default}",
+      "cStandard": "${default}",
+      "cppStandard": "${default}",
+      "intelliSenseMode": "${default}"
+    }
+  ],
+  "version": 4
+}

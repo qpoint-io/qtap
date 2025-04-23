@@ -129,7 +129,7 @@ func (d *DiagnosticWriter) Close() error {
 		return nil // Nothing to do if already closed or disabled initially
 	}
 
-	d.logger.Info("Closing diagnostic writer", zap.Any("payloads", d.payloads))
+	d.logger.Info("Closing diagnostic writer", zap.Int("payload_count", len(d.payloads)))
 
 	// Lock the mutex to safely access and modify shared state (payloads, enabled)
 	d.payloadsMutex.Lock()

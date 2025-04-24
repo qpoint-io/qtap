@@ -48,6 +48,14 @@ struct {
 	__uint(max_entries, 1024);
 } active_ssl_write_args_map SEC(".maps");
 
+// persist ssl pointer to fd
+struct {
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
+	__type(key, uintptr_t); // ssl
+	__type(value, int32_t); // fd
+	__uint(max_entries, 4096);
+} ssl_to_fd_map SEC(".maps");
+
 // request the fd from socket syscall layer
 static void request_fd_from_syscall(uint64_t pid_tgid) {
 	// initialize a fd request
@@ -79,6 +87,19 @@ static int32_t get_fd_from_syscall(uint64_t pid_tgid) {
 	return fd_request->fd;
 }
 
+// retrieve fd from cache
+static int32_t get_fd_from_cache(uintptr_t ssl) {
+	int32_t *fd = bpf_map_lookup_elem(&ssl_to_fd_map, &ssl);
+
+	// nothing to do if there's not a request
+	if (fd == NULL) {
+		return 0;
+	}
+
+	// return the fd
+	return *fd;
+}
+
 // retrieve the fd from various locations
 static int32_t get_fd(uint64_t pid_tgid, uintptr_t ssl) {
 	// extract the pid
@@ -94,6 +115,14 @@ static int32_t get_fd(uint64_t pid_tgid, uintptr_t ssl) {
 
 	// otherwise, try the socket layer
 	fd = get_fd_from_syscall(pid_tgid);
+
+	// if we have a valid fd, return it
+	if (fd > 0) {
+		return fd;
+	}
+
+	// otherwise, try the ssl map
+	fd = get_fd_from_cache(ssl);
 
 	// if we have a valid fd, return it
 	if (fd > 0) {
@@ -137,6 +166,9 @@ int BPF_UPROBE(openssl_probe_entry_SSL_free) {
 
 	// Notify the TLS helper about the freed SSL object
 	ssl_remove_handle(ssl);
+
+	// remove the ssl pointer from the fd map
+	bpf_map_delete_elem(&ssl_to_fd_map, &ssl);
 
 	return 0;
 }
@@ -198,6 +230,9 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read) {
 			return 0;
 		}
 
+		// persist the fd to the ssl map
+		bpf_map_update_elem(&ssl_to_fd_map, &read_args->ssl, &read_args->fd, BPF_ANY);
+
 		// trace
 		TRACE_OPENSSL(pid, "openssl/read", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
 
@@ -257,6 +292,13 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read_ex) {
 	// extract the pid
 	uint32_t pid = pid_tgid >> 32;
 
+	// if we have a valid return value, return
+	int funcRet = PT_REGS_RC(ctx);
+	if (funcRet < 1) {
+		TRACE_OPENSSL(pid, "openssl/read_ex (funcRet < 1)", TRACE_INT("pid", pid), TRACE_INT("funcRet", funcRet));
+		return 0;
+	}
+
 	// allocate a read_args key
 	uint32_t key = pid;
 
@@ -285,6 +327,9 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read_ex) {
 			TRACE_OPENSSL(pid, "openssl/read_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
 			return 0;
 		}
+
+		// persist the fd to the ssl map
+		bpf_map_update_elem(&ssl_to_fd_map, &read_args->ssl, &read_args->fd, BPF_ANY);
 
 		// trace
 		TRACE_OPENSSL(pid, "openssl/read_ex", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
@@ -367,6 +412,9 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write) {
 			TRACE_OPENSSL(pid, "openssl/write (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
 			return 0;
 		}
+
+		// persist the fd to the ssl map
+		bpf_map_update_elem(&ssl_to_fd_map, &write_args->ssl, &write_args->fd, BPF_ANY);
 
 		// trace
 		TRACE_OPENSSL(pid, "openssl/write", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
@@ -456,6 +504,9 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write_ex) {
 				pid, "openssl/write_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));
 			return 0;
 		}
+
+		// persist the fd to the ssl map
+		bpf_map_update_elem(&ssl_to_fd_map, &write_args->ssl, &write_args->fd, BPF_ANY);
 
 		// trace
 		TRACE_OPENSSL(pid, "openssl/write_ex", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));

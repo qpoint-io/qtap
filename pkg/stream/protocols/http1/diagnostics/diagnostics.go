@@ -1,4 +1,4 @@
-// Package http1 provides HTTP/1.x protocol handling.
+// Package diagnostics provides HTTP/1.x protocol handling.
 // This file contains diagnostic tooling for debug builds.
 // Build with -tags=debug to include this functionality.
 //
@@ -20,9 +20,9 @@
 // Example output location:
 //
 //	/path/to/output/
-//	  ├── http_dump_20240423_170800_conn123.log
-//	  └── http_dump_20240423_170800_conn123.json
-package http1
+//	  ├── dump_20240423_170800_conn123.log
+//	  └── dump_20240423_170800_conn123.json
+package diagnostics
 
 import (
 	"encoding/base64"
@@ -50,6 +50,7 @@ type DiagnosticWriter struct {
 	baseFilename  string // shared prefix for .log and .json files
 	logFilePath   string // path to detailed hex dump log
 	jsonFilePath  string // path to payload JSON array
+	rawFilePath   string // path to raw payloads
 	logger        *zap.Logger
 	payloads      [][]byte   // ordered list of captured payloads
 	payloadsMutex sync.Mutex // guards payloads slice
@@ -63,9 +64,9 @@ func NewDiagnosticWriter(directory string, suffix string, logger *zap.Logger) *D
 		logger = zap.NewNop() // Use a no-op logger if none provided
 	}
 
-	// Create timestamp-based base filename (e.g., http_dump_20250423_170800)
+	// Create timestamp-based base filename (e.g., dump_20250423_170800)
 	timestamp := time.Now().Format("20060102_150405")
-	baseFilename := fmt.Sprintf("http_dump_%s_%s", timestamp, suffix)
+	baseFilename := fmt.Sprintf("dump_%s_%s", timestamp, suffix)
 
 	// Ensure the diagnostics directory exists
 	if err := os.MkdirAll(directory, 0755); err != nil {
@@ -79,7 +80,7 @@ func NewDiagnosticWriter(directory string, suffix string, logger *zap.Logger) *D
 	// Construct full paths for both log and JSON files
 	logFilePath := filepath.Join(directory, baseFilename+".log")
 	jsonFilePath := filepath.Join(directory, baseFilename+".json")
-
+	rawFilePath := filepath.Join(directory, baseFilename+".raw")
 	logger.Info("Diagnostic writer initialized",
 		zap.String("logFile", logFilePath),
 		zap.String("jsonFile", jsonFilePath))
@@ -90,6 +91,7 @@ func NewDiagnosticWriter(directory string, suffix string, logger *zap.Logger) *D
 		baseFilename:  baseFilename,
 		logFilePath:   logFilePath,
 		jsonFilePath:  jsonFilePath,
+		rawFilePath:   rawFilePath,
 		logger:        logger,
 		payloads:      make([][]byte, 0, 100), // Initialize slice with some capacity
 		payloadsMutex: sync.Mutex{},           // Initialize the mutex
@@ -120,6 +122,7 @@ func (d *DiagnosticWriter) Write(data []byte) {
 	// --- Append to log file (existing functionality) ---
 	// This writes the hex dump and raw string to the .log file for each chunk
 	d.appendToLogFile(d.logFilePath, data, currentSeq)
+	d.appendToRawFile(d.rawFilePath, data)
 	// -------------------------------------------------
 }
 
@@ -173,6 +176,20 @@ func (d *DiagnosticWriter) Close() error {
 	d.payloads = nil
 
 	return nil
+}
+
+// appendToLogFile writes a timestamped hex dump and raw string representation of the data.
+func (d *DiagnosticWriter) appendToRawFile(filepath string, data []byte) {
+	// Open the log file in append mode, creating it if it doesn't exist.
+	f, err := os.OpenFile(filepath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		d.logger.Error("Failed to open diagnostic log file for appending", zap.String("file", filepath), zap.Error(err))
+		return // Cannot proceed if file can't be opened
+	}
+	defer f.Close() // Ensure file is closed when function exits
+	if _, err := f.Write(data); err != nil {
+		d.logger.Error("Failed to write diagnostic log file", zap.String("file", filepath), zap.Error(err))
+	}
 }
 
 // appendToLogFile writes a timestamped hex dump and raw string representation of the data.

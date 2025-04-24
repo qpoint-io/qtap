@@ -274,6 +274,7 @@ type TapMapSpecs struct {
 	SocketHostnameEventHeap       *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.MapSpec `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_client_hello_event_heap"`
+	SslToFdMap                    *ebpf.MapSpec `ebpf:"ssl_to_fd_map"`
 	TraceEvents                   *ebpf.MapSpec `ebpf:"trace_events"`
 	TraceToggleMap                *ebpf.MapSpec `ebpf:"trace_toggle_map"`
 	UprobeFdRequests              *ebpf.MapSpec `ebpf:"uprobe_fd_requests"`
@@ -322,6 +323,7 @@ type TapMaps struct {
 	SocketHostnameEventHeap       *ebpf.Map `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.Map `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.Map `ebpf:"socket_tls_client_hello_event_heap"`
+	SslToFdMap                    *ebpf.Map `ebpf:"ssl_to_fd_map"`
 	TraceEvents                   *ebpf.Map `ebpf:"trace_events"`
 	TraceToggleMap                *ebpf.Map `ebpf:"trace_toggle_map"`
 	UprobeFdRequests              *ebpf.Map `ebpf:"uprobe_fd_requests"`
@@ -353,6 +355,7 @@ func (m *TapMaps) Close() error {
 		m.SocketHostnameEventHeap,
 		m.SocketSettingsMap,
 		m.SocketTlsClientHelloEventHeap,
+		m.SslToFdMap,
 		m.TraceEvents,
 		m.TraceToggleMap,
 		m.UprobeFdRequests,

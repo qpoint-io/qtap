@@ -20,9 +20,9 @@ type Stack struct {
 }
 
 type Services struct {
-	EventStores    []ServiceEventStore  `yaml:"event_stores"`
-	ObjectStores   []ServiceObjectStore `yaml:"object_stores"`
-	SentinelClient *ServiceSentinel     `yaml:"sentinel"`
+	EventStores  []ServiceEventStore  `yaml:"event_stores"`
+	ObjectStores []ServiceObjectStore `yaml:"object_stores"`
+	QscanClient  *ServiceQscan        `yaml:"qscan"`
 }
 
 func (s Services) ToMap() map[string]any {
@@ -32,19 +32,19 @@ func (s Services) ToMap() map[string]any {
 
 	m[s.FirstObjectStore().ServiceType()] = s.FirstObjectStore()
 
-	m[s.Sentinel().ServiceType()] = s.Sentinel()
+	m[s.Qscan().ServiceType()] = s.Qscan()
 
 	return m
 }
 
-func (s Services) Sentinel() ServiceSentinel {
-	if s.SentinelClient == nil {
-		return ServiceSentinel{
-			Type: SentinelType_DISABLED,
+func (s Services) Qscan() ServiceQscan {
+	if s.QscanClient == nil {
+		return ServiceQscan{
+			Type: QscanType_DISABLED,
 		}
 	}
 
-	return *s.SentinelClient
+	return *s.QscanClient
 }
 
 func (s Services) HasAnyEventStores() bool {

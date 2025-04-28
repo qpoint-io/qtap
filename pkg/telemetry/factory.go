@@ -1,8 +1,17 @@
 package telemetry
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var defaultRegisterer = prometheus.DefaultRegisterer
+
+var (
+	onceMu         sync.Mutex
+	observableOnce = make(map[string]*sync.Once)
+)
 
 // Factory produces metrics.
 type Factory interface {
@@ -29,7 +38,17 @@ func Gauge(name string, opts ...Option) GaugeFn {
 }
 
 func ObservableGauge(name string, fn func() float64, opts ...Option) {
-	(&factory{
-		registerer: defaultRegisterer,
-	}).ObservableGauge(name, fn, opts...)
+	onceMu.Lock()
+	o, ok := observableOnce[name]
+	if !ok {
+		o = &sync.Once{}
+		observableOnce[name] = o
+	}
+	onceMu.Unlock()
+
+	o.Do(func() {
+		(&factory{
+			registerer: defaultRegisterer,
+		}).ObservableGauge(name, fn, opts...)
+	})
 }

@@ -80,3 +80,21 @@ func TestFactory_ObservableGauge_PanicsWithLabels(t *testing.T) {
 		ObservableGauge("test_observable", observableFn, WithLabels("label1", "label2"))
 	}, "ObservableGauge should panic when labels are provided")
 }
+
+func TestFactory_ObservableGauge_MultipleCalls(t *testing.T) {
+	// Test global function
+	observableFn := func() float64 { return 123.45 }
+	ObservableGauge("test_observable", observableFn, WithDescription("Test observable gauge"))
+
+	// second call /w same name
+	ObservableGauge("test_observable", observableFn, WithDescription("Test observable gauge"))
+
+	// Since this doesn't return anything, we're just ensuring it doesn't panic
+
+	// Test factory instance with custom registerer
+	mockReg := &mockRegisterer{}
+	f := &factory{registerer: mockReg}
+
+	f.ObservableGauge("test_observable", observableFn, WithDescription("Test observable gauge"))
+	assert.True(t, mockReg.registerCalled, "Register should be called")
+}

@@ -57,14 +57,14 @@ var (
 )
 
 var (
-	serviceFactories = []services.ServiceFactory{
+	serviceFactories = []services.FactoryFactory{
 		// Eventstore services
-		&eventstoreconsole.Factory{},
-		&eventstorenoop.Factory{},
+		func() services.ServiceFactory { return &eventstoreconsole.Factory{} },
+		func() services.ServiceFactory { return &eventstorenoop.Factory{} },
 
 		// Objectstore services
-		&objectstoreconsole.Factory{},
-		&objectstorenoop.Factory{},
+		func() services.ServiceFactory { return &objectstoreconsole.Factory{} },
+		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
 
 		// Add more services here...
 	}

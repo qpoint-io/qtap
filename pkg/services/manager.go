@@ -13,7 +13,7 @@ type ServiceManager struct {
 	ctx       context.Context
 	logger    *zap.Logger
 	registry  *ServiceRegistry
-	factories map[ServiceType]ServiceFactory
+	factories map[ServiceType]FactoryFactory
 }
 
 // NewServiceManager creates a new service manager
@@ -22,16 +22,17 @@ func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *Servic
 		ctx:       ctx,
 		logger:    logger,
 		registry:  registry,
-		factories: make(map[ServiceType]ServiceFactory),
+		factories: make(map[ServiceType]FactoryFactory),
 	}
 }
 
 // RegisterFactory registers a service factory
-func (sm *ServiceManager) RegisterFactory(factory ...ServiceFactory) {
-	for _, f := range factory {
-		if _, exists := sm.factories[f.FactoryType()]; !exists {
-			sm.logger.Debug("registering factory", zap.String("service_type", f.FactoryType().String()))
-			sm.factories[f.FactoryType()] = f
+func (sm *ServiceManager) RegisterFactory(fns ...FactoryFactory) {
+	for _, fn := range fns {
+		factory := fn()
+		if _, exists := sm.factories[factory.FactoryType()]; !exists {
+			sm.logger.Debug("registering factory", zap.String("factory_type", factory.FactoryType().String()))
+			sm.factories[factory.FactoryType()] = fn
 		}
 	}
 }
@@ -43,14 +44,16 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 	}
 
 	for key, svcConfig := range config.Services.ToMap() {
-		factory, exists := sm.factories[ServiceType(key)]
+		fn, exists := sm.factories[ServiceType(key)]
 		if !exists {
 			sm.logger.Debug("no factory registered for service type", zap.String("service_type", key))
 			continue
 		}
 
+		factory := fn()
+
 		// Close old service if it exists and implements Closer
-		if old := sm.registry.Get(ServiceType(key)); old != nil {
+		if old := sm.registry.Get(factory.ServiceType()); old != nil {
 			if closer, ok := old.(io.Closer); ok {
 				defer func() {
 					closer.Close()

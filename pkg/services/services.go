@@ -17,6 +17,9 @@ type Service interface {
 	ServiceType() ServiceType
 }
 
+// FactoryFactory creates a service factory 🎶
+type FactoryFactory func() ServiceFactory
+
 // ServiceFactory creates service instances
 type ServiceFactory interface {
 	// Init initializes the service factory

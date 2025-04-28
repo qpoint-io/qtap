@@ -218,10 +218,10 @@ type ArtifactRecord struct {
 type Direction string
 
 const (
-	Direction_Ingress         Direction = "ingress"
-	Direction_Egress          Direction = "egress"
-	Direction_Egress_Internal Direction = "egress-internal"
-	Direction_Egress_External Direction = "egress-external"
+	Direction_Ingress        Direction = "ingress"
+	Direction_Egress         Direction = "egress"
+	Direction_EgressInternal Direction = "egress-internal"
+	Direction_EgressExternal Direction = "egress-external"
 )
 
 type SocketProtocol string

@@ -117,7 +117,7 @@ func Test_toEventStoreConnection(t *testing.T) {
 
 	t.Run("egress connection", func(t *testing.T) {
 		conn := &eventstore.Connection{
-			Direction: eventstore.Direction_Egress_External,
+			Direction: eventstore.Direction_EgressExternal,
 			Part:      1,
 			Finalized: true,
 			System: &eventstore.ConnectionSystem{

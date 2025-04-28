@@ -123,9 +123,9 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 		switch conn.OpenEvent.Source {
 		case Client:
 			if conn.OpenEvent.Remote.IP.IsPrivate() {
-				c.Direction = eventstore.Direction_Egress_Internal
+				c.Direction = eventstore.Direction_EgressInternal
 			} else {
-				c.Direction = eventstore.Direction_Egress_External
+				c.Direction = eventstore.Direction_EgressExternal
 			}
 			c.Source = localEndpoint
 			c.Destination = remoteEndpoint

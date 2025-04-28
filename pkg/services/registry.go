@@ -24,13 +24,6 @@ func (sr *ServiceRegistry) Register(svc ServiceFactory) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 
-	// Close old service if it implements Closer
-	if old, exists := sr.services[svc.ServiceType()]; exists {
-		if closer, ok := old.(io.Closer); ok {
-			closer.Close()
-		}
-	}
-
 	sr.services[svc.ServiceType()] = svc
 }
 

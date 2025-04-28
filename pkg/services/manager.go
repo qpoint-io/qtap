@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"io"
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"go.uber.org/zap"
@@ -46,6 +47,15 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 		if !exists {
 			sm.logger.Debug("no factory registered for service type", zap.String("service_type", key))
 			continue
+		}
+
+		// Close old service if it exists and implements Closer
+		if old := sm.registry.Get(ServiceType(key)); old != nil {
+			if closer, ok := old.(io.Closer); ok {
+				defer func() {
+					closer.Close()
+				}()
+			}
 		}
 
 		// Set the registry for the factory if it implements the SetRegistry interface

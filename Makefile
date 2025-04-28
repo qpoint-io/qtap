@@ -65,10 +65,10 @@ ALL_TAGS = $(BUILD_TAGS) $(EXTRA_TAGS)
 
 # Linker Flags
 LD_FLAGS += -s -w
-LD_FLAGS += -X '$(shell go list -m)/pkg/buildinfo.version=$(VERSION)'
-LD_FLAGS += -X '$(shell go list -m)/pkg/buildinfo.commit=$(GIT_COMMIT)'
-LD_FLAGS += -X '$(shell go list -m)/pkg/buildinfo.branch=$(GIT_BRANCH)'
-LD_FLAGS += -X '$(shell go list -m)/pkg/buildinfo.buildTime=$(BUILD_TIME)'
+LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.version=$(VERSION)'
+LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.commit=$(GIT_COMMIT)'
+LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.branch=$(GIT_BRANCH)'
+LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.buildTime=$(BUILD_TIME)'
 
 # Performance & Debug Flags
 GCFLAGS ?=

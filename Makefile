@@ -244,6 +244,7 @@ ci: ## Run CI pipeline
 			exit 1; \
 		fi \
 	fi
+	$(MAKE) test
 	@echo $(SUCCESS) CI pipeline complete! $(RESET)
 
 # =============================================================================

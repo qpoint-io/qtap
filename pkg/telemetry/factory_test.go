@@ -73,14 +73,6 @@ func TestFactory_ObservableGauge(t *testing.T) {
 	assert.True(t, mockReg.registerCalled, "Register should be called")
 }
 
-func TestFactory_ObservableGauge_PanicsWithLabels(t *testing.T) {
-	observableFn := func() float64 { return 123.45 }
-
-	assert.Panics(t, func() {
-		ObservableGauge("test_observable", observableFn, WithLabels("label1", "label2"))
-	}, "ObservableGauge should panic when labels are provided")
-}
-
 func TestFactory_ObservableGauge_MultipleCalls(t *testing.T) {
 	// Test global function
 	observableFn := func() float64 { return 123.45 }

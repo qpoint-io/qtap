@@ -59,7 +59,7 @@ func (m *Manager) handleExecStartEvent(r *bytes.Reader) error {
 		// set the notifier so the process can indicate when it's changed
 		// and when we should collect data for the ebpf meta map
 		p.SetNotifier(func() error {
-			return m.setMeta(p)
+			return m.SetMeta(p)
 		})
 
 		m.cache.Add(int32(e.Pid), p)

@@ -27,6 +27,7 @@ type Eventer interface {
 	Start() error
 	Stop() error
 	Register(Receiver)
+	SetMeta(p *Process) error
 }
 
 type Manager struct {
@@ -175,6 +176,9 @@ func (m *Manager) preloadProcs() error {
 
 			if err := m.addProc(proc); err != nil {
 				return fmt.Errorf("adding process: %w", err)
+			}
+			if err := m.procEventer.SetMeta(proc); err != nil {
+				return fmt.Errorf("setting meta: %w", err)
 			}
 		}
 	}

@@ -146,7 +146,7 @@ func (m *Manager) readProcEvent(record *ringbuf.Record) error {
 	return nil
 }
 
-func (m *Manager) setMeta(p *process.Process) error {
+func (m *Manager) SetMeta(p *process.Process) error {
 	if p == nil {
 		return nil
 	}

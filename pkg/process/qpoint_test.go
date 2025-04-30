@@ -1,6 +1,7 @@
 package process
 
 import (
+	"regexp"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -103,88 +104,88 @@ func TestQpointStrategyFromString(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		exe     string
+		process *Process
 		want    QpointStrategy
 		wantErr bool
 	}{
 		{
-			name:  "simple observe strategy",
-			input: "observe",
-			exe:   "test",
-			want:  StrategyObserve,
+			name:    "simple observe strategy",
+			input:   "observe",
+			process: &Process{Exe: "test"},
+			want:    StrategyObserve,
 		},
 		{
-			name:  "simple ignore strategy",
-			input: "ignore",
-			exe:   "test",
-			want:  StrategyIgnore,
+			name:    "simple ignore strategy",
+			input:   "ignore",
+			process: &Process{Exe: "test"},
+			want:    StrategyIgnore,
 		},
 		{
-			name:  "simple audit strategy",
-			input: "audit",
-			exe:   "test",
-			want:  StrategyAudit,
+			name:    "simple audit strategy",
+			input:   "audit",
+			process: &Process{Exe: "test"},
+			want:    StrategyAudit,
 		},
 		{
-			name:  "simple forward strategy",
-			input: "forward",
-			exe:   "test",
-			want:  StrategyForward,
+			name:    "simple forward strategy",
+			input:   "forward",
+			process: &Process{Exe: "test"},
+			want:    StrategyForward,
 		},
 		{
-			name:  "simple proxy strategy",
-			input: "proxy",
-			exe:   "test",
-			want:  StrategyProxy,
+			name:    "simple proxy strategy",
+			input:   "proxy",
+			process: &Process{Exe: "test"},
+			want:    StrategyProxy,
 		},
 		{
-			name:  "unknown strategy defaults to observe",
-			input: "unknown",
-			exe:   "test",
-			want:  StrategyObserve,
+			name:    "unknown strategy defaults to observe",
+			input:   "unknown",
+			process: &Process{Exe: "test"},
+			want:    StrategyObserve,
 		},
 		{
-			name:  "matching exact filter",
-			input: "proxy,exe.exact:test",
-			exe:   "test",
-			want:  StrategyProxy,
+			name:    "matching exact filter",
+			input:   "proxy,exe.exact:test",
+			process: &Process{Exe: "test"},
+			want:    StrategyProxy,
 		},
 		{
-			name:  "non-matching exact filter defaults to observe",
-			input: "proxy,exe.exact:other",
-			exe:   "test",
-			want:  StrategyObserve,
+			name:    "non-matching exact filter defaults to observe",
+			input:   "proxy,exe.exact:other",
+			process: &Process{Exe: "test"},
+			want:    StrategyObserve,
 		},
 		{
 			name:    "invalid filter format",
 			input:   "proxy,invalid_filter",
-			exe:     "test",
+			process: &Process{Exe: "test"},
 			want:    StrategyObserve,
 			wantErr: true,
 		},
 		{
-			name:  "multiple matching filters - first matches",
-			input: "proxy,exe.contains:te,exe.suffix:st",
-			exe:   "test",
-			want:  StrategyProxy,
+			name:    "multiple matching filters - first matches",
+			input:   "proxy,exe.contains:te,exe.suffix:st",
+			process: &Process{Exe: "test"},
+			want:    StrategyProxy,
 		},
 		{
-			name:  "multiple matching filters - second matches",
-			input: "proxy,exe.contains:other,exe.suffix:test",
-			exe:   "test",
-			want:  StrategyProxy,
+			name:    "multiple matching filters - second matches",
+			input:   "proxy,exe.contains:other,exe.suffix:test",
+			process: &Process{Exe: "test"},
+			want:    StrategyProxy,
 		},
 		{
-			name:  "multiple non-matching filters defaults to observe",
-			input: "proxy,exe.contains:other,exe.suffix:fail",
-			exe:   "test",
-			want:  StrategyObserve,
+			name:    "multiple non-matching filters defaults to observe",
+			input:   "proxy,exe.contains:other,exe.suffix:fail",
+			process: &Process{Exe: "test"},
+			want:    StrategyObserve,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := QpointStrategyFromString(tt.input, tt.exe)
+			got, err := QpointStrategyFromString(tt.input, tt.process)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("QpointStrategyFromString() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -194,4 +195,175 @@ func TestQpointStrategyFromString(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFromConfigFilter(t *testing.T) {
+	// TODO
+}
+
+func TestExeFilter(t *testing.T) {
+	tests := []struct {
+		name        string
+		pattern     string
+		strategy    config.MatchStrategy
+		input       string
+		expected    bool
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Exact match - success",
+			pattern:     "example.exe",
+			strategy:    config.MatchStrategy_EXACT,
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Exact match - failure",
+			pattern:     "example.exe",
+			strategy:    config.MatchStrategy_EXACT,
+			input:       "other.exe",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			name:        "Prefix match - success",
+			pattern:     "exam",
+			strategy:    config.MatchStrategy_PREFIX,
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Prefix match - failure",
+			pattern:     "exam",
+			strategy:    config.MatchStrategy_PREFIX,
+			input:       "sample.exe",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			name:        "Suffix match - success",
+			pattern:     ".exe",
+			strategy:    config.MatchStrategy_SUFFIX,
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Suffix match - failure",
+			pattern:     ".exe",
+			strategy:    config.MatchStrategy_SUFFIX,
+			input:       "example.txt",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			name:        "Contains match - success",
+			pattern:     "example",
+			strategy:    config.MatchStrategy_CONTAINS,
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Contains match - failure",
+			pattern:     "no?",
+			strategy:    config.MatchStrategy_CONTAINS,
+			input:       "example.txt",
+			expected:    false,
+			expectError: false,
+		},
+		{
+			name:        "Default match - success",
+			pattern:     "example.exe",
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Unknown strategy",
+			pattern:     "something",
+			strategy:    "idk",
+			input:       "example.exe",
+			expected:    false,
+			expectError: true,
+			errorMsg:    "invalid strategy: idk",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filter := &ExeFilter{
+				pattern:  tt.pattern,
+				strategy: tt.strategy,
+			}
+			result, err := filter.Evaluate(&Process{Exe: tt.input})
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestExeRegexFilter(t *testing.T) {
+	tests := []struct {
+		name        string
+		pattern     *regexp.Regexp
+		input       string
+		expected    bool
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Regex match - success",
+			pattern:     regexp.MustCompile(`^[a-z]+\.exe$`),
+			input:       "example.exe",
+			expected:    true,
+			expectError: false,
+		},
+		{
+			name:        "Regex match - failure",
+			pattern:     regexp.MustCompile(`^[a-z]+\.exe$`),
+			input:       "example.txt",
+			expected:    false,
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filter := &ExeRegexFilter{
+				pattern: tt.pattern,
+			}
+			result, err := filter.Evaluate(&Process{Exe: tt.input})
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestPIDFilter(t *testing.T) {
+	filter := &PIDFilter{
+		PID: 123,
+	}
+	result, err := filter.Evaluate(&Process{Pid: 123})
+	require.NoError(t, err)
+	require.True(t, result)
+
+	result, err = filter.Evaluate(&Process{Pid: 456})
+	require.NoError(t, err)
+	require.False(t, result)
 }

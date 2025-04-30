@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
-	"strings"
 )
 
 type MatchStrategy string
@@ -91,44 +90,17 @@ func (tf TapFilter) Validate() error {
 	return nil
 }
 
-func (tf TapFilter) Evaluate(input string) (bool, error) {
-	if input == "" {
-		return false, nil
-	}
-
-	input = strings.ToLower(input)
-	exe := strings.ToLower(tf.Exe)
-
-	switch tf.Strategy {
-	case MatchStrategy_EXACT:
-		return exe == input, nil
-	case MatchStrategy_PREFIX:
-		return strings.HasPrefix(input, exe), nil
-	case MatchStrategy_SUFFIX:
-		return strings.HasSuffix(input, exe), nil
-	case MatchStrategy_CONTAINS:
-		return strings.Contains(input, exe), nil
-	case MatchStrategy_REGEX:
-		re, err := regexp.Compile(exe)
-		if err != nil {
-			return false, fmt.Errorf("invalid regex: %w", err)
-		}
-		return re.MatchString(input), nil
-	default:
-		return strings.HasSuffix(input, exe), nil
-	}
-}
-
 const (
 	SkipDataFlag = 1 << iota
 	SkipDNSFlag
 	SkipTLSFlag
 	SkipHTTPFlag
+	SkipAllFlag = SkipDataFlag | SkipDNSFlag | SkipTLSFlag | SkipHTTPFlag
 )
 
 func (tf TapFilter) Pack() uint8 {
 	if len(tf.Only) == 0 {
-		return SkipDataFlag | SkipDNSFlag | SkipTLSFlag | SkipHTTPFlag
+		return SkipAllFlag
 	}
 
 	var flags uint8 = 0

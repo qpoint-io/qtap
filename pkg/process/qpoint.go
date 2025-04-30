@@ -43,19 +43,24 @@ func createTapFilter(filterStr string) (*config.TapFilter, error) {
 	}, nil
 }
 
-func QpointStrategyFromString(s, exe string) (QpointStrategy, error) {
+func QpointStrategyFromString(s string, p *Process) (QpointStrategy, error) {
 	strat, filterStr, found := strings.Cut(s, ",")
 	if found {
 		var match bool
 		filterStrs := strings.Split(filterStr, ",")
 		for _, filterStr := range filterStrs {
-			filter, err := createTapFilter(filterStr)
+			filterConfig, err := createTapFilter(filterStr)
+			if err != nil {
+				return StrategyObserve, err
+			}
+
+			filter, err := FromConfigFilter(filterConfig)
 			if err != nil {
 				return StrategyObserve, err
 			}
 
 			// evaluate the filter
-			match, err = filter.Evaluate(exe)
+			match, err = filter.Evaluate(p)
 			if err != nil {
 				return StrategyObserve, err
 			}

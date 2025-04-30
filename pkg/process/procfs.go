@@ -132,7 +132,7 @@ func AllProcs(path string) ([]int, error) {
 
 	names, err := d.Readdirnames(-1)
 	if err != nil {
-		return []int{}, fmt.Errorf("Cannot read file: %v: %w", names, err)
+		return []int{}, fmt.Errorf("reading file: %v: %w", names, err)
 	}
 
 	p := []int{}

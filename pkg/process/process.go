@@ -136,7 +136,7 @@ func (p *Process) Discover(mountPoint string, envMask *synq.Map[string, bool]) e
 	}
 
 	// apply process filters
-	p.filter = applyFilters(p.Exe)
+	p.filter = applyFilters(p)
 
 	if p.Binary == "" {
 		p.Binary = filepath.Base(p.Exe)
@@ -223,7 +223,7 @@ func (p *Process) Discover(mountPoint string, envMask *synq.Map[string, bool]) e
 
 	// set the qpoint strategy
 	// ALWAYS CHECK because the exe filter could change
-	strategy, err := QpointStrategyFromString(p.Env[QpointStrategyEnvVar], p.Exe)
+	strategy, err := QpointStrategyFromString(p.Env[QpointStrategyEnvVar], p)
 	if err != nil {
 		// always fallback to observe
 		strategy = StrategyObserve

@@ -217,6 +217,15 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		open_event->cookie = cookie;
 		// bpf_printk("submit_open_event, cookie: %lu", cookie);
 
+		if (cookie <= 0) {
+			// If we don't have a valid cookie, ignore the connection
+			// this is either an error state or premature and will
+			// be called again.
+			// TODO(Jon): Investigate ways to tighten up the trigger
+			// points for this event.
+			conn_info->ignore = true;
+		}
+
 		// read the local and remote ports
 		__be16 local_port;
 		bpf_probe_read(&local_port, sizeof(local_port), &sk->__sk_common.skc_num);
@@ -423,6 +432,8 @@ static void process_syscall_addr(struct socket_ctx *ctx, struct addr_args *addr,
 		bpf_probe_read_user(&conn_info.addr.port, sizeof(conn_info.addr.port), &sa->sin6_port);
 	}
 
+	submit_open_event(ctx, &conn_info);
+
 	// persist
 	bpf_map_update_elem(&conn_info_map, ctx->id, &conn_info, BPF_ANY);
 }
@@ -572,9 +583,6 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	if (!conn_info->is_open) {
 		// detect tls if not already detected and the connection is new
 		detect_tls(conn_info, &buf_info, bytes);
-
-		// submit the open event
-		submit_open_event(ctx, conn_info);
 
 		// if open didn't succeed, return
 		if (!conn_info->is_open) {

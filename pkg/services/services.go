@@ -42,3 +42,9 @@ type RegistryAccessor interface {
 	// Get retrieves a service factory by type
 	Get(serviceType ServiceType) ServiceFactory
 }
+
+// NextFactory indicates that a factory will handle graceful replacements
+// of itself to the replacement factory
+type NextFactory interface {
+	Next(ServiceFactory)
+}

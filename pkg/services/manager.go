@@ -54,6 +54,14 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 
 		// Close old service if it exists and implements Closer
 		if old := sm.registry.Get(factory.ServiceType()); old != nil {
+			// sends replacement factory to services that support it
+			if next, ok := old.(NextFactory); ok {
+				defer func() {
+					next.Next(factory)
+				}()
+			}
+
+			// closes factories that are closeable
 			if closer, ok := old.(io.Closer); ok {
 				defer func() {
 					closer.Close()

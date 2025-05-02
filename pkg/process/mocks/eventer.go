@@ -52,6 +52,20 @@ func (mr *MockEventerMockRecorder) Register(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockEventer)(nil).Register), arg0)
 }
 
+// SetMeta mocks base method.
+func (m *MockEventer) SetMeta(p *process.Process) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetMeta", p)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetMeta indicates an expected call of SetMeta.
+func (mr *MockEventerMockRecorder) SetMeta(p any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetMeta", reflect.TypeOf((*MockEventer)(nil).SetMeta), p)
+}
+
 // Start mocks base method.
 func (m *MockEventer) Start() error {
 	m.ctrl.T.Helper()

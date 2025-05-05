@@ -6,37 +6,51 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/connection"
+	"github.com/qpoint-io/qtap/pkg/dns"
+	"github.com/qpoint-io/qtap/pkg/e2e"
+	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
+	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
 	loggerPlugin "github.com/qpoint-io/qtap/pkg/plugins/logger"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
+	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
-	"github.com/rs/xid"
+	"github.com/qpoint-io/qtap/pkg/stream"
+	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var (
-	start  = time.Now()
-	logger = testLogger()
+	start            time.Time
+	logger           *zap.Logger
+	e2ectx           *e2e.Context
+	serviceFactories []services.FactoryFactory
+	pluginFactories  []plugins.HttpPlugin
+)
 
-	e2ectx = &e2eContext{
-		ctx:          context.Background(),
-		start:        start,
-		eventstore:   &EventStore{},
-		confProvider: NewConfigProvider(testConfig(nil)),
-	}
+func mainSetup() error {
+	start = time.Now()
+	logger = e2e.NewLogger(start)
+
+	e2ectx = e2e.NewContext(context.Background())
+	e2ectx.Start = start
+	e2ectx.Eventstore = &e2e.EventStore{}
+	e2ectx.ConfProvider = e2e.NewConfigProvider(e2e.TestConfig(nil))
+	e2ectx.L = logger
+
 	serviceFactories = []services.FactoryFactory{
 		// Eventstore services
-		func() services.ServiceFactory { return e2ectx.eventstore },
+		func() services.ServiceFactory { return e2ectx.Eventstore },
 
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
@@ -48,7 +62,164 @@ var (
 		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),
 		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
 	}
-)
+
+	if syscall.Getuid() != 0 {
+		return fmt.Errorf("please run e2e tests as root to load BPF programs and maps")
+	}
+
+	// set up config
+	if err := e2ectx.ConfProvider.Start(); err != nil {
+		return fmt.Errorf("starting config provider: %w", err)
+	}
+	confManager := config.NewConfigManager(logger, e2ectx.ConfProvider)
+	if err := confManager.Run(e2ectx); err != nil {
+		return fmt.Errorf("running config manager: %w", err)
+	}
+
+	// Load BPF programs and maps
+	logger.Info("loading BPF programs and maps")
+	spec, err := tap.LoadTap()
+	if err != nil {
+		return fmt.Errorf("loading BPF programs and maps: %w", err)
+	}
+	// write the current pid to the bpf program
+	err = spec.RewriteConstants(map[string]interface{}{
+		"qpid": uint32(os.Getpid()),
+	})
+	if err != nil {
+		return fmt.Errorf("rewriting constants: %w", err)
+	}
+	tapObjs := tap.TapObjects{}
+	err = spec.LoadAndAssign(&tapObjs, nil)
+	if err != nil {
+		return fmt.Errorf("loading BPF programs and maps: %w", err)
+	}
+	e2ectx.RegisterErrCloser(tapObjs.Close)
+
+	// Initialize process manager
+	procEbpfMan, err := NewEbpfProcManager(logger, &tapObjs)
+	if err != nil {
+		return fmt.Errorf("getting ebpf proc objs: %w", err)
+	}
+
+	pm := process.NewProcessManager(logger, procEbpfMan)
+	confManager.SubscribeSetter(pm)
+
+	// TODO(e2e)
+	// Initialize container detection
+	// containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
+	// if err := containerManager.Start(e2ectx); err != nil {
+	// 	return fmt.Errorf("starting container manager: %w", err)
+	// }
+	// pm.Observe(containerManager)
+
+	// Initialize BPF trace manager
+	bpfTraceQuery := "" // TODO(e2e)
+	tm, err := trace.NewTraceManager(logger, tapObjs.TraceToggleMap, tapObjs.TraceEvents, pm, bpfTraceQuery)
+	if err != nil {
+		return fmt.Errorf("creating bpf trace manager: %w", err)
+	}
+
+	// start the bpf trace manager
+	if err := tm.Start(); err != nil {
+		return fmt.Errorf("starting bpf trace manager: %w", err)
+	}
+	pm.Observe(tm)
+
+	// cleanup the bpf trace manager
+	e2ectx.RegisterErrCloser(tm.Stop)
+
+	// Initialize DNS resolver
+	resolv := dns.NewDNSManager(logger, pm)
+	if err := resolv.Start(); err != nil {
+		return fmt.Errorf("starting dns manager: %w", err)
+	}
+	e2ectx.RegisterErrCloser(resolv.Stop)
+
+	// Initialize service and plugin systems
+	svcRegistry := services.NewServiceRegistry()
+	svcManager := services.NewServiceManager(e2ectx, logger, svcRegistry)
+	svcManager.RegisterFactory(serviceFactories...)
+	confManager.SubscribeSetter(svcManager)
+
+	pluginRegistry := plugins.NewRegistry(pluginFactories...)
+	pluginManager := plugins.NewPluginManager(
+		logger,
+		plugins.SetBufferSize(2*1<<20), // 2MB
+		plugins.SetServiceRegistry(svcRegistry),
+		plugins.SetPluginRegistry(pluginRegistry),
+	)
+	confManager.SubscribeSetter(pluginManager)
+	if err := pluginManager.Start(); err != nil {
+		return fmt.Errorf("starting plugin manager: %w", err)
+	}
+	e2ectx.RegisterNoErrCloser(pluginManager.Stop)
+
+	// Initialize stream factory
+	ds := stream.NewStreamFactory(
+		logger,
+		stream.SetDnsManager(resolv),
+		stream.SetPluginManager(pluginManager),
+	)
+
+	//  Initialize connection manager
+	connectionManager := connection.NewManager(
+		logger,
+		connection.SetProcessManager(pm),
+		connection.SetDnsManager(resolv),
+		connection.SetStreamFactory(ds),
+		connection.SetServiceRegistry(svcRegistry),
+		connection.SetConfig(confManager.GetConfig()),
+		connection.SetDeploymentTags(tags.FromValues(map[string]string{"e2e": "true"})),
+	)
+	confManager.SubscribeSetter(connectionManager)
+
+	// init a socket settings manager to push config changes down into ebpf land
+	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.TapMaps.SocketSettingsMap)
+	confManager.SubscribeSetter(socketSettingManager)
+
+	// Initialize socket manager
+	socketManager, err := NewEbpfSockManager(logger, connectionManager, &tapObjs)
+	if err != nil {
+		return fmt.Errorf("creating socket event manager: %w", err)
+	}
+
+	// Initialize TLS probes
+	tlsProbes := "openssl"
+	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
+	tlsManager, err := InitTLSProbes(logger, tlsProbes, &tapObjs)
+	if err != nil {
+		return fmt.Errorf("initializing TLS probes: %w", err)
+	}
+	if tlsManager != nil {
+		// add tls probes as process observers
+		pm.Observe(tlsManager)
+
+		e2ectx.RegisterErrCloser(tlsManager.Stop)
+	}
+
+	// Start managers
+	if err := pm.Start(); err != nil {
+		return fmt.Errorf("starting process manager: %w", err)
+	}
+	e2ectx.RegisterErrCloser(pm.Stop)
+
+	// start the socket manager
+	if err := socketManager.Start(); err != nil {
+		return fmt.Errorf("starting socket listener: %w", err)
+	}
+	e2ectx.RegisterErrCloser(socketManager.Stop)
+
+	e2ectx.RegisterNoErrCloser(func() {
+		errs, ok := e2ectx.Eventstore.Errors()
+		if !ok {
+			logger.Error("event store exited with errors", zap.Any("errors", errs))
+		}
+	})
+
+	logger.Info("🥟 completed e2e setup")
+	return nil
+}
 
 func TestMain(m *testing.M) {
 	if err := mainSetup(); err != nil {
@@ -57,176 +228,8 @@ func TestMain(m *testing.M) {
 	}
 
 	code := m.Run()
-	for _, closer := range e2ectx.closers {
-		closer()
+	if err := e2ectx.Close(); err != nil {
+		logger.Error("closing resources", zap.Error(err))
 	}
 	os.Exit(code)
-}
-
-type e2eContext struct {
-	ctx          context.Context
-	closers      []func()
-	start        time.Time
-	eventstore   *EventStore
-	confProvider *ConfigProvider
-}
-
-func (c *e2eContext) RegisterErrCloser(closer func() error) {
-	c.closers = append(c.closers, func() {
-		if err := closer(); err != nil {
-			logger.Error("closing resource", zap.Error(err))
-		}
-	})
-}
-
-func (c *e2eContext) RegisterNoErrCloser(closer func()) {
-	c.closers = append(c.closers, closer)
-}
-
-// Deadline implements context.Context for convenience
-func (c *e2eContext) Deadline() (deadline time.Time, ok bool) {
-	return c.ctx.Deadline()
-}
-
-// Done implements context.Context for convenience
-func (c *e2eContext) Done() <-chan struct{} {
-	return c.ctx.Done()
-}
-
-// Err implements context.Context for convenience
-func (c *e2eContext) Err() error {
-	return c.ctx.Err()
-}
-
-// Value implements context.Context for convenience
-func (c *e2eContext) Value(key any) any {
-	return c.ctx.Value(key)
-}
-
-func testID() string {
-	return "e2e_" + xid.New().String()
-}
-
-func humanDuration(d time.Duration) string {
-	var s strings.Builder
-	s.WriteString(fmt.Sprintf("% 2ds", d/time.Second))
-	d %= time.Second
-	s.WriteString(fmt.Sprintf("% 3d.%03dms", d/time.Millisecond, d%time.Millisecond/time.Microsecond))
-	return s.String()
-}
-
-func timeElapsedEncoder(start time.Time) zapcore.TimeEncoder {
-	return func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-		enc.AppendString(fmt.Sprintf("% 10s", humanDuration(time.Since(start))))
-	}
-}
-
-func testConfig(mut func(*config.Config)) *config.Config {
-	conf := &config.Config{
-		Services: config.Services{
-			EventStores:  []config.ServiceEventStore{{Type: "e2e"}},
-			ObjectStores: []config.ServiceObjectStore{{Type: "disabled"}},
-		},
-		Stacks: map[string]config.Stack{
-			"e2e": {
-				Plugins: []config.Plugin{
-					{Type: "report_usage"},
-				},
-			},
-		},
-		Tap: &config.TapConfig{
-			Direction:       config.TrafficDirection_EGRESS,
-			IgnoreLoopback:  true,
-			AuditIncludeDNS: false,
-			Http: config.TapHttpConfig{
-				Stack: "e2e",
-			},
-		},
-		Control: &config.Control{
-			Default: config.AccessControlAction_ALLOW,
-			Rules:   []config.Rule{},
-		},
-	}
-	if mut != nil {
-		mut(conf)
-	}
-	return conf
-}
-
-func (c *e2eContext) TestCtx(t *testing.T) *testContext {
-	tid := testID()
-	return &testContext{
-		tid: tid,
-		ctx: t.Context(),
-		t:   t,
-		ll:  logger.With(zap.String("tid", tid)),
-	}
-}
-
-func (c *e2eContext) SetConfig(conf *config.Config) {
-	wait, err := c.confProvider.SetConfig(conf)
-	if err != nil {
-		logger.Fatal("failed to set config", zap.Error(err))
-	}
-	wait()
-}
-
-type testContext struct {
-	tid string
-	ctx context.Context
-	t   *testing.T
-	ll  *zap.Logger
-}
-
-type execResult struct {
-	output string
-	err    error
-	cgid   string
-	events func() Events
-}
-
-func (c *testContext) exec(name string, args ...string) execResult {
-	cgid := testID()
-	cmd := exec.CommandContext(c.ctx, name, args...)
-	cmd.Env = []string{
-		fmt.Sprintf("QPOINT_TAGS=cgid:%s,cgid:%s", c.tid, cgid),
-	}
-	out, err := cmd.CombinedOutput()
-	return execResult{
-		output: string(out),
-		err:    err,
-		cgid:   cgid,
-		events: func() Events {
-			return e2ectx.eventstore.GetByCGID(cgid)
-		},
-	}
-}
-
-func (c *testContext) events() Events {
-	return e2ectx.eventstore.GetByCGID(c.tid)
-}
-
-func (c *testContext) SetConfig(conf *config.Config) {
-	c.ll.Info("⚙️ setting test config")
-	e2ectx.SetConfig(conf)
-	c.ll.Info("✅ new config was propagated")
-	c.t.Cleanup(func() {
-		c.ll.Info("⚙️ restoring default config")
-		e2ectx.SetConfig(testConfig(nil))
-		c.ll.Info("✅ default config restored")
-	})
-}
-
-func testLogger() *zap.Logger {
-	zapconf := zap.NewDevelopmentConfig()
-	zapconf.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	zapconf.DisableStacktrace = true
-	zapconf.DisableCaller = true
-	zapconf.EncoderConfig.EncodeTime = timeElapsedEncoder(start)
-	zapconf.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	ll, err := zapconf.Build()
-	if err != nil {
-		panic(err)
-	}
-	return ll
 }

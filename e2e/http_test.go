@@ -14,11 +14,11 @@ func TestHTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
 
 	// exec a process that makes an http request
-	example := ctx.exec("curl", "http://example.com")
-	require.NoError(t, example.err)
+	example := ctx.Exec("curl", "http://example.com")
+	require.NoError(t, example.Err)
 
 	// ensure we captured the connection
-	require.Len(t, example.events().Connections, 1)
-	conn := example.events().Connections[0]
+	require.Len(t, example.Events().Connections, 1)
+	conn := example.Events().Connections[0]
 	assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
 }

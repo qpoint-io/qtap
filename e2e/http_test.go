@@ -1,5 +1,3 @@
-//go:build e2e
-
 package e2e
 
 import (
@@ -14,7 +12,7 @@ func TestHTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
 
 	// exec a process that makes an http request
-	example := ctx.exec("curl", "https://example.com")
+	example := ctx.exec("curl", "http://example.com")
 	require.NoError(t, example.err)
 
 	// ensure we captured the connection

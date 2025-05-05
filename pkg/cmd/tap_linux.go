@@ -238,7 +238,7 @@ func runTapCmd(logger *zap.Logger) {
 	defer tapObjs.Close()
 
 	// Initialize process manager
-	procEbpfMan, err := newEbpfProcManager(logger, &tapObjs)
+	procEbpfMan, err := NewEbpfProcManager(logger, &tapObjs)
 	if err != nil {
 		logger.Fatal("failed to get ebpf proc objs", zap.Error(err))
 	}
@@ -351,14 +351,14 @@ func runTapCmd(logger *zap.Logger) {
 	})
 
 	// Initialize socket manager
-	socketManager, err := newEbpfSockManager(logger, connectionManager, &tapObjs)
+	socketManager, err := NewEbpfSockManager(logger, connectionManager, &tapObjs)
 	if err != nil {
 		panic(fmt.Errorf("failed to create socket event manager: %w", err))
 	}
 
 	// Initialize TLS probes
 	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
-	tlsManager, err := initTLSProbes(logger, tlsProbes, &tapObjs)
+	tlsManager, err := InitTLSProbes(logger, tlsProbes, &tapObjs)
 	if err != nil {
 		panic(fmt.Errorf("failed to initialize TLS probes: %w", err))
 	}
@@ -430,7 +430,7 @@ func parseDeploymentTags() (tags.List, error) {
 	return t, nil
 }
 
-func newEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
+func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
 	procManTps := []*common.Tracepoint{
 		common.NewTracepoint("syscalls", "sys_enter_execve", objs.TapPrograms.SyscallProbeEntryExecve),
 		common.NewTracepoint("syscalls", "sys_exit_execve", objs.TapPrograms.SyscallProbeRetExecve),
@@ -449,7 +449,7 @@ func newEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 	return procMan, nil
 }
 
-func initTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
+func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
 	// Split the string and trim whitespace
 	tlsProbesList := strings.Split(tlsProbesStr, ",")
 	for i, probe := range tlsProbesList {
@@ -462,7 +462,7 @@ func initTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 		mode = strings.ToLower(mode)
 		switch mode {
 		case "openssl":
-			probes = append(probes, openssl.NewOpenSSLManager(logger, newEbpfOpenSSLprobesCreator(objs)))
+			probes = append(probes, openssl.NewOpenSSLManager(logger, NewEbpfOpenSSLprobesCreator(objs)))
 		case "none", "":
 			enableTLS = false
 			logger.Info("No TLS probes enabled")
@@ -486,7 +486,7 @@ func initTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 	return nil, nil
 }
 
-func newEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *tap.TapObjects) (*socket.SocketEventManager, error) {
+func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *tap.TapObjects) (*socket.SocketEventManager, error) {
 	// set the tracepoints (⚠️ order is important!)
 	tps := []common.Probe{
 		// sni tracepoints
@@ -542,9 +542,9 @@ func newEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 	return socket.NewSocketEventManager(logger, connMan, rb, tps), nil
 }
 
-// newEbpfOpenSSLprobesCreator creates a function that returns a list of uprobes for the OpenSSL library
+// NewEbpfOpenSSLprobesCreator creates a function that returns a list of uprobes for the OpenSSL library
 // this is used to create new probes for each many instances.
-func newEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
+func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 	return func() []*common.Uprobe {
 		return []*common.Uprobe{
 			// ssl entry uprobes

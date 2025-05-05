@@ -47,4 +47,7 @@ jobs:
 
       - name: Run CI
         run: make ci
+
+      - name: Run E2E tests
+        run: sudo make e2e
         

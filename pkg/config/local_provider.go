@@ -15,7 +15,7 @@ import (
 type LocalConfigProvider struct {
 	logger     *zap.Logger
 	configPath string
-	callback   func(*Config) error
+	callback   func(*Config) (func(), error)
 	sigChan    chan os.Signal
 	done       chan struct{}
 	mu         sync.Mutex
@@ -70,7 +70,7 @@ func (p *LocalConfigProvider) Stop() {
 }
 
 // OnConfigChange registers a callback for config changes
-func (p *LocalConfigProvider) OnConfigChange(callback func(*Config) error) {
+func (p *LocalConfigProvider) OnConfigChange(callback func(*Config) (func(), error)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.callback = callback
@@ -115,9 +115,14 @@ func (p *LocalConfigProvider) loadAndNotify() error {
 	callback := p.callback
 
 	if callback != nil {
-		if err := callback(conf); err != nil {
+		wait, err := callback(conf)
+		if err != nil {
 			return fmt.Errorf("config callback failed: %w", err)
 		}
+		go func() {
+			wait()
+			p.logger.Info("config load completed")
+		}()
 	}
 
 	return nil

@@ -14,7 +14,7 @@ var defaultConfigBytes []byte
 type DefaultConfigProvider struct {
 	logger   *zap.Logger
 	cfg      *Config
-	callback func(*Config) error
+	callback func(*Config) (func(), error)
 }
 
 // NewDefaultConfigProvider creates a new provider for default config
@@ -34,7 +34,8 @@ func (p *DefaultConfigProvider) Start() error {
 	p.cfg = cfg
 
 	if p.callback != nil {
-		return p.callback(p.cfg)
+		_, err := p.callback(p.cfg)
+		return err
 	}
 
 	return nil
@@ -44,11 +45,12 @@ func (p *DefaultConfigProvider) Start() error {
 func (p *DefaultConfigProvider) Stop() {}
 
 // OnConfigChange registers a callback for config changes
-func (p *DefaultConfigProvider) OnConfigChange(callback func(*Config) error) {
+func (p *DefaultConfigProvider) OnConfigChange(callback func(*Config) (func(), error)) {
 	p.callback = callback
 }
 
 // Reload forces a configuration reload
 func (p *DefaultConfigProvider) Reload() error {
-	return p.callback(p.cfg)
+	_, err := p.callback(p.cfg)
+	return err
 }

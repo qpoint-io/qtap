@@ -579,18 +579,8 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 		.iovcnt = args->iovcnt,
 	};
 
-	// submit the open event if it's not already
-	if (!conn_info->is_open) {
-		// detect tls if not already detected and the connection is new
-		detect_tls(conn_info, &buf_info, bytes);
-
-		// if open didn't succeed, return
-		if (!conn_info->is_open) {
-			TRACE_IF_ENABLED(ctx->trace_mod, ctx->id->pid, "init_conn (open = false)", TRACE_STRING("caller", ctx->trace_id),
-				TRACE_INT("pid", ctx->id->pid), TRACE_INT("fd", ctx->id->fd), TRACE_INT("direction", direction), TRACE_INT("bytes", bytes));
-			return;
-		}
-	}
+	// detect tls if not already detected and the connection is new
+	detect_tls(conn_info, &buf_info, bytes);
 
 	if (!conn_info->is_ssl)
 		return;

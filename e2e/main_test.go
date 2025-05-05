@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,11 +25,12 @@ import (
 )
 
 var (
+	start  = time.Now()
 	logger = testLogger()
 
 	e2ectx = &e2eContext{
 		ctx:          context.Background(),
-		start:        time.Now(),
+		start:        start,
 		eventstore:   &EventStore{},
 		confProvider: NewConfigProvider(testConfig(nil)),
 	}
@@ -105,10 +107,17 @@ func testID() string {
 	return "e2e_" + xid.New().String()
 }
 
+func humanDuration(d time.Duration) string {
+	var s strings.Builder
+	s.WriteString(fmt.Sprintf("% 2ds", d/time.Second))
+	d %= time.Second
+	s.WriteString(fmt.Sprintf("% 3d.%03dms", d/time.Millisecond, d%time.Millisecond/time.Microsecond))
+	return s.String()
+}
+
 func timeElapsedEncoder(start time.Time) zapcore.TimeEncoder {
 	return func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-		// TODO(e2e): use a better format
-		enc.AppendString(fmt.Sprintf("% 10s", time.Since(start).Truncate(time.Microsecond).String()))
+		enc.AppendString(fmt.Sprintf("% 10s", humanDuration(time.Since(start))))
 	}
 }
 
@@ -213,7 +222,7 @@ func testLogger() *zap.Logger {
 	zapconf.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	zapconf.DisableStacktrace = true
 	zapconf.DisableCaller = true
-	zapconf.EncoderConfig.EncodeTime = timeElapsedEncoder(e2ectx.start)
+	zapconf.EncoderConfig.EncodeTime = timeElapsedEncoder(start)
 	zapconf.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	ll, err := zapconf.Build()
 	if err != nil {

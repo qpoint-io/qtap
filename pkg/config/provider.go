@@ -16,7 +16,7 @@ type ConfigProvider interface {
 	Stop()
 
 	// OnConfigChange registers a callback for configuration changes
-	OnConfigChange(callback func(*Config) error)
+	OnConfigChange(callback func(*Config) (wait func(), err error))
 
 	// Reload forces a configuration reload
 	Reload() error
@@ -39,9 +39,8 @@ func NewConfigManager(logger *zap.Logger, provider ConfigProvider) *ConfigManage
 	}
 
 	// Register for config updates from provider
-	provider.OnConfigChange(func(cfg *Config) error {
-		cm.updateConfig(cfg)
-		return nil
+	provider.OnConfigChange(func(cfg *Config) (wait func(), err error) {
+		return cm.updateConfig(cfg), nil
 	})
 
 	return cm
@@ -59,6 +58,16 @@ func (cm *ConfigManager) Subscribe(callback func(*Config)) {
 	}
 }
 
+type ConfigSetter interface {
+	SetConfig(cfg *Config)
+}
+
+func (cm *ConfigManager) SubscribeSetter(setter ConfigSetter) {
+	cm.Subscribe(func(cfg *Config) {
+		setter.SetConfig(cfg)
+	})
+}
+
 // GetConfig returns the current configuration
 func (cm *ConfigManager) GetConfig() *Config {
 	cm.mu.RLock()
@@ -67,19 +76,25 @@ func (cm *ConfigManager) GetConfig() *Config {
 }
 
 // updateConfig updates the config and notifies subscribers
-func (cm *ConfigManager) updateConfig(cfg *Config) {
+func (cm *ConfigManager) updateConfig(cfg *Config) func() {
 	cm.mu.Lock()
 	cm.config = cfg
 	subscribers := make([]func(*Config), len(cm.subscribers))
 	copy(subscribers, cm.subscribers)
 	cm.mu.Unlock()
 
-	cm.logger.Info("Configuration updated, notifying subscribers")
+	cm.logger.Info("configuration updated, notifying subscribers")
 
 	// Notify subscribers
+	var wg sync.WaitGroup
 	for _, sub := range subscribers {
-		go sub(cfg)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sub(cfg)
+		}()
 	}
+	return wg.Wait
 }
 
 // Reload forces a configuration reload

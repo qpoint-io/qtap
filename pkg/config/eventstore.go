@@ -25,6 +25,8 @@ func (s ServiceEventStore) ServiceType() string {
 		return "eventstore.console"
 	case EventStoreType_DISABLED:
 		return "eventstore.noop"
+	case "e2e": // TODO(e2e)
+		return "eventstore.e2e"
 	default:
 		return "eventstore.console"
 	}

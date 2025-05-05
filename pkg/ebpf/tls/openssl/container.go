@@ -77,7 +77,7 @@ func (c *Container) Init(p *process.Process) error {
 		c.targets[lib] = target
 
 		// debug
-		c.logger.Info("OpenSSL shared library detected",
+		c.logger.Info("detected OpenSSL shared library",
 			zap.String("path", name),
 			zap.String("container_id", p.ContainerID),
 		)

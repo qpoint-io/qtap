@@ -357,7 +357,7 @@ func runTapCmd(logger *zap.Logger) {
 	}
 
 	// Initialize TLS probes
-	logger.Info("Starting TLS Probes", zap.String("probes", tlsProbes))
+	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
 	tlsManager, err := initTLSProbes(logger, tlsProbes, &tapObjs)
 	if err != nil {
 		panic(fmt.Errorf("failed to initialize TLS probes: %w", err))

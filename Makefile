@@ -160,6 +160,16 @@ test: ## Run tests
 		$(if $(SKIP_PATTERN),-skip '$(SKIP_PATTERN)') \
 		./...
 
+.PHONY: e2e
+e2e: ## Run e2e tests
+	@echo $(INFO) Running e2e tests... $(RESET)
+	$(GOTESTSUM) --format testdox --format-hide-empty-pkg --format-icons=hivis -- \
+		-timeout $(TEST_TIMEOUT) \
+		-run '$(TEST_PATTERN)' \
+		-tags e2e \
+		$(if $(SKIP_PATTERN),-skip '$(SKIP_PATTERN)') \
+		./e2e/...
+
 .PHONY: lint
 lint: ## Run linters
 	@echo $(INFO) Running linters... $(RESET)

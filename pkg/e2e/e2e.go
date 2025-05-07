@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -147,6 +148,7 @@ type TestContext struct {
 type ExecResult struct {
 	Output string
 	Err    error
+	Code   int
 	CGID   string
 	Events func() Events
 }
@@ -157,10 +159,17 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	cmd.Env = []string{
 		fmt.Sprintf("QPOINT_TAGS=cgid:%s,cgid:%s", c.TID, cgid),
 	}
+	c.L.Info("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
 	out, err := cmd.CombinedOutput()
+	var code int
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	}
 	return ExecResult{
 		Output: string(out),
 		Err:    err,
+		Code:   code,
 		CGID:   cgid,
 		Events: func() Events {
 			return c.e2ectx.Eventstore.GetByCGID(cgid)

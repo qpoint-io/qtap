@@ -15,6 +15,7 @@ ifneq (,$(wildcard .env))
     export PROJECT_NAME
     export ORGANIZATION
     export DATABASE_URL
+	export LOG_LEVEL
     # Add other variables that actually need to be in the environment
 endif
 
@@ -27,6 +28,7 @@ BINARY_NAME ?= qtap
 ORGANIZATION ?= qpoint-io
 DESCRIPTION ?= "🧬 Qtap: An eBPF agent that captures pre-encrypted network traffic, providing rich context about egress connections and their originating processes."
 MAINTAINER ?= "Qpoint Team \<hello@qpoint.io\>"
+LOG_LEVEL ?= info
 
 VERSION=$${GIT_VERSION:-$$(git describe --tags --always --dirty)}
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -135,12 +137,12 @@ build: $(BIN_DIR) generate ## Build for the current platform
 .PHONY: run
 run: build ## Run the application
 	@echo $(ROCKET) Running $(PROJECT_NAME)... $(RESET)
-	./bin/$(BINARY_NAME) --log-level=debug --log-encoding=console
+	./bin/$(BINARY_NAME) --log-level=$(LOG_LEVEL) --log-encoding=console
 
 .PHONY: run-config
 run-config: build ## Run the application with a specific config
 	@echo $(ROCKET) Running $(PROJECT_NAME) with config... $(RESET)
-	./bin/$(BINARY_NAME) --log-level=debug --log-encoding=console --config=$$(find ./examples -type f -name "*.yaml" | go tool gum filter --prompt="> " --indicator=">" --placeholder="Select a config file..." --header="Select a config file to run")
+	./bin/$(BINARY_NAME) --log-level=$(LOG_LEVEL) --log-encoding=console --config=$$(find ./examples -type f -name "*.yaml" | go tool gum filter --prompt="> " --indicator=">" --placeholder="Select a config file..." --header="Select a config file to run")
 
 .PHONY: generate
 generate: ## Run code generation

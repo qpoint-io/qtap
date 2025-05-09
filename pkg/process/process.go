@@ -364,7 +364,7 @@ func (p *Process) FindSharedLibrary(libNamePrefix string) ([]string, error) {
 	}
 
 	// scan the common lib directories
-	for _, libDir := range []string{"/lib", "/usr/lib", "/usr/local/lib"} {
+	for _, libDir := range []string{"/lib", "/usr/lib", "/usr/local/lib", "/nix/store"} {
 		// absolute path to lib dir
 		absLibDir := filepath.Join(p.Root, libDir)
 

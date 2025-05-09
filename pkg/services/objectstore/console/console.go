@@ -36,7 +36,7 @@ type ObjectStore struct {
 }
 
 func (s *ObjectStore) Put(ctx context.Context, artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
-	s.Log().Debug("object store submission",
+	s.Log().Info("object store submission",
 		zap.String("digest", artifact.Digest()),
 		zap.Any("artifact", artifact),
 	)

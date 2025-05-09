@@ -38,7 +38,7 @@ type EventStore struct {
 
 // Save stores an event
 func (s *EventStore) Save(ctx context.Context, item any) {
-	s.Log().Debug("logging event store submission",
+	s.Log().Info("event store submission",
 		zap.String("type", fmt.Sprintf("%T", item)),
 		zap.Any("item", item),
 	)

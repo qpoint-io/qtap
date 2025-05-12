@@ -1,0 +1,119 @@
+### GET Requests
+
+# Basic GET request
+GET http://localhost:8080/get
+
+### GET with query parameters
+GET http://localhost:8080/get?name=John&age=30
+
+### GET with headers
+GET http://localhost:8080/get
+Content-Type: application/json
+Authorization: Bearer token123
+
+### GET with cookies
+GET http://localhost:8080/cookies
+Cookie: session=abc123; user=john
+
+### GET request to retrieve cookies that were set
+GET http://localhost:8080/cookies/set?name=value
+
+### POST Requests
+
+# Basic POST with JSON
+POST http://localhost:8080/post
+Content-Type: application/json
+
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "message": "Hello, world!"
+}
+
+### POST with form data
+POST http://localhost:8080/post
+Content-Type: application/x-www-form-urlencoded
+
+name=John+Doe&email=john@example.com&message=Hello+world
+
+### POST with multipart form data
+POST http://localhost:8080/post
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="name"
+
+John Doe
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="email"
+
+john@example.com
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### PUT Request
+PUT http://localhost:8080/put
+Content-Type: application/json
+
+{
+  "name": "Updated Name",
+  "email": "updated@example.com"
+}
+
+### DELETE Request
+DELETE http://localhost:8080/delete
+
+### HTTP Status Codes
+
+### 200 OK (default for most endpoints)
+GET http://localhost:8080/status/400
+
+### 201 Created
+GET http://localhost:8080/status/201
+
+### 204 No Content
+GET http://localhost:8080/status/204
+
+### 400 Bad Request
+GET http://localhost:8080/status/400
+
+### 401 Unauthorized
+GET http://localhost:8080/status/401
+
+### 403 Forbidden
+GET http://localhost:8080/status/403
+
+### 404 Not Found
+GET http://localhost:8080/status/404
+
+### 500 Internal Server Error
+GET http://localhost:8080/status/500
+
+random payload body
+
+### 503 Service Unavailable
+GET http://localhost:8080/status/503
+
+### Other Useful Endpoints
+
+### Delay response (5 seconds)
+GET http://localhost:8080/delay/5
+
+### Stream data (10 lines)
+GET http://localhost:8080/stream/10
+
+### Redirect (3 times)
+GET http://localhost:8080/redirect/3
+
+### Basic authentication
+GET http://localhost:8080/basic-auth/user/pass
+Authorization: Basic dXNlcjpwYXNz
+
+### Gzip compressed response
+GET http://localhost:8080/gzip
+
+### Image response
+GET http://localhost:8080/image
+Accept: image/png
+
+# Response with specific headers
+GET http://localhost:8080/response-headers?Content-Type=application/json&Cache-Control=no-cache

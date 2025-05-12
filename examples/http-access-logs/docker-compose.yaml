@@ -1,0 +1,49 @@
+# Qtap Docker Compose Configuration
+# =================================================
+#
+# This docker-compose file runs two services:
+#
+# 1. httpbin: A simple HTTP request & response service for testing
+#    - Exposes port 8080 for HTTP requests
+#    - Provides various endpoints for testing HTTP methods and responses
+#    - Useful for generating HTTP traffic that Qtap can monitor
+#
+# 2. qtap: Monitors HTTP transactions using eBPF
+#    - Runs with host networking and privileged access for eBPF functionality
+#    - Forwards logs to fluent-bit for processing
+#    - Requires elevated privileges for eBPF functionality
+#
+# To run this setup from the project root directory, use:
+#
+# docker compose -f examples/http-access-logs/docker-compose.yaml up
+#
+version: '3'
+
+services:
+  httpbin:
+    image: ghcr.io/mccutchen/go-httpbin
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  qtap:
+    image: us-docker.pkg.dev/qpoint-edge/public/qtap:v0.9.7
+    pid: host
+    network_mode: host
+    user: "0:0"
+    privileged: true
+    cap_add:
+      - CAP_BPF
+      - CAP_SYS_ADMIN
+    volumes:
+      - /sys:/sys
+      - ./:/qtap
+    environment:
+      - TINI_SUBREAPER=1
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    command: >
+      --log-level=info
+      --config=/qtap/qtap.yaml

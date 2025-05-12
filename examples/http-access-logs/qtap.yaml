@@ -1,0 +1,41 @@
+# plugin stacks
+stacks:
+  default:
+    plugins:
+      - type: access_logs
+        config:
+          # default mode (none, summary, details, full)
+          mode: summary
+
+          # display format (console, json)
+          format: console
+
+          # custom rules
+          rules:
+            # # ignore sshd docker forwarding
+            # - name: ignore sshd docker forwarding
+            #   expr: exe matches |sshd$|
+            #   mode: none
+
+            # # show all details when not GET
+            # - name: details when not GET
+            #   expr: request.method != "GET"
+            #   mode: details
+
+            # # capture details and payloads on errors
+            # - name: full log on errors
+            #   expr: response.status >= 400
+            #   mode: full
+
+            # # show full details and payloads for example.com
+            # - name: details for example.com
+            #   expr: request.host == "example.com"
+            #   mode: full
+
+# tap config
+tap:
+  direction: all # (all|egress|egress-external|egress-internal)
+  ignore_loopback: false
+  audit_include_dns: false
+  http:
+    stack: default  

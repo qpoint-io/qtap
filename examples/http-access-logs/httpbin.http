@@ -1,3 +1,21 @@
+# HTTP Request File for Testing with httpbin
+# ==========================================
+#
+# This file contains various HTTP requests for testing with the httpbin service.
+# It's designed to be used with REST client extensions in editors like VS Code or IntelliJ.
+#
+# The requests demonstrate different HTTP methods (GET, POST), content types, 
+# and parameter passing techniques that can be used to test Qtap's HTTP monitoring capabilities.
+#
+# To use this file:
+# 1. Install a REST client extension in your editor
+# 2. Make sure the httpbin service is running (via docker-compose)
+# 3. Click the "Send Request" link that appears above each request
+#
+# The httpbin service will respond with details about your request, making it
+# easy to verify what was sent and received.
+
+
 ### GET Requests
 
 # Basic GET request

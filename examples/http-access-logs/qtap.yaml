@@ -32,6 +32,26 @@ stacks:
             #   expr: request.host == "example.com"
             #   mode: full
 
+            # # show full details and payloads when the container name is qpoint_qtap_demo
+            # - name: details for qpoint_qtap_demo
+            #   expr: container_name == "qpoint_qtap_demo"
+            #   mode: full
+
+            # # show full details and payloads when the container image is alpine
+            # - name: details for alpine
+            #   expr: container_image == "alpine"
+            #   mode: full
+
+            # # show full details and payloads when the pod name is qpoint_qtap_demo
+            # - name: details for qpoint_qtap_demo
+            #   expr: pod_name == "qpoint_qtap_demo"
+            #   mode: full
+
+            # # show full details and payloads when the pod namespace is qpoint_qtap_demo_ns
+            # - name: details for qpoint_qtap_demo_ns
+            #   expr: pod_namespace == "qpoint_qtap_demo_ns"
+            #   mode: full
+
 # tap config
 tap:
   direction: all # (all|egress|egress-external|egress-internal)

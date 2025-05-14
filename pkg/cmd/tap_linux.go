@@ -522,11 +522,11 @@ func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 		common.NewTracepoint("syscalls", "sys_exit_socket", objs.TapPrograms.SyscallProbeRetSocket),
 
 		// pid/fd mapping kprobes
-		common.NewKprobe("sock_alloc_file", objs.TapPrograms.TrackSockAllocFileEntry),
-		common.NewKretprobe("sock_alloc_file", objs.TapPrograms.TrackSockAllocFileRet),
-		common.NewKprobe("fd_install", objs.TapPrograms.TrackFdInstallEntry),
-		common.NewKprobe("__fput", objs.TapPrograms.CleanupPidFdFileEntries),
-		common.NewKprobe("tcp_close", objs.TapPrograms.TraceTcpClose),
+		common.NewKprobe(objs.TapPrograms.TrackSockAllocFileEntry, "sock_alloc_file"),
+		common.NewKretprobe(objs.TapPrograms.TrackSockAllocFileRet, "sock_alloc_file"),
+		common.NewKprobe(objs.TapPrograms.TrackFdInstallEntry, "fd_install"),
+		common.NewKprobe(objs.TapPrograms.CleanupPidFdFileEntries, "__fput", "fput", "__pfx_fput", "__pfx___fput"),
+		common.NewKprobe(objs.TapPrograms.TraceTcpClose, "tcp_close"),
 
 		// ftraces
 		common.NewFexit("tcp_v4_connect", objs.TapPrograms.TraceTcpV4ConnectFexit),

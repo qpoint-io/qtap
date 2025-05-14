@@ -1,32 +1,35 @@
 package common
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 )
 
 type Kprobe struct {
 	// meta
-	Function string
-	Prog     *ebpf.Program
-	IsRet    bool
+	Functions []string
+	Prog      *ebpf.Program
+	IsRet     bool
 
 	// state
 	conn link.Link
 }
 
-func NewKprobe(function string, prog *ebpf.Program) *Kprobe {
+func NewKprobe(prog *ebpf.Program, functions ...string) *Kprobe {
 	return &Kprobe{
-		Function: function,
-		Prog:     prog,
+		Functions: functions,
+		Prog:      prog,
 	}
 }
 
-func NewKretprobe(function string, prog *ebpf.Program) *Kprobe {
+func NewKretprobe(prog *ebpf.Program, functions ...string) *Kprobe {
 	return &Kprobe{
-		Function: function,
-		Prog:     prog,
-		IsRet:    true,
+		Functions: functions,
+		Prog:      prog,
+		IsRet:     true,
 	}
 }
 
@@ -36,9 +39,9 @@ func (k *Kprobe) Attach() error {
 
 	// establish the link
 	if k.IsRet {
-		conn, err = link.Kretprobe(k.Function, k.Prog, nil)
+		conn, err = tryAttach(link.Kretprobe, k.Prog, k.Functions)
 	} else {
-		conn, err = link.Kprobe(k.Function, k.Prog, nil)
+		conn, err = tryAttach(link.Kprobe, k.Prog, k.Functions)
 	}
 
 	// set the state
@@ -57,5 +60,22 @@ func (k *Kprobe) Detach() error {
 }
 
 func (k *Kprobe) ID() string {
-	return "kprobe/" + k.Function
+	return "kprobe/" + strings.Join(k.Functions, ", ")
+}
+
+type kprobeLinkerFn func(symbol string, prog *ebpf.Program, opts *link.KprobeOptions) (link.Link, error)
+
+func tryAttach(fn kprobeLinkerFn, prog *ebpf.Program, functions []string) (link.Link, error) {
+	var conn link.Link
+	var err error
+
+	for _, function := range functions {
+		conn, err = fn(function, prog, nil)
+
+		if err == nil {
+			return conn, nil
+		}
+	}
+
+	return nil, fmt.Errorf("failed to attach to any of the functions: %s, error: %w", strings.Join(functions, ", "), err)
 }

@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/moby/moby/pkg/parsers/kernel"
 	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -159,6 +160,10 @@ func runTapCmd(logger *zap.Logger) {
 		zap.Strings("tags", strings.Split(deploymentTags, ",")),
 		telemetry.GetSysInfoAsFields(),
 	)
+
+	if !kernel.CheckKernelVersion(5, 10, 0) {
+		logger.Fatal("Qtap requires kernel version 5.10 or greater.")
+	}
 
 	// Check if running as root (required for eBPF)
 	if syscall.Getuid() != 0 {

@@ -22,9 +22,8 @@ stacks:
               expr: response.status >= 400 && response.status < 500
               mode: full
 
-      - type: report_usage
 tap:
-  direction: egress # (egress|egress-external|egress-internal)
+  direction: egress # (all|egress|egress-external|egress-internal|ingress)
   ignore_loopback: true
   audit_include_dns: false
   http:

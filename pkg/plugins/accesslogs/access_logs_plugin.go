@@ -68,11 +68,25 @@ func (f *factory) Init(logger *zap.Logger, config yaml.Node) {
 	}
 
 	for i := range cfg.Rules {
-		var err error
-		cfg.Rules[i].rule, err = rulekit.Parse(cfg.Rules[i].Expr)
-		if err != nil {
-			logger.Error("error parsing log rule", zap.Error(err))
+		name, expr := cfg.Rules[i].Name, cfg.Rules[i].Expr
+		if expr == "" {
+			logger.Warn("skipping rule with empty expression",
+				zap.String("rule_name", name),
+			)
+			continue
 		}
+
+		rule, err := rulekit.Parse(expr)
+		if err != nil {
+			logger.Error("error parsing log rule",
+				zap.String("rule_name", name),
+				zap.String("rule_expr", expr),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		cfg.Rules[i].rule = rule
 	}
 
 	f.config = &cfg

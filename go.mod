@@ -12,8 +12,9 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/moby/moby v28.1.1+incompatible
 	github.com/prometheus/client_golang v1.21.1
-	github.com/qpoint-io/rulekit v0.0.0-20250324153535-6b110fcefe0e
+	github.com/qpoint-io/rulekit v0.0.0-20250519122419-41639eff799c
 	github.com/rs/xid v1.6.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.1
@@ -161,7 +162,9 @@ require (
 	github.com/gostaticanalysis/forcetypeassert v0.1.0 // indirect
 	github.com/gostaticanalysis/nilerr v0.1.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-immutable-radix/v2 v2.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
@@ -202,7 +205,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
-	github.com/moby/moby v28.1.1+incompatible // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/signal v0.7.1 // indirect

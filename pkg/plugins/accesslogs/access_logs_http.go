@@ -96,8 +96,10 @@ func (f *filterInstance) Destroy() {
 	}
 
 	for _, r := range f.rules {
-		res := r.rule.Eval(allPairs)
-		if res.Pass {
+		res := r.rule.Eval(&rulekit.Ctx{
+			KV: allPairs,
+		})
+		if res.Pass() {
 			mode = r.Mode
 			break
 		}

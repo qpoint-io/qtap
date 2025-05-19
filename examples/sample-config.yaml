@@ -1,4 +1,3 @@
-
 version: 2
 services:
   event_stores:
@@ -8,22 +7,22 @@ services:
 stacks:
   basic_reporting:
     plugins:
-- type: access_logs
-  config:
-    mode: full # (summary|details|full)
-    format: console # (json|console)
-    rules:
-      - name: full log httpbin.org
-        expr: request.host == "httpbin.com"
-        mode: full
-      - name: details log on 500
-        expr: response.status >= 500
-        mode: details
-      - name: full log on 400
-        expr: response.status >= 400 && response.status < 500
-        mode: full
+      - type: access_logs
+        config:
+          mode: full # (summary|details|full)
+          format: console # (json|console)
+          rules:
+            - name: full log httpbin.org
+              expr: request.host == "httpbin.com"
+              mode: full
+            - name: details log on 500
+              expr: response.status >= 500
+              mode: details
+            - name: full log on 400
+              expr: response.status >= 400 && response.status < 500
+              mode: full
 
-      - type: report_usage
+            - type: report_usage
 tap:
   direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true

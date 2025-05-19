@@ -98,19 +98,18 @@ Converse with Qpoint devs and the contributors in [Github Discussions](https://g
 ### Prerequisites
 #### OS
 
-- linux (kernel 5.8+)
+- linux (kernel 5.10+)
     - MacOS developers at Qpoint have enjoyed using [Lima](https://lima-vm.io/) as a quick, easy linux VM for development.
 
 #### Tools:
 - go1.24+
 - make
-- clang14
+- clang14 (version 14 is required)
 - clang-tidy (optional/recommended)
 
 ### Quick Start
 ```bash
 $ git clone https://github.com/qpoint-io/qtap.git
-$ cd agent/
 $ make build
 ```
 

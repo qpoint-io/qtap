@@ -9,7 +9,7 @@ stacks:
     plugins:
       - type: access_logs
         config:
-          mode: summary # (summary|details|full)
+          mode: summary # (summary|details|full|none)
           format: console # (json|console)
           rules:
             - name: full log httpbin.org

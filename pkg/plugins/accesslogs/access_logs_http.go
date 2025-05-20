@@ -1,6 +1,8 @@
 package accesslogs
 
 import (
+	"errors"
+
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 
@@ -96,9 +98,24 @@ func (f *filterInstance) Destroy() {
 	}
 
 	for _, r := range f.rules {
+		if r.rule == nil {
+			continue
+		}
+
 		res := r.rule.Eval(&rulekit.Ctx{
 			KV: allPairs,
 		})
+		if !res.Ok() {
+			// log any non-ErrMissingFields errors
+			mf := &rulekit.ErrMissingFields{}
+			if !errors.As(res.Error, &mf) {
+				f.logger.Error("error evaluating rule",
+					zap.Error(res.Error),
+					zap.String("evaluated_rule", res.EvaluatedRule.String()),
+				)
+			}
+			continue
+		}
 		if res.Pass() {
 			mode = r.Mode
 			break

@@ -14,7 +14,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/moby/moby v28.1.1+incompatible
 	github.com/prometheus/client_golang v1.21.1
-	github.com/qpoint-io/rulekit v0.0.0-20250519122419-41639eff799c
+	github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9
 	github.com/rs/xid v1.6.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.8.1

@@ -18,6 +18,9 @@ stacks:
             - name: details log on 500
               expr: response.status >= 500
               mode: details
+            - name: details log on example.com and any subdomains
+              expr: in_zone(request.host, "example.com")
+              mode: details
             - name: full log on 400
               expr: response.status >= 400 && response.status < 500
               mode: full

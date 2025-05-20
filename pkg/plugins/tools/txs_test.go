@@ -90,7 +90,7 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 			name: "regular headers",
 			headers: map[string]string{
 				"content-type": "application/json",
-				"user-agent":   "test-client",
+				"User-Agent":   "test-client",
 				"x-request-id": "123456",
 			},
 			prefix: "response",

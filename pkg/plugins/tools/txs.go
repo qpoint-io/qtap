@@ -132,10 +132,11 @@ func (h HeaderMap) RulePairs(prefix string) map[string]any {
 	}
 
 	for k, v := range h.headers.All() {
-		if strings.HasPrefix(k, ":") {
-			rulePairs[prefix+"."+strings.TrimPrefix(k, ":")] = v
+		key := strings.ToLower(k)
+		if strings.HasPrefix(key, ":") {
+			rulePairs[prefix+"."+strings.TrimPrefix(key, ":")] = v
 		} else {
-			rulePairs[prefix+".header."+k] = v
+			rulePairs[prefix+".header."+key] = v
 		}
 	}
 

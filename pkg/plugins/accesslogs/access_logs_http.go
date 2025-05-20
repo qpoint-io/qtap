@@ -5,6 +5,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
+	"github.com/qpoint-io/qtap/pkg/rulekitext"
 
 	"github.com/qpoint-io/rulekit"
 	"go.uber.org/zap"
@@ -103,7 +104,8 @@ func (f *filterInstance) Destroy() {
 		}
 
 		res := r.rule.Eval(&rulekit.Ctx{
-			KV: allPairs,
+			Functions: rulekitext.Functions,
+			KV:        allPairs,
 		})
 		if !res.Ok() {
 			// log any non-ErrMissingFields errors

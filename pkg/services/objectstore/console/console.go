@@ -37,9 +37,9 @@ type ObjectStore struct {
 
 func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
 	s.Log().Info("object store submission",
-		zap.String("digest", artifact.Digest()),
-		zap.Any("artifact", artifact),
-	)
+		zap.Dict("artifact", artifact.Fields()...))
+
+	fmt.Println(string(artifact.Data))
 
 	return artifact.Record("stdout://" + artifact.Digest()), nil
 }

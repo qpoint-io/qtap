@@ -1,3 +1,4 @@
+
 version: 2
 services:
   event_stores:
@@ -7,26 +8,24 @@ services:
 stacks:
   basic_reporting:
     plugins:
-      - type: access_logs
+      - type: http_capture
         config:
-          mode: summary # (summary|details|full|none)
-          format: console # (json|console)
+          level: summary # (none|summary|details|full)
+          format: text # (json|text)
           rules:
             - name: full log httpbin.org
               expr: request.host == "httpbin.org"
-              mode: full
+              level: full
             - name: details log on 500
               expr: response.status >= 500
-              mode: details
-            - name: details log on example.com and any subdomains
-              expr: in_zone(request.host, "example.com")
-              mode: details
+              level: details
             - name: full log on 400
               expr: response.status >= 400 && response.status < 500
-              mode: full
+              level: full
+
       - type: report_usage
 tap:
-  direction: egress # (all|egress|egress-external|egress-internal|ingress)
+  direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true
   audit_include_dns: false
   http:

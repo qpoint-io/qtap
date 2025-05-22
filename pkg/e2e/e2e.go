@@ -42,7 +42,8 @@ func (c *Context) RegisterNoErrCloser(closer func()) {
 }
 
 func (c *Context) Close() error {
-	for _, closer := range c.closers {
+	for i := len(c.closers) - 1; i >= 0; i-- {
+		closer := c.closers[i]
 		if err := closer(); err != nil {
 			return err
 		}

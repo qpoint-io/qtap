@@ -7,6 +7,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"go.uber.org/zap"
 )
 
 const (
@@ -23,19 +24,25 @@ type Events struct {
 
 type EventStore struct {
 	eventstore.BaseEventStore
-	services.LogHelper
 
 	mu           sync.Mutex
+	logger       *zap.Logger
 	events       *Events
 	byConnection map[string]*Events
 	byCGID       map[string][]string
 	errors       []error
 }
 
+func NewEventStore(logger *zap.Logger) *EventStore {
+	return &EventStore{
+		logger:       logger,
+		byConnection: make(map[string]*Events),
+		byCGID:       make(map[string][]string),
+		events:       &Events{},
+	}
+}
+
 func (f *EventStore) Init(ctx context.Context, cfg any) error {
-	f.byConnection = make(map[string]*Events)
-	f.byCGID = make(map[string][]string)
-	f.events = &Events{}
 	return nil
 }
 
@@ -80,6 +87,7 @@ func (e *Events) Merge(other *Events) {
 
 // Save stores an event
 func (f *EventStore) Save(ctx context.Context, item any) {
+	f.logger.Debug("saving event", zap.Any("item", item), zap.String("type", fmt.Sprintf("%T", item)))
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -112,10 +120,6 @@ func (f *EventStore) Errors() ([]error, bool) {
 	defer f.mu.Unlock()
 
 	return f.errors, len(f.errors) == 0
-}
-
-func (f *EventStore) Done() bool {
-	return false
 }
 
 func (f *EventStore) GetByCGID(cgid string) Events {

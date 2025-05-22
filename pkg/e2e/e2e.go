@@ -19,7 +19,7 @@ type Context struct {
 	ctx          context.Context
 	closers      []func() error
 	Start        time.Time
-	Eventstore   *EventStore
+	EventStore   *EventStore
 	ConfProvider *ConfigProvider
 	L            *zap.Logger
 }

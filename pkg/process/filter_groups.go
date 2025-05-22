@@ -45,15 +45,15 @@ var predefinedFilters = map[string][]Filter{
 	},
 	"kubernetes": {
 		// The kubelet is the primary management agent for containers in a Kubernetes cluster
-		&ExeFilter{pattern: "/home/kubernetes/bin/kubelet", strategy: config.MatchStrategy_EXACT, bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/kubelet", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 		// The kube-proxy is a network proxy that runs on each node in a Kubernetes cluster
-		&ExeFilter{pattern: "/home/kubernetes/bin/kube-proxy", strategy: config.MatchStrategy_EXACT, bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/kube-proxy", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 		// The Konnectivity service provides a TCP level proxy for the control plane to cluster communication
-		&ExeFilter{pattern: "/proxy-agent", strategy: config.MatchStrategy_EXACT, bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/proxy-agent", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 		// The cluster proportional autoscaler is a component that watches over the number of schedulable nodes and cores of the cluster and resizes the number of replicas for the required resource
-		&ExeFilter{pattern: "/cluster-proportional-autoscaler", strategy: config.MatchStrategy_EXACT, bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/cluster-proportional-autoscaler", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 		// The CSI Node Driver Registrar is a component that registers CSI drivers with the kubelet
-		&ExeFilter{pattern: "/csi-node-driver-registrar", strategy: config.MatchStrategy_EXACT, bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/csi-node-driver-registrar", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 	},
 	"qpoint": {
 		// Filter out the current qtap process

@@ -45,7 +45,7 @@ func mainSetup() error {
 	e2ectx = e2e.NewContext(context.Background())
 	e2ectx.Start = start
 	e2ectx.EventStore = e2e.NewEventStore(logger)
-	e2ectx.ConfProvider = e2e.NewConfigProvider(e2e.TestConfig(nil))
+	e2ectx.ConfProvider = e2e.NewConfigProvider(e2ectx.TestConfig(nil))
 	e2ectx.L = logger
 
 	serviceFactories = []services.FactoryFactory{

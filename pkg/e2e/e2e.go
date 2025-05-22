@@ -25,11 +25,13 @@ type Context struct {
 	ConfProvider *ConfigProvider
 	ConnManager  *connection.Manager
 	L            *zap.Logger
+	TestConfig   func(mut func(*config.Config)) *config.Config
 }
 
 func NewContext(ctx context.Context) *Context {
 	return &Context{
-		ctx: ctx,
+		ctx:        ctx,
+		TestConfig: DefaultTestConfig,
 	}
 }
 
@@ -92,7 +94,7 @@ func TimeElapsedEncoder(start time.Time) zapcore.TimeEncoder {
 	}
 }
 
-func TestConfig(mut func(*config.Config)) *config.Config {
+func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 	conf := &config.Config{
 		Services: config.Services{
 			EventStores:  []config.ServiceEventStore{{Type: "e2e"}},
@@ -214,15 +216,20 @@ func (c *TestContext) Events() Events {
 	return c.e2ectx.awaitEventsByCGID(c.TID)
 }
 
-func (c *TestContext) SetConfig(conf *config.Config) {
+func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func(*testing.T)) {
+	t.Helper()
+	conf := c.e2ectx.TestConfig(mut)
 	c.L.Info("⚙️ setting test config")
 	c.e2ectx.SetConfig(conf)
 	c.L.Info("✅ new config was propagated")
-	c.T.Cleanup(func() {
+
+	defer func() {
 		c.L.Info("⚙️ restoring default config")
-		c.e2ectx.SetConfig(TestConfig(nil))
+		c.e2ectx.SetConfig(c.e2ectx.TestConfig(nil))
 		c.L.Info("✅ default config restored")
-	})
+	}()
+
+	fn(t)
 }
 
 func NewLogger(start time.Time) *zap.Logger {

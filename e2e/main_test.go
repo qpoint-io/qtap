@@ -173,6 +173,7 @@ func mainSetup() error {
 		connection.SetDeploymentTags(tags.FromValues(map[string]string{"e2e": "true"})),
 	)
 	confManager.SubscribeSetter(connectionManager)
+	e2ectx.ConnManager = connectionManager
 
 	// init a socket settings manager to push config changes down into ebpf land
 	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.TapMaps.SocketSettingsMap)

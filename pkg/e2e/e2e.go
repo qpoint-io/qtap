@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/rs/xid"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -21,6 +23,7 @@ type Context struct {
 	Start        time.Time
 	EventStore   *EventStore
 	ConfProvider *ConfigProvider
+	ConnManager  *connection.Manager
 	L            *zap.Logger
 }
 
@@ -139,6 +142,35 @@ func (c *Context) SetConfig(conf *config.Config) {
 	wait()
 }
 
+func (c *Context) AwaitConnections(fn func(*connection.Connection) bool) {
+	for {
+		var count int
+		c.ConnManager.IterConnections(func(conn *connection.Connection) bool {
+			if fn(conn) {
+				count++
+			}
+			return true
+		})
+		if count == 0 {
+			break
+		}
+
+		c.L.Debug(fmt.Sprintf("waiting on %d connections", count))
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func (c *Context) awaitEventsByCGID(cgid string) Events {
+	c.AwaitConnections(func(conn *connection.Connection) bool {
+		t := conn.Tags()
+		if t == nil {
+			return false
+		}
+		return slices.Contains(t.Get("cgid"), cgid)
+	})
+	return c.EventStore.GetByCGID(cgid)
+}
+
 type TestContext struct {
 	e2ectx *Context
 	TID    string
@@ -173,13 +205,13 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 		Code:   code,
 		CGID:   cgid,
 		Events: func() Events {
-			return c.e2ectx.Eventstore.GetByCGID(cgid)
+			return c.e2ectx.awaitEventsByCGID(cgid)
 		},
 	}
 }
 
 func (c *TestContext) Events() Events {
-	return c.e2ectx.Eventstore.GetByCGID(c.TID)
+	return c.e2ectx.awaitEventsByCGID(c.TID)
 }
 
 func (c *TestContext) SetConfig(conf *config.Config) {

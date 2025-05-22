@@ -12,6 +12,7 @@ import (
 type List interface {
 	Add(string, ...string)
 	AddString(string) error
+	Get(string) []string
 	List() []string
 	Clone() List
 	Merge(List)
@@ -138,6 +139,12 @@ func (t *tags) Map() map[string][]string {
 		m[k] = append(([]string)(nil), v...)
 	}
 	return m
+}
+
+func (t *tags) Get(key string) []string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.data[key]
 }
 
 func format(str string) string {

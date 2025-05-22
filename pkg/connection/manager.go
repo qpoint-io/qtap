@@ -136,3 +136,9 @@ func (m *Manager) finalizeConnection(conn *Connection) {
 func (m *Manager) createStreamer(conn *Connection) StreamProcessor {
 	return m.streamFactory.OnConnection(conn)
 }
+
+func (m *Manager) IterConnections(fn func(*Connection) bool) {
+	m.connections.Iter(func(key Cookie, conn *Connection) bool {
+		return fn(conn)
+	})
+}

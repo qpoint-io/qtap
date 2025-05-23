@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/containerd/containerd"
 	apievents "github.com/containerd/containerd/api/events"
-	"github.com/containerd/containerd/events"
-	"github.com/containerd/containerd/namespaces"
+	containerd "github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/core/events"
+	"github.com/containerd/containerd/v2/pkg/namespaces"
 	"github.com/containerd/typeurl/v2"
 	"go.uber.org/zap"
 )
@@ -39,7 +39,7 @@ func NewContainerdAccessor(logger *zap.Logger, endpoint string) (*Containerd, er
 	}
 
 	// create global client
-	opts := []containerd.ClientOpt{containerd.WithTimeout(DefaultRuntimeTimeout)}
+	opts := []containerd.Opt{containerd.WithTimeout(DefaultRuntimeTimeout)}
 	c, err := containerd.New(endpoint, opts...)
 	if err != nil {
 		return nil, err

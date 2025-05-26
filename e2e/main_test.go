@@ -41,6 +41,7 @@ var (
 func mainSetup() error {
 	start = time.Now()
 	logger = e2e.NewLogger(start)
+	zap.ReplaceGlobals(logger)
 
 	e2ectx = e2e.NewContext(context.Background())
 	e2ectx.Start = start

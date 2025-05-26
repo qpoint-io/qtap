@@ -1,4 +1,7 @@
-
+# This is a simple example of a qtap config that captures HTTP transactions and
+# stores writes them to stdout. This includes headers and bodies if the level is
+# set to details or full.
+#
 version: 2
 services:
   event_stores:

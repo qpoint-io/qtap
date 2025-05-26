@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -22,7 +23,7 @@ type Context struct {
 	ctx          context.Context
 	closers      []func() error
 	Start        time.Time
-	EventStore   *EventStore
+	EventStore   *EventStoreFactory
 	ConfProvider *ConfigProvider
 	L            *zap.Logger
 	TestConfig   func(mut func(*config.Config)) *config.Config
@@ -128,12 +129,14 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 
 func (c *Context) TestCtx(t *testing.T) *TestContext {
 	id := NewID()
-	return &TestContext{
+	ctx := &TestContext{
 		ID:     id,
 		e2ectx: c,
 		T:      t,
 		L:      c.L.With(zap.String("ctxid", id)),
 	}
+	ctx.L.Info("🔧 test context created")
+	return ctx
 }
 
 func (c *Context) SetConfig(conf *config.Config) {
@@ -209,7 +212,11 @@ func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func
 
 func NewLogger(start time.Time) *zap.Logger {
 	zapconf := zap.NewDevelopmentConfig()
-	zapconf.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	level := zap.InfoLevel
+	if l, err := zap.ParseAtomicLevel(os.Getenv("LOG_LEVEL")); err == nil {
+		level = l.Level()
+	}
+	zapconf.Level = zap.NewAtomicLevelAt(level)
 	zapconf.DisableStacktrace = true
 	zapconf.DisableCaller = true
 	zapconf.EncoderConfig.EncodeTime = TimeElapsedEncoder(start)

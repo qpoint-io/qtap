@@ -225,6 +225,9 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 			if l, ok := instance.(servicespkg.LoggerAdapter); ok {
 				l.SetLogger(c.logger)
 			}
+			if ca, ok := instance.(ConnectionAdapter); ok {
+				ca.SetConnection(c)
+			}
 			if es, ok := instance.(eventstore.EventStore); ok {
 				c.eventStore = es
 			} else {
@@ -656,4 +659,8 @@ func isValidDomainChar(ch rune) bool {
 // isAlphanumeric checks if a character is a letter or digit
 func isAlphanumeric(ch rune) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+}
+
+type ConnectionAdapter interface {
+	SetConnection(*Connection)
 }

@@ -35,7 +35,7 @@ type ObjectStore struct {
 	objectstore.BaseObjectStore
 }
 
-func (s *ObjectStore) Put(ctx context.Context, artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
+func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
 	s.Log().Info("object store submission",
 		zap.String("digest", artifact.Digest()),
 		zap.Any("artifact", artifact),

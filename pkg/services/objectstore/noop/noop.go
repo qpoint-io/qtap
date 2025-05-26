@@ -33,6 +33,6 @@ type ObjectStore struct {
 	objectstore.BaseObjectStore
 }
 
-func (s *ObjectStore) Put(ctx context.Context, artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
+func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
 	return nil, nil
 }

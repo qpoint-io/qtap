@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"go.uber.org/zap"
 )
 
 const (
@@ -23,19 +25,25 @@ type Events struct {
 
 type EventStore struct {
 	eventstore.BaseEventStore
-	services.LogHelper
 
 	mu           sync.Mutex
+	logger       *zap.Logger
 	events       *Events
 	byConnection map[string]*Events
-	byCGID       map[string][]string
+	byCtxID      map[string][]string
 	errors       []error
 }
 
+func NewEventStore(logger *zap.Logger) *EventStore {
+	return &EventStore{
+		logger:       logger,
+		byConnection: make(map[string]*Events),
+		byCtxID:      make(map[string][]string),
+		events:       &Events{},
+	}
+}
+
 func (f *EventStore) Init(ctx context.Context, cfg any) error {
-	f.byConnection = make(map[string]*Events)
-	f.byCGID = make(map[string][]string)
-	f.events = &Events{}
 	return nil
 }
 
@@ -80,6 +88,7 @@ func (e *Events) Merge(other *Events) {
 
 // Save stores an event
 func (f *EventStore) Save(ctx context.Context, item any) {
+	f.logger.Debug("saving event", zap.Any("item", item), zap.String("type", fmt.Sprintf("%T", item)))
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -96,8 +105,8 @@ func (f *EventStore) Save(ctx context.Context, item any) {
 
 	if conn, ok := item.(*eventstore.Connection); ok {
 		if conn.Tags != nil {
-			for _, id := range conn.Tags["cgid"] {
-				f.byCGID[id] = append(f.byCGID[id], connid)
+			for _, id := range conn.Tags["ctxid"] {
+				f.byCtxID[id] = append(f.byCtxID[id], connid)
 			}
 		}
 	}
@@ -114,19 +123,36 @@ func (f *EventStore) Errors() ([]error, bool) {
 	return f.errors, len(f.errors) == 0
 }
 
-func (f *EventStore) Done() bool {
-	return false
-}
-
-func (f *EventStore) GetByCGID(cgid string) Events {
+func (f *EventStore) GetByCtxID(id string) *Events {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	var events Events
-	for _, connid := range f.byCGID[cgid] {
+	for _, connid := range f.byCtxID[id] {
 		if f.byConnection[connid] != nil {
 			events.Merge(f.byConnection[connid])
 		}
 	}
-	return events
+	return &events
+}
+
+// AwaitByCtxID waits for at least numConnections to be saved for a given ctxid
+func (e *EventStore) AwaitByCtxID(id string, numConnections int, timeout time.Duration) (*Events, error) {
+	if numConnections == 0 {
+		return e.GetByCtxID(id), nil
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		if timeout > 0 && time.Now().After(deadline) {
+			return nil, fmt.Errorf("exceeded %s timeout while waiting for %d connections for ctxid %s", timeout, numConnections, id)
+		}
+
+		e.logger.Info(fmt.Sprintf("waiting for %d connections", numConnections), zap.String("ctxid", id))
+		events := e.GetByCtxID(id)
+		if len(events.Connections) >= numConnections {
+			return events, nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }

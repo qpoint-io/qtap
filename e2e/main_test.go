@@ -44,13 +44,13 @@ func mainSetup() error {
 
 	e2ectx = e2e.NewContext(context.Background())
 	e2ectx.Start = start
-	e2ectx.Eventstore = &e2e.EventStore{}
-	e2ectx.ConfProvider = e2e.NewConfigProvider(e2e.TestConfig(nil))
+	e2ectx.EventStore = e2e.NewEventStore(logger)
+	e2ectx.ConfProvider = e2e.NewConfigProvider(e2ectx.TestConfig(nil))
 	e2ectx.L = logger
 
 	serviceFactories = []services.FactoryFactory{
 		// Eventstore services
-		func() services.ServiceFactory { return e2ectx.Eventstore },
+		func() services.ServiceFactory { return e2ectx.EventStore },
 
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
@@ -211,7 +211,7 @@ func mainSetup() error {
 	e2ectx.RegisterErrCloser(socketManager.Stop)
 
 	e2ectx.RegisterNoErrCloser(func() {
-		errs, ok := e2ectx.Eventstore.Errors()
+		errs, ok := e2ectx.EventStore.Errors()
 		if !ok {
 			logger.Error("event store exited with errors", zap.Any("errors", errs))
 		}

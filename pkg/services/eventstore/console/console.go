@@ -86,7 +86,7 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 	switch i := item.(type) {
 	case *eventstore.Artifact:
 		go func() {
-			ar, err := s.objectStore.Put(ctx, *i)
+			ar, err := s.objectStore.Put(*i)
 			if err != nil {
 				s.Log().Error("failed to put artifact", zap.Error(err))
 				return

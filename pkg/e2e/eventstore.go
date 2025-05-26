@@ -145,7 +145,6 @@ type EventStore struct {
 	eventstore.BaseEventStore
 	conn *connection.Connection
 	save func(conn *connection.Connection, item any)
-	ok   bool
 }
 
 func (s *EventStore) SetConnection(conn *connection.Connection) {

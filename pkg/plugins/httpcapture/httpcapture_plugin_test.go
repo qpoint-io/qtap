@@ -13,8 +13,8 @@ func TestHttpCaptureConfigParsing(t *testing.T) {
 	tests := []struct {
 		name           string
 		configYAML     string
-		expectedLevel  captureLevel
-		expectedFormat outputFormat
+		expectedLevel  CaptureLevel
+		expectedFormat OutputFormat
 		expectedRules  int
 	}{
 		{
@@ -23,7 +23,7 @@ func TestHttpCaptureConfigParsing(t *testing.T) {
 ---
 `,
 			expectedLevel:  CaptureLevelNone,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  0,
 		},
 		{
@@ -33,7 +33,7 @@ level: summary
 format: text
 `,
 			expectedLevel:  CaptureLevelSummary,
-			expectedFormat: outputFormatText,
+			expectedFormat: OutputFormatText,
 			expectedRules:  0,
 		},
 		{
@@ -51,7 +51,7 @@ rules:
     format: text
 `,
 			expectedLevel:  CaptureLevelNone,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  2,
 		},
 		{
@@ -61,7 +61,7 @@ level: headers
 format: json
 `,
 			expectedLevel:  CaptureLevelHeaders,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  0,
 		},
 		{
@@ -71,7 +71,7 @@ level: full
 format: text
 `,
 			expectedLevel:  CaptureLevelFull,
-			expectedFormat: outputFormatText,
+			expectedFormat: OutputFormatText,
 			expectedRules:  0,
 		},
 	}
@@ -98,7 +98,7 @@ format: text
 
 func TestCaptureLevelConstants(t *testing.T) {
 	tests := []struct {
-		level captureLevel
+		level CaptureLevel
 		value string
 		valid bool
 	}{
@@ -106,7 +106,7 @@ func TestCaptureLevelConstants(t *testing.T) {
 		{CaptureLevelSummary, "summary", true},
 		{CaptureLevelHeaders, "headers", true},
 		{CaptureLevelFull, "full", true},
-		{captureLevel("invalid"), "invalid", false},
+		{CaptureLevel("invalid"), "invalid", false},
 	}
 
 	for _, tc := range tests {
@@ -127,13 +127,13 @@ func TestCaptureLevelConstants(t *testing.T) {
 
 func TestOutputFormatConstants(t *testing.T) {
 	tests := []struct {
-		format outputFormat
+		format OutputFormat
 		value  string
 		valid  bool
 	}{
-		{outputFormatJSON, "json", true},
-		{outputFormatText, "text", true},
-		{outputFormat("invalid"), "invalid", false},
+		{OutputFormatJSON, "json", true},
+		{OutputFormatText, "text", true},
+		{OutputFormat("invalid"), "invalid", false},
 	}
 
 	for _, tc := range tests {
@@ -142,7 +142,7 @@ func TestOutputFormatConstants(t *testing.T) {
 			assert.Equal(t, tc.value, string(tc.format))
 
 			// Verify the output format is one of the valid constants
-			is_valid := tc.format == outputFormatJSON || tc.format == outputFormatText
+			is_valid := tc.format == OutputFormatJSON || tc.format == OutputFormatText
 
 			assert.Equal(t, tc.valid, is_valid)
 		})

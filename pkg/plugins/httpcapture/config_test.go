@@ -12,8 +12,8 @@ func TestConfigParsing(t *testing.T) {
 	tests := []struct {
 		name           string
 		configYAML     string
-		expectedLevel  captureLevel
-		expectedFormat outputFormat
+		expectedLevel  CaptureLevel
+		expectedFormat OutputFormat
 		expectedRules  int
 	}{
 		{
@@ -22,7 +22,7 @@ func TestConfigParsing(t *testing.T) {
 ---
 `,
 			expectedLevel:  CaptureLevelNone,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  0,
 		},
 		{
@@ -32,7 +32,7 @@ level: summary
 format: text
 `,
 			expectedLevel:  CaptureLevelSummary,
-			expectedFormat: outputFormatText,
+			expectedFormat: OutputFormatText,
 			expectedRules:  0,
 		},
 		{
@@ -50,7 +50,7 @@ rules:
     format: text
 `,
 			expectedLevel:  CaptureLevelNone,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  2,
 		},
 		{
@@ -60,7 +60,7 @@ level: headers
 format: json
 `,
 			expectedLevel:  CaptureLevelHeaders,
-			expectedFormat: outputFormatJSON,
+			expectedFormat: OutputFormatJSON,
 			expectedRules:  0,
 		},
 		{
@@ -70,7 +70,7 @@ level: full
 format: text
 `,
 			expectedLevel:  CaptureLevelFull,
-			expectedFormat: outputFormatText,
+			expectedFormat: OutputFormatText,
 			expectedRules:  0,
 		},
 	}
@@ -94,14 +94,14 @@ format: text
 			require.NoError(t, err)
 
 			// Simulate the same logic as Factory.Init()
-			level := captureLevel(config.Level)
+			level := CaptureLevel(config.Level)
 			if level == "" {
 				level = CaptureLevelNone
 			}
 
-			format := outputFormat(config.Format)
+			format := OutputFormat(config.Format)
 			if format == "" {
-				format = outputFormatJSON
+				format = OutputFormatJSON
 			}
 
 			// Verify the config was parsed correctly
@@ -134,12 +134,12 @@ func TestOutputFormatMapping(t *testing.T) {
 		t.Run(tc.inputFormat, func(t *testing.T) {
 			// Get content type based on format
 			var contentType string
-			format := outputFormat(tc.inputFormat)
+			format := OutputFormat(tc.inputFormat)
 
 			switch format {
-			case outputFormatJSON:
+			case OutputFormatJSON:
 				contentType = "application/json"
-			case outputFormatText:
+			case OutputFormatText:
 				contentType = "text/plain"
 			default:
 				contentType = "application/json"

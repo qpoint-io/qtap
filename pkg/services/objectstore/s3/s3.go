@@ -29,7 +29,8 @@ type ObjectStore struct {
 	accessURL string
 }
 
-func (s *ObjectStore) Put(ctx context.Context, artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
+func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
+	ctx := context.Background()
 	m, err := s.putFn(ctx, artifact.Digest(), artifact.ContentType, artifact.Data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to put artifact: %w", err)

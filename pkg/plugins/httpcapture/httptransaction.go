@@ -1,0 +1,246 @@
+package httpcapture
+
+import (
+	"encoding/json"
+	"strconv"
+	"time"
+
+	"github.com/qpoint-io/qtap/pkg/plugins"
+	"github.com/qpoint-io/qtap/pkg/plugins/tools"
+)
+
+// HttpTransaction represents an HTTP request-response transaction
+type HttpTransaction struct {
+	// Process and connection metadata
+	Metadata Metadata `json:"metadata"`
+
+	// Request information
+	Request Request `json:"request"`
+
+	// Response information
+	Response Response `json:"response"`
+
+	// Transaction metadata
+	TransactionTime time.Time `json:"transaction_time"`
+	DurationMs      int64     `json:"duration_ms,omitempty"`
+	Direction       string    `json:"direction,omitempty"`
+}
+
+// Metadata contains process and connection information
+type Metadata struct {
+	ProcessID       string `json:"process_id,omitempty"`
+	ProcessExe      string `json:"process_exe,omitempty"`
+	ContainerName   string `json:"container_name,omitempty"`
+	ContainerImage  string `json:"container_image,omitempty"`
+	PodName         string `json:"pod_name,omitempty"`
+	PodNamespace    string `json:"pod_namespace,omitempty"`
+	BytesSent       int64  `json:"bytes_sent,omitempty"`
+	BytesReceived   int64  `json:"bytes_received,omitempty"`
+	QpointRequestID string `json:"qpoint_request_id,omitempty"`
+	ConnectionID    string `json:"connection_id,omitempty"`
+	EndpointID      string `json:"endpoint_id,omitempty"`
+}
+
+// Request contains HTTP request information
+type Request struct {
+	Method      string            `json:"method"`
+	URL         string            `json:"url"`
+	Scheme      string            `json:"scheme,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	Authority   string            `json:"authority,omitempty"`
+	Protocol    string            `json:"protocol,omitempty"`
+	UserAgent   string            `json:"user_agent,omitempty"`
+	ContentType string            `json:"content_type,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Body        []byte            `json:"body,omitempty"`
+}
+
+// Response contains HTTP response information
+type Response struct {
+	Status      int               `json:"status"`
+	ContentType string            `json:"content_type,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Body        []byte            `json:"body,omitempty"`
+}
+
+// NewHttpTransaction creates a new HTTP transaction with metadata
+func NewHttpTransaction(ctx plugins.PluginContext, reqHeaders, resHeaders plugins.Headers, startTime, endTime time.Time) *HttpTransaction {
+	// Create transaction
+	tx := &HttpTransaction{
+		TransactionTime: time.Now(),
+	}
+
+	// Calculate duration if both start and end times are set
+	if !startTime.IsZero() && !endTime.IsZero() {
+		tx.DurationMs = endTime.Sub(startTime).Milliseconds()
+		if tx.DurationMs == 0 {
+			tx.DurationMs = 1
+		}
+	}
+
+	// Set direction
+	tx.Direction = "egress-external"
+	if d := ctx.GetMetadata("direction"); d.OK() {
+		tx.Direction = d.String()
+	}
+
+	// Get process and connection metadata
+	tx.Metadata = getMetadata(ctx)
+
+	// Get request info
+	tx.Request = getRequestInfo(reqHeaders, ctx)
+
+	// Get response info
+	tx.Response = getResponseInfo(resHeaders, ctx)
+
+	return tx
+}
+
+// getMetadata extracts process and connection metadata from plugin context
+func getMetadata(ctx plugins.PluginContext) Metadata {
+	m := Metadata{}
+
+	// Process information
+	m.ProcessID = ctx.GetMetadata("process-pid").String()
+	m.ProcessExe = ctx.GetMetadata("process-exe").String()
+
+	// Container/Pod information (if available)
+	if cname := ctx.GetMetadata("process-container_name").String(); cname != "" && cname != "<nil>" {
+		m.ContainerName = cname
+	}
+	if cimage := ctx.GetMetadata("process-container_image").String(); cimage != "" && cimage != "<nil>" {
+		m.ContainerImage = cimage
+	}
+	if pname := ctx.GetMetadata("process-pod_name").String(); pname != "" && pname != "<nil>" {
+		m.PodName = pname
+	}
+	if pnamespace := ctx.GetMetadata("process-pod_namespace").String(); pnamespace != "" && pnamespace != "<nil>" {
+		m.PodNamespace = pnamespace
+	}
+
+	// Connection information
+	m.BytesSent = ctx.GetMetadata("wr_bytes").Int64()
+	m.BytesReceived = ctx.GetMetadata("rd_bytes").Int64()
+	m.EndpointID = ctx.GetMetadata("endpoint-id").String()
+	m.ConnectionID = ctx.GetMetadata("connection-id").String()
+
+	return m
+}
+
+// getRequestInfo extracts HTTP request information
+func getRequestInfo(headers plugins.Headers, ctx plugins.PluginContext) Request {
+	r := Request{}
+
+	// Use HeaderMap to easily extract header information
+	headerMap := tools.NewHeaderMap(headers)
+
+	// Extract basic request info
+	r.Method, _ = headerMap.Method()
+	r.URL, _ = headerMap.URL()
+	r.Path, _ = headerMap.Path()
+	r.Authority, _ = headerMap.Authority()
+	r.Scheme, _ = headerMap.Scheme()
+	r.UserAgent, _ = headerMap.UserAgent()
+	r.ContentType, _ = headerMap.ContentType()
+	r.Protocol = ctx.GetMetadata("protocol").String()
+
+	// Get request headers
+	if headers != nil {
+		r.Headers = headers.All()
+	}
+
+	// Get QpointRequestID from headers if available
+	_, _ = headerMap.QpointRequestID() // Just check if it exists, we don't need to do anything with it
+
+	return r
+}
+
+// getResponseInfo extracts HTTP response information
+func getResponseInfo(headers plugins.Headers, _ plugins.PluginContext) Response {
+	r := Response{}
+
+	// Use HeaderMap to easily extract header information
+	headerMap := tools.NewHeaderMap(headers)
+
+	// Get status code
+	r.Status, _ = headerMap.Status()
+
+	// Get content type
+	r.ContentType, _ = headerMap.ContentType()
+
+	// Get all response headers
+	if headers != nil {
+		r.Headers = headers.All()
+	}
+
+	return r
+}
+
+// ToJSON converts the HttpTransaction to JSON
+func (t *HttpTransaction) ToJSON() ([]byte, error) {
+	return json.Marshal(t)
+}
+
+// ToString converts the HttpTransaction to a formatted text string
+func (t *HttpTransaction) ToString() string {
+	// Create a text representation of the transaction
+	text := "HTTP Transaction\n"
+	text += "================\n\n"
+
+	// Add metadata
+	text += "Metadata:\n"
+	text += "  Transaction Time: " + t.TransactionTime.Format(time.RFC3339) + "\n"
+	if t.DurationMs > 0 {
+		text += "  Duration: " + strconv.FormatInt(t.DurationMs, 10) + "ms\n"
+	}
+	text += "  Direction: " + t.Direction + "\n"
+	if t.Metadata.QpointRequestID != "" {
+		text += "  Request ID: " + t.Metadata.QpointRequestID + "\n"
+	}
+	if t.Metadata.ProcessID != "" {
+		text += "  Process ID: " + t.Metadata.ProcessID + "\n"
+	}
+	if t.Metadata.ProcessExe != "" {
+		text += "  Process: " + t.Metadata.ProcessExe + "\n"
+	}
+	text += "  Bytes Sent: " + strconv.FormatInt(t.Metadata.BytesSent, 10) + "\n"
+	text += "  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n\n"
+
+	// Add request info
+	text += "Request:\n"
+	text += "  Method: " + t.Request.Method + "\n"
+	text += "  URL: " + t.Request.URL + "\n"
+	if t.Request.ContentType != "" {
+		text += "  Content-Type: " + t.Request.ContentType + "\n"
+	}
+	if len(t.Request.Headers) > 0 {
+		text += "  Headers:\n"
+		for k, v := range t.Request.Headers {
+			text += "    " + k + ": " + v + "\n"
+		}
+	}
+	if len(t.Request.Body) > 0 {
+		text += "  Body:\n"
+		text += string(t.Request.Body) + "\n"
+	}
+	text += "\n"
+
+	// Add response info
+	text += "Response:\n"
+	text += "  Status: " + strconv.Itoa(t.Response.Status) + "\n"
+	if t.Response.ContentType != "" {
+		text += "  Content-Type: " + t.Response.ContentType + "\n"
+	}
+	if len(t.Response.Headers) > 0 {
+		text += "  Headers:\n"
+		for k, v := range t.Response.Headers {
+			text += "    " + k + ": " + v + "\n"
+		}
+	}
+	if len(t.Response.Body) > 0 {
+		text += "  Body:\n"
+		text += string(t.Response.Body) + "\n"
+	}
+
+	return text
+}

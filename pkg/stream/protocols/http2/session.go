@@ -170,6 +170,7 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 		s.pluginConn.SetRequest(s.req)
 
 		// add qpoint metadata
+		s.pluginConn.AppendMetadata("qpoint-request-id", id)
 		// set endpointID
 		s.pluginConn.AppendMetadata("endpoint-id", s.conn.Domain())
 		// set the direction header

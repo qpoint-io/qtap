@@ -4,9 +4,12 @@ package e2e
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -17,6 +20,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/websocket"
 	"gopkg.in/yaml.v3"
 )
 
@@ -100,13 +104,111 @@ data: Event 2
 		// captured artifacts
 		require.Len(t, events.Artifacts, 1)
 		artifact := events.Artifacts[0]
-		assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
+		require.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
 		var transaction httpcapture.HttpTransaction
 		err := json.Unmarshal(artifact.Data, &transaction)
 		require.NoError(t, err)
 		assert.Equal(t, "GET", transaction.Request.Method)
 		assert.Equal(t, "text/event-stream", transaction.Response.ContentType)
 		assert.Equal(t, expectedBody, string(transaction.Response.Body))
+	})
+}
+
+func TestHTTP_WebSocket(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+
+	// setup websocket server
+	server := httptest.NewServer(websocket.Handler(func(ws *websocket.Conn) {
+		send := func(msg string) {
+			err := websocket.Message.Send(ws, msg)
+			require.NoError(t, err)
+		}
+		send("Hello")
+		time.Sleep(500 * time.Millisecond)
+		send("World")
+		time.Sleep(500 * time.Millisecond)
+		send("!")
+
+		var gotReply bool
+		for {
+			var reply = make([]byte, 512)
+			err := websocket.Message.Receive(ws, &reply)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+
+			if string(reply) == "Hello from client" {
+				gotReply = true
+			}
+		}
+		assert.True(t, gotReply)
+	}))
+	defer server.Close()
+
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}, func(t *testing.T) {
+		u, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		u.Scheme = "ws"
+		u.Path = "/ws"
+		wsReq := ctx.Exec("go", "run", "testdata/websocketcli/main.go", u.String())
+		require.NoError(t, wsReq.Err, wsReq.Output)
+
+		assert.Equal(t, `dialing
+receiving
+-> Hello
+receiving
+-> World
+receiving
+-> !
+sending close
+receiving
+EOF
+done
+`, wsReq.Output)
+
+		events := wsReq.AwaitEvents(1)
+
+		// Verify connection
+		assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+		// Verify request
+		require.Len(t, events.Requests, 1)
+		req := events.Requests[0]
+		assert.Equal(t, "/ws", req.URLPath)
+
+		// Verify captured artifacts
+		require.Len(t, events.Artifacts, 1)
+		artifact := events.Artifacts[0]
+		require.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
+		var transaction httpcapture.HttpTransaction
+		err = json.Unmarshal(artifact.Data, &transaction)
+		require.NoError(t, err)
+		assert.Equal(t, "GET", transaction.Request.Method)
+		assert.Equal(t, "websocket", transaction.Request.Headers["Upgrade"])
+
+		// TODO: test request and response bodies
 	})
 }
 

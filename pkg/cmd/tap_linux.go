@@ -35,6 +35,7 @@ import (
 	eventstorenoop "github.com/qpoint-io/qtap/pkg/services/eventstore/noop"
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
+	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
 	"github.com/qpoint-io/qtap/pkg/status"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -65,6 +66,7 @@ var (
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstoreconsole.Factory{} },
 		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
+		func() services.ServiceFactory { return &objecstores3.Factory{} },
 
 		// Add more services here...
 	}

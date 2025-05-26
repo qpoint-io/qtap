@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	pluginTypeReport plugins.PluginType = "report_usage"
+	PluginTypeReport plugins.PluginType = "report_usage"
 )
 
 type Config struct {
@@ -50,5 +50,5 @@ func (f *Factory) Destroy() {
 }
 
 func (f *Factory) PluginType() plugins.PluginType {
-	return pluginTypeReport
+	return PluginTypeReport
 }

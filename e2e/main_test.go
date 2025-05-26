@@ -19,6 +19,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
+	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	loggerPlugin "github.com/qpoint-io/qtap/pkg/plugins/logger"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
@@ -46,6 +47,25 @@ func mainSetup() error {
 	e2ectx = e2e.NewContext(context.Background())
 	e2ectx.Start = start
 	e2ectx.EventStore = e2e.NewEventStore(logger)
+	e2ectx.TestConfig = func(mut func(*config.Config)) *config.Config {
+		c := e2e.DefaultTestConfig(func(c *config.Config) {
+			// ignore connections related to GitHub Actions tooling
+			c.Tap.Filters.Custom = append(c.Tap.Filters.Custom, []config.TapFilter{
+				{
+					Exe:      "/usr/bin/python",
+					Strategy: config.MatchStrategy_PREFIX,
+				},
+				{
+					Exe:      "/home/runner",
+					Strategy: config.MatchStrategy_PREFIX,
+				},
+			}...)
+		})
+		if mut != nil {
+			mut(c)
+		}
+		return c
+	}
 	e2ectx.ConfProvider = e2e.NewConfigProvider(e2ectx.TestConfig(nil))
 	e2ectx.L = logger
 
@@ -62,6 +82,7 @@ func mainSetup() error {
 		wrapper.Catch(&report.Factory{}),
 		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),
 		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
+		wrapper.Catch(&httpcapture.Factory{}),
 	}
 
 	if syscall.Getuid() != 0 {

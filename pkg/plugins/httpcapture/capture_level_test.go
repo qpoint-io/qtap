@@ -9,7 +9,7 @@ import (
 func TestCaptureLevelBehavior(t *testing.T) {
 	tests := []struct {
 		name           string
-		level          captureLevel
+		level          CaptureLevel
 		includeHeaders bool
 		includeBody    bool
 	}{
@@ -90,7 +90,7 @@ func createTestTransaction() HttpTransaction {
 }
 
 // Helper function that mimics the behavior of capture level application
-func applyCaptureLevel(tx *HttpTransaction, level captureLevel) {
+func applyCaptureLevel(tx *HttpTransaction, level CaptureLevel) {
 	switch level {
 	case CaptureLevelNone:
 		// None level doesn't capture anything

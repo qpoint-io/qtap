@@ -22,9 +22,9 @@ type instance struct {
 	conn plugins.PluginContext
 
 	eventstore eventstore.EventStore
-	level      captureLevel
-	format     outputFormat
-	rules      []logRule
+	level      CaptureLevel
+	format     OutputFormat
+	rules      []LogRule
 
 	reqheaders plugins.Headers
 	resheaders plugins.Headers
@@ -161,7 +161,7 @@ func (i *instance) Destroy() {
 	var contentType string
 
 	switch outputFormat {
-	case outputFormatJSON:
+	case OutputFormatJSON:
 		var err error
 		data, err = transaction.ToJSON()
 		if err != nil {
@@ -170,7 +170,7 @@ func (i *instance) Destroy() {
 		}
 		contentType = "application/json"
 
-	case outputFormatText:
+	case OutputFormatText:
 		data = []byte(transaction.ToString())
 		contentType = "text/plain"
 

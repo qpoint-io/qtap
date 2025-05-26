@@ -13,45 +13,45 @@ import (
 var tracer = telemetry.Tracer()
 
 const (
-	pluginTypeHttpCapture plugins.PluginType = "http_capture"
+	PluginTypeHttpCapture plugins.PluginType = "http_capture"
 )
 
-type captureLevel string
+type CaptureLevel string
 
 const (
 	// CaptureLevelNone signifies that no HTTP transaction data will be captured.
-	CaptureLevelNone captureLevel = "none"
+	CaptureLevelNone CaptureLevel = "none"
 
 	// CaptureLevelSummary captures basic HTTP transaction details (e.g., method, URL, status code, duration).
-	CaptureLevelSummary captureLevel = "summary"
+	CaptureLevelSummary CaptureLevel = "summary"
 
 	// CaptureLevelHeaders captures everything in Summary, plus HTTP request and response headers.
-	CaptureLevelHeaders captureLevel = "headers"
+	CaptureLevelHeaders CaptureLevel = "headers"
 
 	// CaptureLevelFull captures everything in Headers, plus HTTP request and response bodies (i.e., the complete transaction).
-	CaptureLevelFull captureLevel = "full"
+	CaptureLevelFull CaptureLevel = "full"
 )
 
-type outputFormat string
+type OutputFormat string
 
 const (
-	outputFormatJSON outputFormat = "json"
-	outputFormatText outputFormat = "text"
+	OutputFormatJSON OutputFormat = "json"
+	OutputFormatText OutputFormat = "text"
 )
 
-type logRule struct {
+type LogRule struct {
 	Name   string       `yaml:"name"`
 	Expr   string       `yaml:"expr"`
-	Level  captureLevel `yaml:"level"`
-	Format outputFormat `yaml:"format,omitempty"`
+	Level  CaptureLevel `yaml:"level"`
+	Format OutputFormat `yaml:"format,omitempty"`
 
 	rule rulekit.Rule `yaml:"-"`
 }
 
 type HttpCaptureConfig struct {
-	Level  captureLevel `json:"level" yaml:"level"`
-	Format outputFormat `json:"format" yaml:"format"`
-	Rules  []logRule    `json:"rules" yaml:"rules"`
+	Level  CaptureLevel `json:"level" yaml:"level"`
+	Format OutputFormat `json:"format" yaml:"format"`
+	Rules  []LogRule    `json:"rules" yaml:"rules"`
 }
 
 type Factory struct {
@@ -66,8 +66,8 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	// Default configuration
 	var cfg HttpCaptureConfig = HttpCaptureConfig{
 		Level:  CaptureLevelNone,
-		Format: outputFormatJSON,
-		Rules:  []logRule{},
+		Format: OutputFormatJSON,
+		Rules:  []LogRule{},
 	}
 
 	// Parse provided configuration
@@ -130,5 +130,5 @@ func (f *Factory) Destroy() {
 }
 
 func (f *Factory) PluginType() plugins.PluginType {
-	return pluginTypeHttpCapture
+	return PluginTypeHttpCapture
 }

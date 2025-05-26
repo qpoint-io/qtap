@@ -1,8 +1,6 @@
 package objectstore
 
 import (
-	"context"
-
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 )
@@ -14,7 +12,7 @@ const (
 // ObjectStore defines the interface for object storage services
 type ObjectStore interface {
 	services.Service
-	Put(ctx context.Context, artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error)
+	Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error)
 }
 
 // BaseObjectStore provides common functionality for ObjectStore implementations

@@ -11,9 +11,12 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/rs/xid"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
+
+var AwaitEventsTimeout = 5 * time.Second
 
 type Context struct {
 	ctx          context.Context
@@ -124,12 +127,12 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 }
 
 func (c *Context) TestCtx(t *testing.T) *TestContext {
-	tid := NewID()
+	id := NewID()
 	return &TestContext{
-		TID:    tid,
+		ID:     id,
 		e2ectx: c,
 		T:      t,
-		L:      c.L.With(zap.String("tid", tid)),
+		L:      c.L.With(zap.String("test_ctx", id)),
 	}
 }
 
@@ -143,24 +146,24 @@ func (c *Context) SetConfig(conf *config.Config) {
 
 type TestContext struct {
 	e2ectx *Context
-	TID    string
+	ID     string
 	T      *testing.T
 	L      *zap.Logger
 }
 
 type ExecResult struct {
-	Output string
-	Err    error
-	Code   int
-	CGID   string
-	Events func() Events
+	Output      string
+	Err         error
+	Code        int
+	ID          string
+	AwaitEvents func(expectedConnections int) *Events
 }
 
 func (c *TestContext) Exec(name string, args ...string) ExecResult {
-	cgid := NewID()
+	id := NewID()
 	cmd := exec.CommandContext(c.T.Context(), name, args...)
 	cmd.Env = []string{
-		fmt.Sprintf("QPOINT_TAGS=cgid:%s,cgid:%s", c.TID, cgid),
+		fmt.Sprintf("QPOINT_TAGS=ctxid:%s,ctxid:%s", c.ID, id),
 	}
 	c.L.Info("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
 	out, err := cmd.CombinedOutput()
@@ -173,15 +176,19 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 		Output: string(out),
 		Err:    err,
 		Code:   code,
-		CGID:   cgid,
-		Events: func() Events {
-			return c.e2ectx.EventStore.GetByCGID(cgid)
+		ID:     id,
+		AwaitEvents: func(expectedConnections int) *Events {
+			events, err := c.e2ectx.EventStore.AwaitByCtxID(id, expectedConnections, AwaitEventsTimeout)
+			require.NoError(c.T, err)
+			return events
 		},
 	}
 }
 
-func (c *TestContext) Events() Events {
-	return c.e2ectx.EventStore.GetByCGID(c.TID)
+func (c *TestContext) Events(expectedConnections int) *Events {
+	events, err := c.e2ectx.EventStore.AwaitByCtxID(c.ID, expectedConnections, AwaitEventsTimeout)
+	require.NoError(c.T, err)
+	return events
 }
 
 func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func(*testing.T)) {

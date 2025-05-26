@@ -19,8 +19,8 @@ func TestHTTP(t *testing.T) {
 		require.NoError(t, example.Err)
 
 		// ensure we captured the connection
-		require.Len(t, example.Events().Connections, 1)
-		conn := example.Events().Connections[0]
+		events := example.AwaitEvents(1)
+		conn := events.Connections[0]
 		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
 	})
 }

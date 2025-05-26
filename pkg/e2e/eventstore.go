@@ -148,6 +148,7 @@ func (e *EventStore) AwaitByCtxID(id string, numConnections int, timeout time.Du
 			return nil, fmt.Errorf("exceeded %s timeout while waiting for %d connections for ctxid %s", timeout, numConnections, id)
 		}
 
+		e.logger.Info(fmt.Sprintf("waiting for %d connections", numConnections), zap.String("ctxid", id))
 		events := e.GetByCtxID(id)
 		if len(events.Connections) >= numConnections {
 			return events, nil

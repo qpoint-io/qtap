@@ -132,7 +132,7 @@ func (c *Context) TestCtx(t *testing.T) *TestContext {
 		ID:     id,
 		e2ectx: c,
 		T:      t,
-		L:      c.L.With(zap.String("test_ctx", id)),
+		L:      c.L.With(zap.String("ctxid", id)),
 	}
 }
 

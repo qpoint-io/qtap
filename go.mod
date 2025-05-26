@@ -12,6 +12,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/minio/minio-go/v7 v7.0.92
 	github.com/moby/moby v28.1.1+incompatible
 	github.com/prometheus/client_golang v1.22.0
 	github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9
@@ -124,6 +125,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.7 // indirect
 	github.com/ghostiam/protogetter v0.3.8 // indirect
 	github.com/go-critic/go-critic v0.11.5 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -139,6 +141,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/go-xmlfmt/xmlfmt v1.1.3 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -175,6 +178,7 @@ require (
 	github.com/kisielk/errcheck v1.8.0 // indirect
 	github.com/kkHAIKE/contextcheck v1.1.5 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/kulti/thelper v0.6.3 // indirect
 	github.com/kunwardeep/paralleltest v1.0.10 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
@@ -199,6 +203,8 @@ require (
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mgechev/revive v1.5.1 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
+	github.com/minio/crc64nvme v1.0.1 // indirect
+	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -228,6 +234,7 @@ require (
 	github.com/opencontainers/selinux v1.12.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/polyfloyd/go-errorlint v1.7.0 // indirect
@@ -269,6 +276,7 @@ require (
 	github.com/tetafro/godot v1.4.20 // indirect
 	github.com/timakin/bodyclose v0.0.0-20241017074812-ed6a65f985e3 // indirect
 	github.com/timonwong/loggercheck v0.10.1 // indirect
+	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/tomarrell/wrapcheck/v2 v2.10.0 // indirect
 	github.com/tommy-muehle/go-mnd/v2 v2.5.1 // indirect
 	github.com/ultraware/funlen v0.2.0 // indirect

@@ -298,6 +298,9 @@ func (c *Connection) Close() {
 
 	c.logger.Debug("closing connection")
 
+	// removes itself from the pool of connections
+	c.services.finalizeConnection(c)
+
 	// process any remaining events in the queue (this is blocking)
 	if err := c.eventQueue.Drain(3 * time.Second); err != nil {
 		c.logger.Warn("failed to drain event queue", zap.Error(err))
@@ -326,9 +329,6 @@ func (c *Connection) Close() {
 	// if the connection is expected this will be a debug level log
 	// otherwise it will be a warning or an error
 	c.logConnectionReport()
-
-	// removes itself from the pool of connections
-	c.services.finalizeConnection(c)
 }
 
 func (c *Connection) SetDomain(input string) {

@@ -1,4 +1,4 @@
-package observerstest
+package plugintest
 
 import (
 	"context"
@@ -113,7 +113,7 @@ func Headers(kv map[string]string) *plugins.HttpHeaderMap {
 	return h
 }
 
-type FilterContext struct {
+type Context struct {
 	T         *testing.T
 	VReqBody  []byte
 	VResBody  []byte
@@ -125,16 +125,16 @@ type FilterContext struct {
 // plugins.HttpPluginInstance interface implementation
 // this is the client side of the connection that filters
 // can use to interact with the connection
-func (c *FilterContext) GetRequestBodyBuffer() plugins.BodyBuffer {
+func (c *Context) GetRequestBodyBuffer() plugins.BodyBuffer {
 	return Buffer(c.VReqBody)
 }
 
-func (c *FilterContext) GetResponseBodyBuffer() plugins.BodyBuffer {
+func (c *Context) GetResponseBodyBuffer() plugins.BodyBuffer {
 	return Buffer(c.VResBody)
 }
 
 // Metadata returns connection specific metadata in a map[string]any.
-func (c *FilterContext) Metadata() map[string]plugins.MetadataValue {
+func (c *Context) Metadata() map[string]plugins.MetadataValue {
 	m := make(map[string]plugins.MetadataValue, len(c.VMetadata))
 	for k, v := range c.VMetadata {
 		m[k] = &metadata.MetadataValue{Value: v}
@@ -143,7 +143,7 @@ func (c *FilterContext) Metadata() map[string]plugins.MetadataValue {
 }
 
 // GetMetadata returns a key value of type any, if the key exists.
-func (c *FilterContext) GetMetadata(key string) plugins.MetadataValue {
+func (c *Context) GetMetadata(key string) plugins.MetadataValue {
 	if value, ok := c.VMetadata[key]; ok {
 		return &metadata.MetadataValue{Value: value}
 	}
@@ -154,11 +154,11 @@ func (c *FilterContext) GetMetadata(key string) plugins.MetadataValue {
 	return &metadata.MetadataValue{}
 }
 
-func (c *FilterContext) Tags() tags.List {
+func (c *Context) Tags() tags.List {
 	return tags.FromValues(c.VTags)
 }
 
-func (c *FilterContext) Context() context.Context {
+func (c *Context) Context() context.Context {
 	if c.VContext != nil {
 		return c.VContext
 	}

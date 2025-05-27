@@ -201,7 +201,7 @@ func TestValidate(t *testing.T) {
 				},
 			},
 			errors: []string{
-				`validating rulekit macros: "test": syntax error at line 1:1:
+				`parsing rulekit macros: "test": syntax error at line 1:1:
 +!&3
 ^
 syntax error: unexpected symbol`,
@@ -238,7 +238,7 @@ syntax error: unexpected symbol`,
 				},
 			},
 			errors: []string{
-				`validating rulekit macros: "zone": name must be unique`,
+				`parsing rulekit macros: "zone": name must be unique`,
 			},
 		},
 	}

@@ -181,7 +181,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 	factory.Init(logger, pluginConfYaml)
 
 	// dependencies
-	macros := &rulekitsvc.MacrosFactory{
+	macros := &rulekitsvc.Factory{
 		Macros: map[string]rulekit.Rule{
 			"success_response": rulekit.MustParse("response.status >= 200 && response.status < 300"),
 			"pi": rulekit.RuleFunc(func(ctx *rulekit.Ctx) rulekit.Result {

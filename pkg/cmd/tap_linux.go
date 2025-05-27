@@ -71,7 +71,7 @@ var (
 		func() services.ServiceFactory { return &objecstores3.Factory{} },
 
 		// Add more services here...
-		func() services.ServiceFactory { return &rulekitsvc.MacrosFactory{} },
+		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{

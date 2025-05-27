@@ -98,8 +98,10 @@ func (i *instance) Destroy() {
 		maps.Copy(allPairs, metaPairs)
 
 		var macros map[string]rulekit.Rule
+		functions := rulekitext.Functions
 		if i.macros != nil {
 			macros = i.macros.Macros()
+			functions = i.macros.Functions()
 		}
 
 		// Evaluate rules in order
@@ -109,7 +111,7 @@ func (i *instance) Destroy() {
 			}
 
 			res := r.rule.Eval(&rulekit.Ctx{
-				Functions: rulekitext.Functions,
+				Functions: functions,
 				Macros:    macros,
 				KV:        allPairs,
 			})

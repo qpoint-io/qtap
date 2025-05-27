@@ -96,7 +96,8 @@ type Rule struct {
 }
 
 type Rulekit struct {
-	Macros []*RulekitMacro `yaml:"macros" validate:"omitempty,dive"`
+	Macros   []*RulekitMacro `yaml:"macros" validate:"omitempty,dive"`
+	Resolver string          `yaml:"resolver"`
 }
 
 type RulekitMacro struct {

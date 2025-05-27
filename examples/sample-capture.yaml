@@ -17,8 +17,8 @@ stacks:
           level: summary # (none|summary|headers|full)
           format: text # (json|text)
           rules:
-            - name: full log httpbin.org
-              expr: request.host == "httpbin.org"
+            - name: full log httpbin.org by ip
+              expr: nslookup(request.host) contains 66.241.125.232
               level: full
             - name: headers log on 500
               expr: response.status >= 500
@@ -29,6 +29,7 @@ stacks:
 
 # rulekit config
 rulekit:
+  resolver: 1.1.1.1:53
   macros:
     - name: is_4xx
       expr: response.status >= 400 && response.status < 500

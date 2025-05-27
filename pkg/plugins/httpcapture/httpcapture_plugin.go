@@ -127,7 +127,7 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Servi
 func (f *Factory) RequiredServices() []services.ServiceType {
 	return []services.ServiceType{
 		eventstore.TypeEventStore,
-		rulekitsvc.TypeRulekitMacros,
+		rulekitsvc.TypeRulekit,
 	}
 }
 

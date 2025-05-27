@@ -189,6 +189,11 @@ func (i *instance) Destroy() {
 	// Set metadata
 	setArtifactMetadata(artifact, i.conn)
 
+	// Attach the summary to the artifact
+	if summary := transaction.Summary(); len(summary) > 0 {
+		artifact.Summary = summary
+	}
+
 	// Save the artifact to the eventstore
 	i.logger.Debug("saving HTTP transaction to eventstore",
 		zap.String("level", string(captureLevel)),
@@ -205,7 +210,7 @@ func setArtifactMetadata(artifact *eventstore.Artifact, ctx plugins.PluginContex
 	}
 
 	// Set connection ID if available
-	if connID := ctx.GetMetadata("connection-id").String(); connID != "" {
+	if connID := ctx.GetMetadata("process-conn_id").String(); connID != "" {
 		artifact.SetConnectionID(connID)
 	}
 

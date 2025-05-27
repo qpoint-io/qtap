@@ -181,9 +181,10 @@ type Artifact struct {
 
 	meta
 
-	Type        ArtifactType `json:"type"`
-	Data        []byte       `json:"data"`
-	ContentType string       `json:"contentType"`
+	Type        ArtifactType   `json:"type"`
+	Data        []byte         `json:"data"`
+	ContentType string         `json:"contentType"`
+	Summary     map[string]any `json:"summary,omitempty"`
 }
 
 func (a *Artifact) Fields() []zap.Field {
@@ -225,6 +226,7 @@ func (a *Artifact) Record(url string) *ArtifactRecord {
 		Timestamp: time.Now(),
 		Digest:    a.Digest(),
 		URL:       url,
+		Summary:   a.Summary,
 	}
 }
 
@@ -232,10 +234,11 @@ func (a *Artifact) Record(url string) *ArtifactRecord {
 type ArtifactRecord struct {
 	meta
 
-	Timestamp time.Time    `json:"timestamp"`
-	Type      ArtifactType `json:"type"`
-	Digest    string       `json:"digest"`
-	URL       string       `json:"url"`
+	Timestamp time.Time      `json:"timestamp"`
+	Type      ArtifactType   `json:"type"`
+	Digest    string         `json:"digest"`
+	URL       string         `json:"url"`
+	Summary   map[string]any `json:"summary,omitempty"`
 }
 
 type Direction string

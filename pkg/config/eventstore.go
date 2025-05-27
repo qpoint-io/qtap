@@ -7,6 +7,7 @@ const (
 	EventStoreType_CONSOLE      EventStoreType = "stdout"
 	EventStoreType_PULSE        EventStoreType = "pulse"
 	EventStoreType_PULSE_LEGACY EventStoreType = "pulse-legacy"
+	EventStoreType_AXIOM        EventStoreType = "axiom"
 )
 
 type ServiceEventStore struct {
@@ -25,6 +26,8 @@ func (s ServiceEventStore) ServiceType() string {
 		return "eventstore.console"
 	case EventStoreType_DISABLED:
 		return "eventstore.noop"
+	case EventStoreType_AXIOM:
+		return "eventstore.axiom"
 	case "e2e": // TODO(e2e)
 		return "eventstore.e2e"
 	default:
@@ -33,11 +36,16 @@ func (s ServiceEventStore) ServiceType() string {
 }
 
 type EventStoreConfig struct {
+	Token                 ValueSource `yaml:"token"`
 	EventStorePulseConfig `yaml:",inline,omitempty"`
+	EventStoreAxiomConfig `yaml:",inline,omitempty"`
 }
 
 type EventStorePulseConfig struct {
-	URL           string      `yaml:"url"`
-	Token         ValueSource `yaml:"token"`
-	AllowInsecure bool        `yaml:"allow_insecure"`
+	URL           string `yaml:"url"`
+	AllowInsecure bool   `yaml:"allow_insecure"`
+}
+
+type EventStoreAxiomConfig struct {
+	Dataset ValueSource `yaml:"dataset"`
 }

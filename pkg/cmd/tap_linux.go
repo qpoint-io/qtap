@@ -32,6 +32,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
+	eventstoreaxiom "github.com/qpoint-io/qtap/pkg/services/eventstore/axiom"
 	eventstoreconsole "github.com/qpoint-io/qtap/pkg/services/eventstore/console"
 	eventstorenoop "github.com/qpoint-io/qtap/pkg/services/eventstore/noop"
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
@@ -63,6 +64,7 @@ var (
 		// Eventstore services
 		func() services.ServiceFactory { return &eventstoreconsole.Factory{} },
 		func() services.ServiceFactory { return &eventstorenoop.Factory{} },
+		func() services.ServiceFactory { return &eventstoreaxiom.Factory{} },
 
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstoreconsole.Factory{} },

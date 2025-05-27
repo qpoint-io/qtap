@@ -122,7 +122,7 @@ func getMetadata(ctx plugins.PluginContext) Metadata {
 	m.BytesSent = ctx.GetMetadata("wr_bytes").Int64()
 	m.BytesReceived = ctx.GetMetadata("rd_bytes").Int64()
 	m.EndpointID = ctx.GetMetadata("endpoint-id").String()
-	m.ConnectionID = ctx.GetMetadata("connection-id").String()
+	m.ConnectionID = ctx.GetMetadata("process-conn_id").String()
 
 	return m
 }
@@ -174,6 +174,83 @@ func getResponseInfo(headers plugins.Headers, _ plugins.PluginContext) Response 
 	}
 
 	return r
+}
+
+func (m Metadata) Summary() map[string]any {
+	summary := map[string]any{}
+	if m.ProcessExe != "" {
+		summary["process_exe"] = m.ProcessExe
+	}
+	if m.ContainerName != "" {
+		summary["container_name"] = m.ContainerName
+	}
+	if m.ContainerImage != "" {
+		summary["container_image"] = m.ContainerImage
+	}
+	if m.PodName != "" {
+		summary["pod_name"] = m.PodName
+	}
+	if m.PodNamespace != "" {
+		summary["pod_namespace"] = m.PodNamespace
+	}
+	if m.QpointRequestID != "" {
+		summary["qpoint_request_id"] = m.QpointRequestID
+	}
+	if m.ConnectionID != "" {
+		summary["connection_id"] = m.ConnectionID
+	}
+	return summary
+}
+
+func (r Request) Summary() map[string]any {
+	summary := map[string]any{}
+	if r.Method != "" {
+		summary["request_method"] = r.Method
+	}
+	if r.Scheme != "" {
+		summary["request_scheme"] = r.Scheme
+	}
+	if r.Authority != "" {
+		summary["request_host"] = r.Authority
+	}
+	if r.Protocol != "" {
+		summary["request_protocol"] = r.Protocol
+	}
+	if r.ContentType != "" {
+		summary["request_content_type"] = r.ContentType
+	}
+	return summary
+}
+
+func (r Response) Summary() map[string]any {
+	summary := map[string]any{}
+	summary["response_status"] = r.Status
+	if r.ContentType != "" {
+		summary["response_content_type"] = r.ContentType
+	}
+	return summary
+}
+
+func (t *HttpTransaction) Summary() map[string]any {
+	summary := map[string]any{}
+	// Transaction-level fields
+	if t.DurationMs > 0 {
+		summary["duration_ms"] = t.DurationMs
+	}
+	if t.Direction != "" {
+		summary["direction"] = t.Direction
+	}
+	// Merge metadata, request, response summaries
+	for k, v := range t.Metadata.Summary() {
+		summary[k] = v
+	}
+	for k, v := range t.Request.Summary() {
+		summary[k] = v
+	}
+	for k, v := range t.Response.Summary() {
+		summary[k] = v
+	}
+	return summary
 }
 
 // ToJSON converts the HttpTransaction to JSON

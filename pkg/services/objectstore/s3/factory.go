@@ -51,6 +51,9 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	if c.ObjectStoreS3Config.Bucket == "" {
 		return errors.New("bucket is required")
 	}
+	if c.ObjectStoreS3Config.AccessURL != "" {
+		f.accessURL = c.ObjectStoreS3Config.AccessURL
+	}
 	if c.ObjectStoreS3Config.AccessKey.String() == "" {
 		if c.ObjectStoreS3Config.AccessKey.Type == config.ValueSourceType_ENV {
 			return fmt.Errorf("s3 access key env var (%s) is empty or not set", c.ObjectStoreS3Config.AccessKey.Value)

@@ -4,6 +4,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/rulekit"
 	"go.uber.org/zap"
@@ -112,9 +113,11 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Servi
 
 	// Get the eventstore service
 	for _, s := range svcs {
-		if i, ok := s.(eventstore.EventStore); ok {
+		switch i := s.(type) {
+		case eventstore.EventStore:
 			fi.eventstore = i
-			break
+		case rulekitsvc.Macros:
+			fi.macros = i
 		}
 	}
 
@@ -122,7 +125,10 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Servi
 }
 
 func (f *Factory) RequiredServices() []services.ServiceType {
-	return []services.ServiceType{eventstore.TypeEventStore}
+	return []services.ServiceType{
+		eventstore.TypeEventStore,
+		rulekitsvc.TypeRulekitMacros,
+	}
 }
 
 func (f *Factory) Destroy() {

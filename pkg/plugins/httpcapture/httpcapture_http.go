@@ -10,6 +10,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/rulekit"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -18,13 +19,14 @@ import (
 type instance struct {
 	logger *zap.Logger
 
-	ctx  context.Context
-	conn plugins.PluginContext
-
+	ctx        context.Context
+	conn       plugins.PluginContext
+	macros     rulekitsvc.Macros
 	eventstore eventstore.EventStore
-	level      CaptureLevel
-	format     OutputFormat
-	rules      []LogRule
+
+	level  CaptureLevel
+	format OutputFormat
+	rules  []LogRule
 
 	reqheaders plugins.Headers
 	resheaders plugins.Headers
@@ -95,6 +97,11 @@ func (i *instance) Destroy() {
 		maps.Copy(allPairs, resPairs)
 		maps.Copy(allPairs, metaPairs)
 
+		var macros map[string]rulekit.Rule
+		if i.macros != nil {
+			macros = i.macros.Macros()
+		}
+
 		// Evaluate rules in order
 		for _, r := range i.rules {
 			if r.rule == nil {
@@ -103,6 +110,7 @@ func (i *instance) Destroy() {
 
 			res := r.rule.Eval(&rulekit.Ctx{
 				Functions: rulekitext.Functions,
+				Macros:    macros,
 				KV:        allPairs,
 			})
 			if !res.Ok() {

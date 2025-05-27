@@ -11,22 +11,29 @@ services:
 stacks:
   basic_reporting:
     plugins:
+      - type: report_usage
       - type: http_capture
         config:
-          level: summary # (none|summary|details|full)
+          level: summary # (none|summary|headers|full)
           format: text # (json|text)
           rules:
             - name: full log httpbin.org
               expr: request.host == "httpbin.org"
               level: full
-            - name: details log on 500
+            - name: headers log on 500
               expr: response.status >= 500
-              level: details
+              level: headers
             - name: full log on 400
-              expr: response.status >= 400 && response.status < 500
+              expr: is_4xx() # see rulekit config below
               level: full
 
-      - type: report_usage
+# rulekit config
+rulekit:
+  macros:
+    - name: is_4xx
+      expr: response.status >= 400 && response.status < 500
+  
+# tap config
 tap:
   direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true

@@ -138,7 +138,12 @@ func (c *Config) Validate() error {
 	c.Normalize()
 
 	if c.Rulekit != nil {
-		if err := ValidateRulekitMacros(c.Rulekit.Macros); err != nil {
+		macros, err := c.Rulekit.ParseMacros()
+		if err != nil {
+			return fmt.Errorf("parsing rulekit macros: %w", err)
+		}
+
+		if err := ValidateRulekitMacros(macros); err != nil {
 			return fmt.Errorf("validating rulekit macros: %w", err)
 		}
 	}
@@ -173,21 +178,25 @@ func ValidateRuleExpression(fl validator.FieldLevel) bool {
 	return err == nil
 }
 
-func ValidateRulekitMacros(configMacros []*RulekitMacro) error {
-	macros := make(map[string]rulekit.Rule, len(configMacros))
-	for _, macro := range configMacros {
+func (r *Rulekit) ParseMacros() (map[string]rulekit.Rule, error) {
+	macros := make(map[string]rulekit.Rule, len(r.Macros))
+	for _, macro := range r.Macros {
 		if _, exists := macros[macro.Name]; exists {
-			return fmt.Errorf("%q: name must be unique", macro.Name)
+			return nil, fmt.Errorf("%q: name must be unique", macro.Name)
 		}
 
 		r, err := rulekit.Parse(macro.Expr)
 		if err != nil {
-			return fmt.Errorf("%q: %w", macro.Name, err)
+			return nil, fmt.Errorf("%q: %w", macro.Name, err)
 		}
 
 		macros[macro.Name] = r
 	}
 
+	return macros, nil
+}
+
+func ValidateRulekitMacros(macros map[string]rulekit.Rule) error {
 	err := (&rulekit.Ctx{
 		Functions: rulekitext.Functions,
 		Macros:    macros,

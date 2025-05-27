@@ -37,6 +37,7 @@ import (
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/status"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -70,6 +71,7 @@ var (
 		func() services.ServiceFactory { return &objecstores3.Factory{} },
 
 		// Add more services here...
+		func() services.ServiceFactory { return &rulekitsvc.MacrosFactory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{

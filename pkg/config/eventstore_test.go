@@ -32,11 +32,11 @@ func TestEventStoreUnmarshal(t *testing.T) {
 				Type: EventStoreType_PULSE,
 				ID:   "pulse-store",
 				EventStoreConfig: EventStoreConfig{
+					Token: ValueSource{
+						Value: "secret-token",
+					},
 					EventStorePulseConfig: EventStorePulseConfig{
 						URL: "https://pulse.example.com",
-						Token: ValueSource{
-							Value: "secret-token",
-						},
 					},
 				},
 			},

@@ -83,7 +83,7 @@ func (tl *Logger) Assert(msg string, expected []map[string]any) {
 	tl.T.Helper()
 	msgs := tl.Get(msg)
 	require.NotNil(tl.T, msgs)
-	require.Equalf(tl.T, len(expected), len(msgs), "asserting log message: %v", msg)
+	require.Lenf(tl.T, msgs, len(expected), "asserting log message: %v", msg)
 	for i, fields := range expected {
 		assert.Subsetf(tl.T, msgs[i], fields, "asserting log message fields [%d]: %v", i, msg)
 	}

@@ -21,6 +21,8 @@ type Service interface {
 type FactoryFactory func() ServiceFactory
 
 // ServiceFactory creates service instances
+//
+//go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/service_factory.go -package mocks . ServiceFactory
 type ServiceFactory interface {
 	// Init initializes the service factory
 	Init(ctx context.Context, config any) error
@@ -38,6 +40,8 @@ type SetRegistry interface {
 }
 
 // RegistryAccessor is a type that can access the service registry
+//
+//go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/registry_accessor.go -package mocks . RegistryAccessor
 type RegistryAccessor interface {
 	// Get retrieves a service factory by type
 	Get(serviceType ServiceType) ServiceFactory

@@ -1,0 +1,26 @@
+version: 2
+services:
+  event_stores:
+    - type: axiom
+      dataset:
+        type: text
+        value: qpoint-events  # The name of the Axiom dataset to send events to
+      token:
+        type: env  # or "text" for direct value
+        value: AXIOM_TOKEN  # Environment variable name or direct token value
+  object_stores:
+    - type: stdout
+stacks:
+  report_to_axiom:
+    plugins:
+      - type: access_logs
+        config:
+          mode: summary
+          format: console
+      - type: report_usage
+tap:
+  direction: egress-external
+  ignore_loopback: true
+  audit_include_dns: false
+  http:
+    stack: report_to_axiom

@@ -19,6 +19,8 @@ const (
 )
 
 // EventStore defines the interface for event storage services
+//
+//go:generate go tool go.uber.org/mock/mockgen -destination ./eventstore_mock.go -package eventstore . EventStore
 type EventStore interface {
 	services.Service
 	Save(ctx context.Context, item any)

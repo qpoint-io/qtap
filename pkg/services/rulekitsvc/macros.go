@@ -5,32 +5,34 @@ import (
 	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/rulekit"
 )
 
 const (
-	TypeRulekitMacros services.ServiceType = "rulekit.macros"
+	TypeRulekit services.ServiceType = "rulekit"
 )
 
-type Macros interface {
+type Service interface {
 	services.Service
 	Macros() map[string]rulekit.Rule
+	Functions() map[string]*rulekit.Function
 }
 
-type MacrosFactory struct {
+type Factory struct {
 	Macros map[string]rulekit.Rule
 }
 
-func (f *MacrosFactory) FactoryType() services.ServiceType {
-	return TypeRulekitMacros
+func (f *Factory) FactoryType() services.ServiceType {
+	return TypeRulekit
 }
 
-func (f *MacrosFactory) ServiceType() services.ServiceType {
-	return TypeRulekitMacros
+func (f *Factory) ServiceType() services.ServiceType {
+	return TypeRulekit
 }
 
-func (f *MacrosFactory) Init(ctx context.Context, cfg any) error {
+func (f *Factory) Init(ctx context.Context, cfg any) error {
 	c, ok := cfg.(*config.Rulekit)
 	if !ok {
 		return fmt.Errorf("invalid config type: %T wanted *config.Rulekit", cfg)
@@ -48,16 +50,22 @@ func (f *MacrosFactory) Init(ctx context.Context, cfg any) error {
 	return nil
 }
 
-func (f *MacrosFactory) Create(ctx context.Context) (services.Service, error) {
-	return macrosService(f.Macros), nil
+func (f *Factory) Create(ctx context.Context) (services.Service, error) {
+	return &service{f: f}, nil
 }
 
-type macrosService map[string]rulekit.Rule
-
-func (s macrosService) ServiceType() services.ServiceType {
-	return TypeRulekitMacros
+type service struct {
+	f *Factory
 }
 
-func (s macrosService) Macros() map[string]rulekit.Rule {
-	return s
+func (s *service) ServiceType() services.ServiceType {
+	return TypeRulekit
+}
+
+func (s *service) Macros() map[string]rulekit.Rule {
+	return s.f.Macros
+}
+
+func (s *service) Functions() map[string]*rulekit.Function {
+	return rulekitext.Functions
 }

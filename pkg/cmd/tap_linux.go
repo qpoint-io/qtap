@@ -87,7 +87,7 @@ func init() {
 	// Common options
 	rootCmd.Flags().StringVar(&qpointConfig, "config",
 		getEnvOr("QPOINT_CONFIG", ""),
-		"Configuration file path")
+		"Configuration file path or URL (starting with http:// or https://)")
 	_ = rootCmd.Flags().Int("audit-log-buffer-size", 0, "[deprecated]")
 	_ = rootCmd.Flags().MarkDeprecated("audit-log-buffer-size", "this flag is no longer applicable to the new audit log implementation")
 	rootCmd.Flags().StringVar(&deploymentTags, "tags",

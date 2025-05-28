@@ -47,6 +47,7 @@ type ControlManager interface {
 type ErrStreamUnrecoverable error
 
 type Connection struct {
+	mu     sync.Mutex
 	logger *zap.Logger
 	// connecting reporting system
 	report
@@ -108,32 +109,7 @@ type ConnOpt func(c *Connection)
 
 func WithProcess(process *process.Process) ConnOpt {
 	return func(c *Connection) {
-		if process == nil {
-			return
-		}
-		c.process = process
-
-		// add tags
-		if c.tags != nil && c.process != nil {
-			c.tags.Merge(c.process.Tags())
-
-			// TODO: the tags below should be added to the processes
-			// tag list and merged (see above).
-			c.tags.Add("bin", c.process.Binary)
-			c.tags.Add("strategy", c.process.Strategy.String())
-			if hostname, _ := c.process.Hostname(); hostname != "" {
-				if c.process.PodID != "" {
-					c.tags.Add("pod", hostname)
-
-					parts := strings.Split(hostname, "-")
-					if len(parts) > 0 {
-						c.tags.Add("app", parts[0])
-					}
-				} else {
-					c.tags.Add("host", hostname)
-				}
-			}
-		}
+		c.setProcess(process)
 	}
 }
 
@@ -237,6 +213,53 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	}
 
 	return c
+}
+
+func (c *Connection) SetProcess(process *process.Process) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.setProcess(process)
+}
+
+func (c *Connection) Process() *process.Process {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.process
+}
+
+// setProcess sets the process and adds tags to the connection.
+// Note that this is not thread safe.
+func (c *Connection) setProcess(process *process.Process) {
+	c.process = process
+	if process == nil {
+		return
+	}
+
+	// add tags
+	if c.tags == nil {
+		c.tags = tags.New()
+	}
+
+	c.tags.Merge(c.process.Tags())
+
+	// TODO: the tags below should be added to the processes
+	// tag list and merged (see above).
+	c.tags.Add("bin", c.process.Binary)
+	c.tags.Add("strategy", c.process.Strategy.String())
+	if hostname, _ := c.process.Hostname(); hostname != "" {
+		if c.process.PodID != "" {
+			c.tags.Add("pod", hostname)
+
+			parts := strings.Split(hostname, "-")
+			if len(parts) > 0 {
+				c.tags.Add("app", parts[0])
+			}
+		} else {
+			c.tags.Add("host", hostname)
+		}
+	}
 }
 
 // Open initializes the connection monitoring
@@ -429,7 +452,7 @@ func (c *Connection) Proto() string {
 }
 
 func (c *Connection) ProcessMeta() map[string]any {
-	p := c.process
+	p := c.Process()
 	if p == nil {
 		return nil
 	}
@@ -532,12 +555,12 @@ func (c *Connection) ControlValues() map[string]any {
 	}
 
 	// src
-	if c.process != nil {
-		src["process"] = c.process.ControlValues()
+	if p := c.Process(); p != nil {
+		src["process"] = p.ControlValues()
 
-		if container := c.process.Container; container != nil && container.ID != "" {
+		if container := p.Container; container != nil && container.ID != "" {
 			src["container"] = container.ControlValues()
-			if pod := c.process.Pod; pod != nil && pod.Name != "" {
+			if pod := p.Pod; pod != nil && pod.Name != "" {
 				src["pod"] = pod.ControlValues()
 			}
 		}

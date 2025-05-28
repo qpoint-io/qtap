@@ -27,7 +27,7 @@ func (c *Connection) logConnectionReport() {
 	span.SetAttributes(attribute.String("connection.handler", c.HandlerType.String()))
 
 	// add strategy
-	if proc := c.process; proc != nil {
+	if proc := c.Process(); proc != nil {
 		span.SetAttributes(attribute.String("connection.strategy", proc.Strategy.String()))
 		fields = append(fields, zap.String("strategy", proc.Strategy.String()))
 	}

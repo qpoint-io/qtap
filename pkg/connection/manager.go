@@ -121,6 +121,19 @@ func (m *Manager) HandleEvent(event Keyer) {
 	}
 
 	if conn, exists := m.connections.Load(event.Key()); exists {
+		// In most cases, processOpenEvent() will set the process. Very rarely,
+		// a race will occur where the connection is created without the process.
+		// More details on this in processOpenEvent().
+		//
+		// As a backup, attempt to rediscover the process on following events.
+		if conn.Process() == nil && conn.OpenEvent != nil {
+			proc := m.processManager.Get(int(conn.OpenEvent.PID))
+			if proc != nil {
+				m.logger.Info("discovered process", zap.Int("pid", proc.Pid))
+				conn.SetProcess(proc)
+			}
+		}
+
 		if err := conn.eventQueue.Push(event); err != nil {
 			m.logger.Error("failed to push event to connection queue", zap.Error(err))
 		}

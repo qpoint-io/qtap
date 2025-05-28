@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"sync"
@@ -47,14 +48,17 @@ type Manager struct {
 	// internal
 	mu    sync.Mutex
 	procs *synq.Map[int, *Process]
+	// processWaiters is a map of pid to channels that are waiting for the process to be discovered
+	processWaiters map[int][]chan *Process
 }
 
 func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 	pm := &Manager{
-		Logger:      logger,
-		procEventer: procEventer,
-		procs:       synq.NewMap[int, *Process](),
-		envMask:     synq.NewMap[string, bool](),
+		Logger:         logger,
+		procEventer:    procEventer,
+		procs:          synq.NewMap[int, *Process](),
+		envMask:        synq.NewMap[string, bool](),
+		processWaiters: make(map[int][]chan *Process),
 	}
 
 	trackActiveProcessCount(pm.procs.Len)
@@ -102,6 +106,29 @@ func (m *Manager) Get(pid int) *Process {
 
 	// return the process
 	return process
+}
+
+// Await gets a process by pid. If it exists, it is returned immediately.
+// Otherwise, it will wait for it to be discovered and then return it.
+// The context can be used to set a timeout.
+func (m *Manager) Await(ctx context.Context, pid int) (*Process, error) {
+	m.mu.Lock()
+	if proc, exists := m.procs.Load(pid); exists {
+		m.mu.Unlock()
+		return proc, nil
+	}
+
+	waiter := make(chan *Process)
+	m.processWaiters[pid] = append(m.processWaiters[pid], waiter)
+	m.mu.Unlock()
+
+	// wait for the process to be discovered or the context to be done
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case p := <-waiter:
+		return p, nil
+	}
 }
 
 func (m *Manager) Observe(observer Observer) {
@@ -229,21 +256,22 @@ func (m *Manager) addProc(p *Process) error {
 	// add to the map
 	m.procs.Store(p.Pid, p)
 
+	// notify the waiters
+	waiters, ok := m.processWaiters[p.Pid]
+	if ok {
+		delete(m.processWaiters, p.Pid)
+		go func() {
+			for _, waiter := range waiters {
+				select {
+				case waiter <- p:
+				default:
+				}
+			}
+		}()
+	}
+
 	// initialize the observers
 	go m.initProcObservers(p, procChanged)
-
-	// debug
-	// if p.ContainerID != "root" {
-	// 	m.Logger.Debug("process discovered",
-	// 		zap.Int("pid", p.Pid),
-	// 		zap.String("exe", p.Exe),
-	// 		zap.String("container_id", p.ContainerID),
-	// 		zap.Uint64("root_id", p.RootID),
-	// 		zap.String("pod_id", p.PodID),
-	// 		zap.Int("total_procs", m.procs.Len()),
-	// 		zap.String("root_fs", p.RootFS()),
-	// 	)
-	// }
 
 	return nil
 }

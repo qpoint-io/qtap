@@ -43,18 +43,29 @@ func (m *Manager) handleExecStartEvent(r *bytes.Reader) error {
 		return nil
 	}
 
-	// Create a buffer to store the exe path
-	exe := bytes.NewBuffer(make([]byte, e.ExeSize-1))
+	// attempt to read the executable path
+	// in some cases, the executable path is not available and so
+	// the event will have an empty exe with an exe_size of 0.
+	//
+	// the process manager will discover the executable path from the /proc
+	// filesystem.
+	var exe string
+	if e.ExeSize > 0 {
+		// Create a buffer to store the exe path
+		exeBuf := bytes.NewBuffer(make([]byte, e.ExeSize-1))
 
-	// read the exe path into the byte slice
-	if _, err := r.Read(exe.Bytes()); err != nil {
-		m.logger.Error("failed to read exe path", zap.Error(err))
-		return nil
+		// read the exe path into the byte slice
+		if _, err := r.Read(exeBuf.Bytes()); err != nil {
+			m.logger.Error("failed to read exe path", zap.Error(err))
+			return nil
+		}
+
+		exe = exeBuf.String()
 	}
 
 	if m.reciever != nil {
-		// create process /w string
-		p := process.NewProcess(int(e.Pid), exe.String())
+		// create process
+		p := process.NewProcess(int(e.Pid), exe)
 
 		// set the notifier so the process can indicate when it's changed
 		// and when we should collect data for the ebpf meta map

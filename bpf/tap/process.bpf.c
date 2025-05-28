@@ -131,20 +131,13 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 	start_event->type = PROC_EXEC_START;
 	start_event->pid  = pid;
 
-	// set the executable path
+	// attempt to read the executable path
 	int read_result = bpf_probe_read_str(start_event->exe, sizeof(start_event->exe), (void *)ctx->args[0]);
-
-	// ensure the executable path was read successfully
 	if (read_result > 0) {
-		// set the executable size
+		// set the path size
 		start_event->exe_size = read_result;
-
-		// submit the event
-		bpf_ringbuf_submit(start_event, 0);
-	} else {
-		// discard the event
-		bpf_ringbuf_discard(start_event, 0);
 	}
+	bpf_ringbuf_submit(start_event, 0);
 
 	// extract arguments
 	const char **argv = (const char **)(ctx->args[1]);

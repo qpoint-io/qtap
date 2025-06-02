@@ -1,0 +1,11 @@
+type: otel
+id: otel-store
+endpoint: "localhost:4317"
+protocol: "grpc"
+service_name: "qtap-test"
+environment: "test"
+headers:
+  api-key: "test-key"
+tls:
+  enabled: false
+  insecure_skip_verify: false

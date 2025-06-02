@@ -51,6 +51,30 @@ func TestEventStoreUnmarshal(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:     "otel eventstore",
+			filename: "testdata/eventstore_otel.yaml",
+			want: ServiceEventStore{
+				Type: EventStoreType_OTEL,
+				ID:   "otel-store",
+				EventStoreConfig: EventStoreConfig{
+					EventStoreOTelConfig: EventStoreOTelConfig{
+						Endpoint:    "localhost:4317",
+						Protocol:    "grpc",
+						ServiceName: "qtap-test",
+						Environment: "test",
+						Headers: map[string]string{
+							"api-key": "test-key",
+						},
+						TLS: EventStoreOTelTLS{
+							Enabled:            false,
+							InsecureSkipVerify: false,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

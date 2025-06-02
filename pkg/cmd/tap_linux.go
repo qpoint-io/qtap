@@ -35,6 +35,7 @@ import (
 	eventstoreaxiom "github.com/qpoint-io/qtap/pkg/services/eventstore/axiom"
 	eventstoreconsole "github.com/qpoint-io/qtap/pkg/services/eventstore/console"
 	eventstorenoop "github.com/qpoint-io/qtap/pkg/services/eventstore/noop"
+	eventstoreotel "github.com/qpoint-io/qtap/pkg/services/eventstore/otel"
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
@@ -65,6 +66,7 @@ var (
 		func() services.ServiceFactory { return &eventstoreconsole.Factory{} },
 		func() services.ServiceFactory { return &eventstorenoop.Factory{} },
 		func() services.ServiceFactory { return &eventstoreaxiom.Factory{} },
+		func() services.ServiceFactory { return &eventstoreotel.Factory{} },
 
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstoreconsole.Factory{} },

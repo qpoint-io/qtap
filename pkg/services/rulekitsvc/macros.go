@@ -38,15 +38,18 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		return fmt.Errorf("invalid config type: %T wanted *config.Rulekit", cfg)
 	}
 
-	macros, err := c.ParseMacros()
-	if err != nil {
-		return fmt.Errorf("parsing rulekit macros: %w", err)
-	}
-	if err := config.ValidateRulekitMacros(macros); err != nil {
-		return fmt.Errorf("validating rulekit macros: %w", err)
+	if c != nil {
+		macros, err := c.ParseMacros()
+		if err != nil {
+			return fmt.Errorf("parsing rulekit macros: %w", err)
+		}
+		if err := config.ValidateRulekitMacros(macros); err != nil {
+			return fmt.Errorf("validating rulekit macros: %w", err)
+		}
+
+		f.Macros = macros
 	}
 
-	f.Macros = macros
 	return nil
 }
 

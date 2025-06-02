@@ -44,7 +44,7 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 	}
 
 	svcs := config.Services.ToMap()
-	svcs["rulekit.macros"] = config.Rulekit
+	svcs["rulekit"] = config.Rulekit
 	for key, svcConfig := range svcs {
 		fn, exists := sm.factories[ServiceType(key)]
 		if !exists {

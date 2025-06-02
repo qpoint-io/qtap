@@ -126,9 +126,15 @@ func TestOTelEventStore_ConfigTypes(t *testing.T) {
 				Protocol:    "grpc",
 				ServiceName: "custom-service",
 				Environment: "staging",
-				Headers: map[string]string{
-					"authorization": "Bearer token123",
-					"x-custom":      "custom-value",
+				Headers: map[string]config.ValueSource{
+					"authorization": {
+						Type:  "text",
+						Value: "Bearer token123",
+					},
+					"x-custom": {
+						Type:  "text",
+						Value: "custom-value",
+					},
 				},
 				TLS: config.EventStoreOTelTLS{
 					Enabled:            true,
@@ -143,9 +149,15 @@ func TestOTelEventStore_ConfigTypes(t *testing.T) {
 				Protocol:    "http",
 				ServiceName: "custom-service-http",
 				Environment: "staging",
-				Headers: map[string]string{
-					"authorization": "Bearer token456",
-					"x-custom":      "custom-http-value",
+				Headers: map[string]config.ValueSource{
+					"authorization": {
+						Type:  "text",
+						Value: "Bearer token456",
+					},
+					"x-custom": {
+						Type:  "text",
+						Value: "custom-http-value",
+					},
 				},
 				TLS: config.EventStoreOTelTLS{
 					Enabled:            true,
@@ -172,8 +184,11 @@ func TestOTelEventStore_ConfigTypes(t *testing.T) {
 				Protocol:    "http",
 				ServiceName: "full-url-test",
 				Environment: "test",
-				Headers: map[string]string{
-					"x-api-key": "test-key",
+				Headers: map[string]config.ValueSource{
+					"x-api-key": {
+						Type:  "text",
+						Value: "test-key",
+					},
 				},
 				TLS: config.EventStoreOTelTLS{
 					Enabled:            true,

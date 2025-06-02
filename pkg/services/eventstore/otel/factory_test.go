@@ -24,8 +24,11 @@ func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 				Protocol:    "grpc",
 				ServiceName: "test-qtap",
 				Environment: "test",
-				Headers: map[string]string{
-					"api-key": "test-key",
+				Headers: map[string]config.ValueSource{
+					"api-key": {
+						Type:  "text",
+						Value: "test-key",
+					},
 				},
 				TLS: config.EventStoreOTelTLS{
 					Enabled:            false,
@@ -52,8 +55,11 @@ func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 				Protocol:    "http",
 				ServiceName: "test-qtap-http",
 				Environment: "test",
-				Headers: map[string]string{
-					"authorization": "Bearer test-token",
+				Headers: map[string]config.ValueSource{
+					"authorization": {
+						Type:  "text",
+						Value: "Bearer test-token",
+					},
 				},
 				TLS: config.EventStoreOTelTLS{
 					Enabled:            false,

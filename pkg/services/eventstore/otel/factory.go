@@ -184,9 +184,14 @@ func (f *Factory) createGRPCExporter(ctx context.Context, endpoint string, c con
 		opts = append(opts, otlploggrpc.WithInsecure())
 	}
 
+	headers := make(map[string]string)
+	for k, v := range c.Headers {
+		headers[k] = v.String()
+	}
+
 	// Add headers if configured
-	if len(c.Headers) > 0 {
-		opts = append(opts, otlploggrpc.WithHeaders(c.Headers))
+	if len(headers) > 0 {
+		opts = append(opts, otlploggrpc.WithHeaders(headers))
 	}
 
 	return otlploggrpc.New(ctx, opts...)
@@ -212,9 +217,14 @@ func (f *Factory) createHTTPExporter(ctx context.Context, endpoint string, c con
 	}
 	// Note: When using WithEndpointURL, TLS is determined by the URL scheme
 
+	headers := make(map[string]string)
+	for k, v := range c.Headers {
+		headers[k] = v.String()
+	}
+
 	// Add headers if configured
-	if len(c.Headers) > 0 {
-		opts = append(opts, otlploghttp.WithHeaders(c.Headers))
+	if len(headers) > 0 {
+		opts = append(opts, otlploghttp.WithHeaders(headers))
 	}
 
 	return otlploghttp.New(ctx, opts...)

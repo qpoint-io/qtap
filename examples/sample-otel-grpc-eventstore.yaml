@@ -10,6 +10,10 @@ services:
       protocol: grpc                 # "grpc", "http", or "stdout"
       service_name: "qtap"
       environment: "production"
+      # headers:
+      #   api-key:
+      #     type: env
+      #     value: OTEL_API_KEY
       tls:
         enabled: false
   object_stores:

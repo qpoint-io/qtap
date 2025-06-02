@@ -58,12 +58,12 @@ type EventStoreAxiomConfig struct {
 }
 
 type EventStoreOTelConfig struct {
-	Endpoint    string            `yaml:"endpoint"`
-	Protocol    string            `yaml:"protocol"` // "grpc", "http", "stdout"
-	Headers     map[string]string `yaml:"headers"`  // Optional headers for auth
-	ServiceName string            `yaml:"service_name"`
-	Environment string            `yaml:"environment"`
-	TLS         EventStoreOTelTLS `yaml:"tls"`
+	Endpoint    string                 `yaml:"endpoint"`
+	Protocol    string                 `yaml:"protocol"` // "grpc", "http", "stdout"
+	Headers     map[string]ValueSource `yaml:"headers"`  // Optional headers for auth
+	ServiceName string                 `yaml:"service_name"`
+	Environment string                 `yaml:"environment"`
+	TLS         EventStoreOTelTLS      `yaml:"tls"`
 }
 
 type EventStoreOTelTLS struct {

@@ -63,8 +63,11 @@ func TestEventStoreUnmarshal(t *testing.T) {
 						Protocol:    "grpc",
 						ServiceName: "qtap-test",
 						Environment: "test",
-						Headers: map[string]string{
-							"api-key": "test-key",
+						Headers: map[string]ValueSource{
+							"api-key": {
+								Type:  "text",
+								Value: "test-key",
+							},
 						},
 						TLS: EventStoreOTelTLS{
 							Enabled:            false,

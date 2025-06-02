@@ -5,7 +5,9 @@ protocol: "grpc"
 service_name: "qtap-test"
 environment: "test"
 headers:
-  api-key: "test-key"
+  api-key:
+    type: text
+    value: test-key
 tls:
   enabled: false
   insecure_skip_verify: false

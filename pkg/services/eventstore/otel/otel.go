@@ -106,7 +106,10 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 	}
 
 	// Add event type
-	attrs = append([]log.KeyValue{log.String("event.type", s.getEventType(item))}, attrs...)
+	logAttrs := []log.KeyValue{
+		log.String("event.type", s.getEventType(item)),
+		log.Map("event", attrs...),
+	}
 
 	// Extract timestamp from the item
 	timestamp := s.extractTimestamp(item)
@@ -115,7 +118,7 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 	record.SetTimestamp(timestamp)
 	record.SetSeverity(severity)
 	record.SetBody(log.StringValue(bodyMessage))
-	record.AddAttributes(attrs...)
+	record.AddAttributes(logAttrs...)
 
 	s.logger.Emit(ctx, record)
 	incrementSubmittedRecords()

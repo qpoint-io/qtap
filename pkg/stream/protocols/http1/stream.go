@@ -80,6 +80,11 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// if the stream is closed or in an unrecoverable error state, do nothing
+	if t.closed || (t.session != nil && t.session.State == SessionStateError) {
+		return nil
+	}
+
 	// determine the phase
 	var phase Phase
 
@@ -97,16 +102,24 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 
 	// if we're processing a response and we get a request, we need to close
 	if phase == PhaseRequest && t.session != nil && t.session.IsParsingResponse() {
+		t.logger.Debug("closing session due to new request during response",
+			zap.String("session_id", t.session.id),
+			zap.String("session_state", t.session.StateString()))
 		t.session.Close()
 	}
 
 	// if we don't have a session and we get a response, we need to ignore
 	if phase == PhaseResponse && t.session == nil {
+		t.logger.Debug("ignoring response data - no active session")
 		return nil
 	}
 
 	// create a session if we don't have one
 	if t.session == nil || t.session.IsClosed() || t.session.State == SessionStateDone {
+		t.logger.Debug("creating new session",
+			zap.Bool("no_session", t.session == nil),
+			zap.Bool("is_closed", t.session != nil && t.session.IsClosed()),
+			zap.Bool("is_done", t.session != nil && t.session.State == SessionStateDone))
 		t.session = NewSession(t.ctx, t.logger, t.domain, t.conn, t.pluginManager)
 	}
 
@@ -162,9 +175,8 @@ func (t *HTTPStream) Close() {
 
 	for {
 		t.mu.Lock()
-		if t.session == nil || t.session.State == SessionStateDone {
+		if t.session == nil || t.session.State == SessionStateDone || t.session.State == SessionStateError {
 			t.mu.Unlock()
-			t.logger.Debug("closing session")
 			goto close
 		}
 		t.mu.Unlock()
@@ -183,6 +195,7 @@ close:
 	defer t.mu.Unlock()
 
 	if t.session != nil {
+		t.logger.Debug("closing session")
 		t.session.Close()
 	}
 

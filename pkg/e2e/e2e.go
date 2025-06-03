@@ -165,9 +165,7 @@ type ExecResult struct {
 func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	id := NewID()
 	cmd := exec.CommandContext(c.T.Context(), name, args...)
-	cmd.Env = []string{
-		fmt.Sprintf("QPOINT_TAGS=ctxid:%s,ctxid:%s", c.ID, id),
-	}
+	cmd.Env = append(os.Environ(), fmt.Sprintf("QPOINT_TAGS=ctxid:%s,ctxid:%s", c.ID, id))
 	c.L.Info("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
 	out, err := cmd.CombinedOutput()
 	var code int

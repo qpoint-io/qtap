@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/andybalholm/brotli"
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +19,8 @@ import (
 )
 
 var tracer = telemetry.Tracer()
+
+var ErrWebSocketFrame = connection.ErrStreamUnrecoverable(errors.New("websocket frame detected; not supported"))
 
 // HeaderHandler is a callback function type for handling parsed HTTP messages
 type HeaderHandler[T any] func(msg T, noBody bool)
@@ -86,6 +90,12 @@ func (sp *StreamParser[T]) parse() error {
 		}
 		if req != nil {
 			contentLength = req.ContentLength
+
+			// Check for WebSocket handshake
+			if isWebSocketHandshake(req.Header) {
+				sp.logger.Debug("detected WebSocket handshake, closing stream")
+				return ErrWebSocketFrame
+			}
 		}
 		msg = req
 	case *http.Response:
@@ -96,6 +106,12 @@ func (sp *StreamParser[T]) parse() error {
 		}
 		if resp != nil {
 			contentLength = resp.ContentLength
+
+			// Check for WebSocket handshake
+			if isWebSocketHandshake(resp.Header) {
+				sp.logger.Debug("detected WebSocket handshake, closing stream")
+				return ErrWebSocketFrame
+			}
 		}
 		msg = resp
 	default:
@@ -219,3 +235,13 @@ func (sp *StreamParser[T]) Close() error {
 }
 
 func chunked(te []string) bool { return len(te) > 0 && te[0] == "chunked" }
+
+// isWebSocketHandshake checks if the headers indicate a WebSocket handshake
+func isWebSocketHandshake(header http.Header) bool {
+	// Per RFC 6455, a WebSocket handshake must include the following headers on both the request and response:
+	// 1. Upgrade: websocket
+	// 2. Connection: Upgrade
+
+	return strings.EqualFold(header.Get("Upgrade"), "websocket") &&
+		strings.EqualFold(header.Get("Connection"), "upgrade")
+}

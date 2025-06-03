@@ -2,6 +2,7 @@ package http1
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -23,6 +24,8 @@ const (
 	SessionStateResponseHeaders
 	SessionStateResponseBody
 	SessionStateDone
+	// SessionStateError indicates an unrecoverable error state
+	SessionStateError
 )
 
 type Session struct {
@@ -33,8 +36,10 @@ type Session struct {
 
 	// session id
 	id string
+
 	// the current state of this http session
 	State SessionState
+	err   error
 
 	// domain
 	domain string
@@ -102,15 +107,43 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 }
 
 func (s *Session) Run() {
-	err := s.requestParser.parse()
-	if err != nil {
-		s.logger.Error("error parsing request", zap.Error(err))
+	defer s.Close()
+
+	runParser := func(typ string, parser func() error) bool {
+		err := parser()
+		if err != nil {
+			var unrecoverableErr connection.ErrStreamUnrecoverable
+			if errors.As(err, &unrecoverableErr) {
+				s.mu.Lock()
+				s.State = SessionStateError
+				s.err = unrecoverableErr
+				s.mu.Unlock()
+
+				if unrecoverableErr == ErrWebSocketFrame {
+					s.conn.Protocol = connection.Protocol_WEBSOCKET
+					s.logger.Warn("websocket connection detected; not supported")
+				} else {
+					s.logger.Error("unrecoverable error parsing "+typ, zap.Error(unrecoverableErr))
+				}
+
+				return false
+			}
+
+			s.logger.Error("error parsing "+typ, zap.Error(err))
+		}
+
+		return true
 	}
-	err = s.responseParser.parse()
-	if err != nil {
-		s.logger.Error("error parsing response", zap.Error(err))
+
+	// request
+	if !runParser("request", s.requestParser.parse) {
+		return
 	}
-	s.Close()
+
+	// response
+	if !runParser("response", s.responseParser.parse) {
+		return
+	}
 }
 
 func (s *Session) CreateRequest(req *http.Request, noBody bool) {
@@ -273,6 +306,8 @@ func (s *Session) Close() {
 		return
 	}
 
+	// close the session
+	s.closed = true
 	s.logger.Debug("closing session", zap.String("state", s.StateString()))
 
 	// close the parsers
@@ -286,7 +321,12 @@ func (s *Session) Close() {
 	}
 
 	// if we're not done, we've ended prematurely
-	if s.State != SessionStateDone {
+	if s.State == SessionStateError {
+		if s.err != ErrWebSocketFrame {
+			s.logger.Error("http/1 session ended with unrecoverable error", zap.Error(s.err))
+		}
+		return
+	} else if s.State != SessionStateDone {
 		span.SetStatus(codes.Error, "http/1 session ended prematurely")
 		span.SetAttributes(attribute.String("session.state", s.StateString()))
 		s.logger.Debug("http/1 session ended prematurely", zap.String("state", s.StateString()))
@@ -318,9 +358,6 @@ func (s *Session) Close() {
 		// teardown the plugin connection
 		s.pluginConn.Teardown()
 	}
-
-	// close the session
-	s.closed = true
 }
 
 func (s *Session) IsClosed() bool {
@@ -343,7 +380,15 @@ func (s *Session) StateString() string {
 		return "response_body"
 	case SessionStateDone:
 		return "done"
+	case SessionStateError:
+		return "error"
 	default:
 		return "unknown"
 	}
+}
+
+func (s *Session) Error() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.err
 }

@@ -58,6 +58,7 @@ const (
 	Protocol_HTTP2
 	Protocol_DNS
 	Protocol_GRPC
+	Protocol_WEBSOCKET
 )
 
 func (p Protocol) String() string {
@@ -72,6 +73,8 @@ func (p Protocol) String() string {
 		return "DNS"
 	case Protocol_GRPC:
 		return "GRPC"
+	case Protocol_WEBSOCKET:
+		return "WEBSOCKET"
 	default:
 		return fmt.Sprintf("BAD PROTOCOL(%d)", p)
 	}
@@ -288,6 +291,8 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 		p = connection.Protocol_HTTP2
 	case Protocol_GRPC:
 		p = connection.Protocol_GRPC
+	case Protocol_WEBSOCKET:
+		p = connection.Protocol_WEBSOCKET
 	}
 
 	return connection.ProtocolEvent{

@@ -258,13 +258,22 @@ func (t *HTTPStream) handleFrame(session *Session, frame http2.Frame, framer *ht
 			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to read meta headers frame: %w", err))
 		}
 
-		if t.isGRPC(mh) {
+		switch {
+		case t.isGRPC(mh):
 			t.conn.Protocol = connection.Protocol_GRPC
 			t.logger.Debug("HTTP/2 GRPC detected, closing stream")
 
 			// we want to drop data frames for GRPC streams
 			// since plugins do not support it
 			return connection.ErrStreamUnrecoverable(errors.New("grpc stream; not supported"))
+
+		case t.isWebSocket(mh):
+			t.conn.Protocol = connection.Protocol_WEBSOCKET
+			t.logger.Debug("HTTP/2 WebSocket detected, closing stream")
+
+			// we want to drop data frames for WebSocket streams
+			// since plugins do not support it
+			return connection.ErrStreamUnrecoverable(errors.New("websocket stream; not supported"))
 		}
 
 		return t.handleHeadersFrame(session, mh)
@@ -415,4 +424,15 @@ func (t *HTTPStream) isGRPC(h *http2.MetaHeadersFrame) bool {
 	}
 
 	return false
+}
+
+func (t *HTTPStream) isWebSocket(h *http2.MetaHeadersFrame) bool {
+	// Per RFC 8441, a WebSocket connection is established over HTTP/2 via the CONNECT method
+	// with the following pseudo headers:
+	//
+	// :method = CONNECT
+	// :protocol = websocket
+
+	return strings.EqualFold(h.PseudoValue("method"), "connect") &&
+		strings.EqualFold(h.PseudoValue("protocol"), "websocket")
 }

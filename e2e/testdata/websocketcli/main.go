@@ -10,14 +10,20 @@
 //     between each.
 //  2. Client sends "Hello from client"
 //  3. Client closes connection with code 1000
+//
+//go:debug http2server=2
+//go:debug http2client=2
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -28,9 +34,20 @@ func main() {
 		log.Fatal("usage: websocketcli <ws-url>")
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	log.Println("dialing")
 	url := os.Args[1]
-	ws, err := websocket.Dial(url, "", url)
+	conf, err := websocket.NewConfig(url, url)
+	if err != nil {
+		log.Fatal("config err:", err)
+	}
+	conf.TlsConfig = &tls.Config{
+		InsecureSkipVerify: true,
+		NextProtos:         []string{"http/1.1"},
+	}
+	ws, err := conf.DialContext(ctx)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}

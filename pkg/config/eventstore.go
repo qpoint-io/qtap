@@ -9,6 +9,7 @@ const (
 	EventStoreType_PULSE_STREAMING EventStoreType = "pulse-streaming"
 	EventStoreType_PULSE_LEGACY    EventStoreType = "pulse-legacy"
 	EventStoreType_AXIOM           EventStoreType = "axiom"
+	EventStoreType_OTEL            EventStoreType = "otel"
 )
 
 type ServiceEventStore struct {
@@ -31,6 +32,8 @@ func (s ServiceEventStore) ServiceType() string {
 		return "eventstore.noop"
 	case EventStoreType_AXIOM:
 		return "eventstore.axiom"
+	case EventStoreType_OTEL:
+		return "eventstore.otel"
 	case "e2e": // TODO(e2e)
 		return "eventstore.e2e"
 	default:
@@ -42,6 +45,7 @@ type EventStoreConfig struct {
 	Token                 ValueSource `yaml:"token"`
 	EventStorePulseConfig `yaml:",inline,omitempty"`
 	EventStoreAxiomConfig `yaml:",inline,omitempty"`
+	EventStoreOTelConfig  `yaml:",inline,omitempty"`
 }
 
 type EventStorePulseConfig struct {
@@ -51,4 +55,18 @@ type EventStorePulseConfig struct {
 
 type EventStoreAxiomConfig struct {
 	Dataset ValueSource `yaml:"dataset"`
+}
+
+type EventStoreOTelConfig struct {
+	Endpoint    string                 `yaml:"endpoint"`
+	Protocol    string                 `yaml:"protocol"` // "grpc", "http", "stdout"
+	Headers     map[string]ValueSource `yaml:"headers"`  // Optional headers for auth
+	ServiceName string                 `yaml:"service_name"`
+	Environment string                 `yaml:"environment"`
+	TLS         EventStoreOTelTLS      `yaml:"tls"`
+}
+
+type EventStoreOTelTLS struct {
+	Enabled            bool `yaml:"enabled"`
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }

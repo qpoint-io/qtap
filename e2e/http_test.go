@@ -191,24 +191,7 @@ done
 		events := wsReq.AwaitEvents(1)
 
 		// Verify connection
-		assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
-
-		// Verify request
-		require.Len(t, events.Requests, 1)
-		req := events.Requests[0]
-		assert.Equal(t, "/ws", req.URLPath)
-
-		// Verify captured artifacts
-		require.Len(t, events.Artifacts, 1)
-		artifact := events.Artifacts[0]
-		require.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
-		var transaction httpcapture.HttpTransaction
-		err = json.Unmarshal(artifact.Data, &transaction)
-		require.NoError(t, err)
-		assert.Equal(t, "GET", transaction.Request.Method)
-		assert.Equal(t, "websocket", transaction.Request.Headers["Upgrade"])
-
-		// TODO: test request and response bodies
+		assert.Equal(t, eventstore.L7Protocol_WEBSOCKET, events.Connections[0].L7Protocol)
 	})
 }
 

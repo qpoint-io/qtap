@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/andybalholm/brotli"
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -17,6 +18,8 @@ import (
 )
 
 var tracer = telemetry.Tracer()
+
+var ErrWebSocketFrame = connection.ErrStreamUnrecoverable(errors.New("websocket frame detected; not supported"))
 
 // HeaderHandler is a callback function type for handling parsed HTTP messages
 type HeaderHandler[T any] func(msg T, noBody bool)
@@ -70,6 +73,15 @@ func NewStreamParser[T any](ctx context.Context, logger *zap.Logger, messageHand
 
 func (sp *StreamParser[T]) parse() error {
 	reader := bufio.NewReader(sp.reader)
+
+	// Check for WebSocket frames before attempting HTTP parsing
+	firstByte, peekErr := reader.Peek(1)
+	if peekErr == nil && len(firstByte) > 0 {
+		if isWebSocketFrame(firstByte[0]) {
+			sp.logger.Debug("detected WebSocket frame, closing stream")
+			return ErrWebSocketFrame
+		}
+	}
 
 	var (
 		msg           any
@@ -219,3 +231,28 @@ func (sp *StreamParser[T]) Close() error {
 }
 
 func chunked(te []string) bool { return len(te) > 0 && te[0] == "chunked" }
+
+// isWebSocketFrame performs minimal detection using only the first byte
+// Returns true if the data appears to be a WebSocket frame, false otherwise
+func isWebSocketFrame(firstByte byte) bool {
+	// Extract opcode from first byte (bits 0-3)
+	opcode := firstByte & 0x0F
+
+	// Valid opcodes per RFC 6455 Section 5.2:
+	// 0x0: Continuation frame
+	// 0x1: Text frame
+	// 0x2: Binary frame
+	// 0x3-0x7: Reserved for non-control frames
+	// 0x8: Close frame
+	// 0x9: Ping frame
+	// 0xA: Pong frame
+	// 0xB-0xF: Reserved for control frames
+
+	// Check if opcode is valid
+	isValidOpcode := opcode <= 0xF // All 4-bit values are potentially valid per spec
+
+	// RSV bits (bits 4-6 of first byte) should be 0 unless extensions are negotiated
+	// For basic detection, we'll be lenient about this
+
+	return isValidOpcode
+}

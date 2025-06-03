@@ -165,6 +165,8 @@ func toEventStoreL7Protocol(protocol Protocol) eventstore.L7Protocol {
 		return eventstore.L7Protocol_DNS
 	case Protocol_GRPC:
 		return eventstore.L7Protocol_GRPC
+	case Protocol_WEBSOCKET:
+		return eventstore.L7Protocol_WEBSOCKET
 	default:
 		return eventstore.L7Protocol_OTHER
 	}

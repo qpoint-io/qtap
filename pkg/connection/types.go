@@ -98,11 +98,12 @@ const (
 type Protocol string
 
 const (
-	Protocol_UNKNOWN Protocol = "unknown"
-	Protocol_HTTP1   Protocol = "http1"
-	Protocol_HTTP2   Protocol = "http2"
-	Protocol_DNS     Protocol = "dns"
-	Protocol_GRPC    Protocol = "grpc"
+	Protocol_UNKNOWN   Protocol = "unknown"
+	Protocol_HTTP1     Protocol = "http1"
+	Protocol_HTTP2     Protocol = "http2"
+	Protocol_DNS       Protocol = "dns"
+	Protocol_GRPC      Protocol = "grpc"
+	Protocol_WEBSOCKET Protocol = "websocket"
 )
 
 func (c Protocol) String() string {

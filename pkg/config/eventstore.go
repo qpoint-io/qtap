@@ -3,11 +3,12 @@ package config
 type EventStoreType string
 
 const (
-	EventStoreType_DISABLED     EventStoreType = "disabled"
-	EventStoreType_CONSOLE      EventStoreType = "stdout"
-	EventStoreType_PULSE        EventStoreType = "pulse"
-	EventStoreType_PULSE_LEGACY EventStoreType = "pulse-legacy"
-	EventStoreType_AXIOM        EventStoreType = "axiom"
+	EventStoreType_DISABLED        EventStoreType = "disabled"
+	EventStoreType_CONSOLE         EventStoreType = "stdout"
+	EventStoreType_PULSE           EventStoreType = "pulse"
+	EventStoreType_PULSE_STREAMING EventStoreType = "pulse-streaming"
+	EventStoreType_PULSE_LEGACY    EventStoreType = "pulse-legacy"
+	EventStoreType_AXIOM           EventStoreType = "axiom"
 )
 
 type ServiceEventStore struct {
@@ -19,6 +20,8 @@ type ServiceEventStore struct {
 func (s ServiceEventStore) ServiceType() string {
 	switch s.Type {
 	case EventStoreType_PULSE:
+		return "eventstore.eventstorev1_nonstreaming"
+	case EventStoreType_PULSE_STREAMING:
 		return "eventstore.eventstorev1"
 	case EventStoreType_PULSE_LEGACY:
 		return "eventstore.pulse"

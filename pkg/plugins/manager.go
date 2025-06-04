@@ -288,7 +288,8 @@ func (m *Manager) reconcileStacks(conf *config.Config) error {
 func (m *Manager) connectionStack(typ ConnectionType, conn *connection.Connection) (*StackDeployment, error) {
 	ll := conn.Logger()
 	// use pod label if set
-	if pod := conn.Process().Pod; pod != nil {
+	if proc := conn.Process(); proc != nil && proc.Pod != nil {
+		pod := proc.Pod
 		if stackName, ok := pod.Labels[PodLabelStack]; ok {
 			ll = ll.With(
 				zap.String("stack", stackName),

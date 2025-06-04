@@ -21,6 +21,7 @@ type ConnectionAdapter interface {
 
 const (
 	defaultBufferSize = 1024 * 1024 * 10 // 10MB
+	PodLabelStack     = "tap.qpoint.io/stack"
 )
 
 var tracer = telemetry.Tracer()
@@ -209,17 +210,18 @@ func (m *Manager) Stop() {
 }
 
 func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionType, conn *connection.Connection) (*Connection, error) {
+	ll := conn.Logger()
 	if connectionType == ConnectionType_UNKNOWN {
 		return nil, errors.New("connection type is required")
 	}
 
-	// register the domain to a stack
-	stack, err := m.registerDomainToStack(conn.Domain(), string(connectionType))
+	stack, err := m.connectionStack(connectionType, conn)
 	if err != nil {
-		return nil, fmt.Errorf("registering domain to stack: %w", err)
+		return nil, fmt.Errorf("resolving connection stack: %w", err)
 	}
 
 	if stack == nil {
+		ll.Debug("ignoring connection without stack")
 		return nil, nil
 	}
 
@@ -280,4 +282,30 @@ func (m *Manager) reconcileStacks(conf *config.Config) error {
 	})
 
 	return nil
+}
+
+// connectionStack resolves the stack deployment for a connection
+func (m *Manager) connectionStack(typ ConnectionType, conn *connection.Connection) (*StackDeployment, error) {
+	ll := conn.Logger()
+	// use pod label if set
+	if proc := conn.Process(); proc != nil && proc.Pod != nil {
+		pod := proc.Pod
+		if stackName, ok := pod.Labels[PodLabelStack]; ok {
+			ll = ll.With(
+				zap.String("stack", stackName),
+				zap.String("pod", pod.Name),
+				zap.String("pod_namespace", pod.Namespace),
+			)
+			stack, ok := m.stacks.Load(stackName)
+			if ok {
+				ll.Debug("resolved connection stack from pod label")
+				return stack.GetActiveDeployment(), nil
+			} else {
+				ll.Warn("ignoring invalid pod stack label")
+			}
+		}
+	}
+
+	// resolve stack by domain, falling back to default stack
+	return m.registerDomainToStack(conn.Domain(), string(typ))
 }

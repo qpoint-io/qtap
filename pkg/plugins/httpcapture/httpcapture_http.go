@@ -78,65 +78,7 @@ func (i *instance) Destroy() {
 	}
 
 	// Determine the capture level based on rules
-	captureLevel := i.level
-	outputFormat := i.format
-
-	// Check if any rules match and should override default capture level
-	if len(i.rules) > 0 {
-		// Create rule evaluation pairs from request, response headers and metadata
-		reqPairs := tools.NewHeaderMap(i.reqheaders).RulePairs("request")
-		resPairs := tools.NewHeaderMap(i.resheaders).RulePairs("response")
-		connPairs := i.conn.ControlValues()
-
-		// Combine all pairs for rule evaluation
-		allPairs := make(map[string]any, len(reqPairs)+len(resPairs)+len(connPairs))
-
-		// Add all pairs using maps.Copy
-		maps.Copy(allPairs, reqPairs)
-		maps.Copy(allPairs, resPairs)
-		maps.Copy(allPairs, connPairs)
-
-		var (
-			macros    map[string]rulekit.Rule
-			functions map[string]*rulekit.Function
-		)
-		if i.rulekit != nil {
-			macros = i.rulekit.Macros()
-			functions = i.rulekit.Functions()
-		}
-
-		// Evaluate rules in order
-		for _, r := range i.rules {
-			if r.rule == nil {
-				continue
-			}
-
-			res := r.rule.Eval(&rulekit.Ctx{
-				Functions: functions,
-				Macros:    macros,
-				KV:        allPairs,
-			})
-			if !res.Ok() {
-				// log any non-ErrMissingFields errors
-				mf := &rulekit.ErrMissingFields{}
-				if !errors.As(res.Error, &mf) {
-					i.logger.Error("error evaluating rule",
-						zap.Error(res.Error),
-						zap.String("evaluated_rule", res.EvaluatedRule.String()),
-					)
-				}
-				continue
-			}
-			if res.Pass() {
-				captureLevel = r.Level
-				// Override format if specified in the rule
-				if r.Format != "" {
-					outputFormat = r.Format
-				}
-				break
-			}
-		}
-	}
+	captureLevel, outputFormat := i.evaluateRules()
 
 	// If capture level is none, don't capture anything
 	if captureLevel == CaptureLevelNone {
@@ -212,6 +154,69 @@ func (i *instance) Destroy() {
 		zap.Int("bytes", len(data)))
 
 	i.eventstore.Save(ctx, artifact)
+}
+
+func (i *instance) evaluateRules() (CaptureLevel, OutputFormat) {
+	if len(i.rules) == 0 {
+		return i.level, i.format
+	}
+
+	// Check if any rules match and should override default capture level
+	if i.rulekit == nil {
+		i.logger.Warn("rulekit service is missing, cannot evaluate rules. using default capture level and format")
+		return i.level, i.format
+	}
+
+	// Create rule evaluation pairs from request, response headers and metadata
+	reqPairs := tools.NewHeaderMap(i.reqheaders).RulePairs("request")
+	resPairs := tools.NewHeaderMap(i.resheaders).RulePairs("response")
+	metaPairs := tools.MetadataRulePairs(i.conn.Metadata())
+
+	// Combine all pairs for rule evaluation
+	allPairs := make(map[string]any, len(reqPairs)+len(resPairs)+len(metaPairs))
+
+	// Add all pairs using maps.Copy
+	maps.Copy(allPairs, reqPairs)
+	maps.Copy(allPairs, resPairs)
+	maps.Copy(allPairs, metaPairs)
+
+	// Evaluate rules in order
+	var (
+		level  CaptureLevel
+		format OutputFormat
+	)
+	for _, r := range i.rules {
+		if r.rule == nil {
+			continue
+		}
+
+		res := r.rule.Eval(&rulekit.Ctx{
+			Functions: i.rulekit.Functions(),
+			Macros:    i.rulekit.Macros(),
+			KV:        allPairs,
+		})
+		if !res.Ok() {
+			// log any non-ErrMissingFields errors
+			mf := &rulekit.ErrMissingFields{}
+			if !errors.As(res.Error, &mf) {
+				i.logger.Error("error evaluating rule",
+					zap.Error(res.Error),
+					zap.String("evaluated_rule", res.EvaluatedRule.String()),
+				)
+			}
+			continue
+		}
+		if res.Pass() {
+			level = r.Level
+			// Override format if specified in the rule
+			if r.Format != "" {
+				format = r.Format
+			}
+			break
+		}
+	}
+
+	return level, format
 }
 
 // setArtifactMetadata sets metadata from the connection context on the artifact

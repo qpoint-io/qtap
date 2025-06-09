@@ -2,6 +2,7 @@ package rulekitsvc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -18,6 +19,7 @@ type Service interface {
 	services.Service
 	Macros() map[string]rulekit.Rule
 	Functions() map[string]*rulekit.Function
+	IsCriticalErr(err error) bool
 }
 
 type Factory struct {
@@ -71,4 +73,14 @@ func (s *service) Macros() map[string]rulekit.Rule {
 
 func (s *service) Functions() map[string]*rulekit.Function {
 	return rulekitext.Functions
+}
+
+// IsCriticalErr returns true if the error is a critical error.
+// e.g. invalid rule syntax is considered critical. Missing fields are not critical.
+func (s *service) IsCriticalErr(err error) bool {
+	mf := &rulekit.ErrMissingFields{}
+	if errors.As(err, &mf) {
+		return true
+	}
+	return false
 }

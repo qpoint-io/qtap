@@ -2,7 +2,6 @@ package httpcapture
 
 import (
 	"context"
-	"errors"
 	"maps"
 	"time"
 
@@ -196,9 +195,7 @@ func (i *instance) evaluateRules() (CaptureLevel, OutputFormat) {
 			KV:        allPairs,
 		})
 		if !res.Ok() {
-			// log any non-ErrMissingFields errors
-			mf := &rulekit.ErrMissingFields{}
-			if !errors.As(res.Error, &mf) {
+			if i.rulekit.IsCriticalErr(res.Error) {
 				i.logger.Error("error evaluating rule",
 					zap.Error(res.Error),
 					zap.String("evaluated_rule", res.EvaluatedRule.String()),

@@ -179,6 +179,68 @@ func TestValidate(t *testing.T) {
 				"Key: 'Config.Control.Rules[0].Expr' Error:Field validation for 'Expr' failed on the 'rule_expression' tag",
 			},
 		},
+		{
+			name: "rulekit valid macros",
+			config: &Config{
+				Rulekit: &Rulekit{
+					Macros: []*RulekitMacro{{
+						Name: "test",
+						Expr: "src.ip == 192.168.1.1",
+					}},
+				},
+			},
+		},
+		{
+			name: "rulekit macro invalid syntax",
+			config: &Config{
+				Rulekit: &Rulekit{
+					Macros: []*RulekitMacro{{
+						Name: "test",
+						Expr: "+!&3",
+					}},
+				},
+			},
+			errors: []string{
+				`parsing rulekit macros: "test": syntax error at line 1:1:
++!&3
+^
+syntax error: unexpected symbol`,
+			},
+		},
+		{
+			name: "rulekit macro name conflict with function",
+			config: &Config{
+				Rulekit: &Rulekit{
+					Macros: []*RulekitMacro{{
+						Name: "zone",
+						Expr: "src.ip == 192.168.1.1",
+					}},
+				},
+			},
+			errors: []string{
+				`validating rulekit macros: macro "zone": name conflicts with a custom function`,
+			},
+		},
+		{
+			name: "rulekit duplicate macros",
+			config: &Config{
+				Rulekit: &Rulekit{
+					Macros: []*RulekitMacro{
+						{
+							Name: "zone",
+							Expr: "src.ip == 192.168.1.1",
+						},
+						{
+							Name: "zone",
+							Expr: "src.ip == duplicate",
+						},
+					},
+				},
+			},
+			errors: []string{
+				`parsing rulekit macros: "zone": name must be unique`,
+			},
+		},
 	}
 
 	for _, tc := range tcs {
@@ -199,7 +261,8 @@ func TestValidate(t *testing.T) {
 					tc.test(t, tc.config, verrs)
 				}
 			} else {
-				t.Fatalf("expected validation error, got %T", err)
+				require.Len(t, tc.errors, 1, "got non-validator.ValidationErrors, test case errors must have exactly one element")
+				require.EqualError(t, err, tc.errors[0])
 			}
 		})
 	}

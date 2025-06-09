@@ -1,11 +1,20 @@
 package httpcapture
 
 import (
+	"context"
+	"encoding/json"
+	"math"
 	"testing"
 
+	"github.com/qpoint-io/qtap/pkg/plugins/plugintest"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
+	"github.com/qpoint-io/rulekit"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 	"gopkg.in/yaml.v3"
 )
 
@@ -147,4 +156,100 @@ func TestOutputFormatConstants(t *testing.T) {
 			assert.Equal(t, tc.valid, is_valid)
 		})
 	}
+}
+
+func TestHttpCapturePlugin(t *testing.T) {
+	logger := zaptest.NewLogger(t)
+
+	// factory
+	pluginConf := &HttpCaptureConfig{
+		Level:  CaptureLevelNone,
+		Format: OutputFormatJSON,
+		Rules: []LogRule{
+			{
+				Name:  "happy path",
+				Expr:  "success_response() && pi() != 5",
+				Level: CaptureLevelFull,
+			},
+		},
+	}
+	var pluginConfYaml yaml.Node
+	err := pluginConfYaml.Encode(pluginConf)
+	require.NoError(t, err)
+
+	factory := &Factory{}
+	factory.Init(logger, pluginConfYaml)
+
+	// dependencies
+	macros := &rulekitsvc.Factory{
+		Macros: map[string]rulekit.Rule{
+			"success_response": rulekit.MustParse("response.status >= 200 && response.status < 300"),
+			"pi": rulekit.RuleFunc(func(ctx *rulekit.Ctx) rulekit.Result {
+				return rulekit.Result{Value: float64(math.Pi)}
+			}),
+		},
+	}
+	macrosSvc, err := macros.Create(context.Background())
+	require.NoError(t, err)
+
+	// setup
+	t.Run("trigger", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockES := eventstore.NewMockEventStore(ctrl)
+		ctx := &plugintest.Context{
+			T:        t,
+			VReqBody: []byte("in"),
+			VResBody: []byte("out"),
+		}
+
+		mockES.EXPECT().Save(gomock.Any(), gomock.All(
+			gomock.Cond(func(a *eventstore.Artifact) bool {
+				return a.Type == eventstore.ArtifactType_HTTPTransaction && a.ContentType == "application/json"
+			}),
+			HttpTransactionMatcher(func(tx *HttpTransaction) bool {
+				return string(tx.Request.Body) == "in" &&
+					string(tx.Response.Body) == "out" &&
+					tx.Response.Status == 200
+			}),
+		)).Return()
+
+		// simulate http tx
+		plugin := factory.NewInstance(ctx, macrosSvc, mockES)
+		plugin.RequestHeaders(nil, true)
+		plugin.RequestBody(nil, true)
+		// response status 200 should trigger
+		plugin.ResponseHeaders(plugintest.Headers(map[string]string{":status": "200"}), true)
+		plugin.ResponseBody(nil, true)
+
+		plugin.Destroy()
+	})
+
+	t.Run("no trigger", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockES := eventstore.NewMockEventStore(ctrl)
+		ctx := &plugintest.Context{
+			T: t,
+		}
+
+		// simulate http tx
+		plugin := factory.NewInstance(ctx, macrosSvc, mockES)
+		plugin.RequestHeaders(nil, true)
+		plugin.RequestBody(nil, true)
+		// response status 403 should NOT trigger
+		plugin.ResponseHeaders(plugintest.Headers(map[string]string{":status": "403"}), true)
+		plugin.ResponseBody(nil, true)
+
+		plugin.Destroy()
+	})
+}
+
+func HttpTransactionMatcher(fn func(tx *HttpTransaction) bool) gomock.Matcher {
+	return gomock.Cond(func(a *eventstore.Artifact) bool {
+		var tx HttpTransaction
+		err := json.Unmarshal(a.Data, &tx)
+		if err != nil {
+			panic("artifact is not an HttpTransaction")
+		}
+		return fn(&tx)
+	})
 }

@@ -26,6 +26,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.uber.org/zap"
@@ -75,6 +76,9 @@ func mainSetup() error {
 
 		// Objectstore services
 		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
+
+		// Add more services here...
+		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{

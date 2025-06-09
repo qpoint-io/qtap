@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	validator "github.com/go-playground/validator/v10"
+	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/rulekit"
 	yaml "gopkg.in/yaml.v3"
 )
@@ -80,6 +81,7 @@ type Config struct {
 	Tap      *TapConfig       `yaml:"tap"`
 	Services Services         `yaml:"services"`
 	Control  *Control         `yaml:"control"`
+	Rulekit  *Rulekit         `yaml:"rulekit"`
 }
 
 type Control struct {
@@ -91,6 +93,15 @@ type Rule struct {
 	Name    string                `yaml:"name" validate:"required"`
 	Expr    string                `yaml:"expr" validate:"required,rule_expression"`
 	Actions []AccessControlAction `yaml:"actions" validate:"omitempty,dive,required,access_control_action"`
+}
+
+type Rulekit struct {
+	Macros []*RulekitMacro `yaml:"macros" validate:"omitempty,dive"`
+}
+
+type RulekitMacro struct {
+	Name string `yaml:"name" validate:"required"`
+	Expr string `yaml:"expr" validate:"required,rule_expression"`
 }
 
 func (c *Config) SetDefaults() {
@@ -126,6 +137,17 @@ func (c *Config) Validate() error {
 	c.SetDefaults()
 	c.Normalize()
 
+	if c.Rulekit != nil {
+		macros, err := c.Rulekit.ParseMacros()
+		if err != nil {
+			return fmt.Errorf("parsing rulekit macros: %w", err)
+		}
+
+		if err := ValidateRulekitMacros(macros); err != nil {
+			return fmt.Errorf("validating rulekit macros: %w", err)
+		}
+	}
+
 	return validate.Struct(c)
 }
 
@@ -154,6 +176,36 @@ func ValidateAccessControlDefaultAction(fl validator.FieldLevel) bool {
 func ValidateRuleExpression(fl validator.FieldLevel) bool {
 	_, err := rulekit.Parse(fl.Field().String())
 	return err == nil
+}
+
+func (r *Rulekit) ParseMacros() (map[string]rulekit.Rule, error) {
+	macros := make(map[string]rulekit.Rule, len(r.Macros))
+	for _, macro := range r.Macros {
+		if _, exists := macros[macro.Name]; exists {
+			return nil, fmt.Errorf("%q: name must be unique", macro.Name)
+		}
+
+		r, err := rulekit.Parse(macro.Expr)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", macro.Name, err)
+		}
+
+		macros[macro.Name] = r
+	}
+
+	return macros, nil
+}
+
+func ValidateRulekitMacros(macros map[string]rulekit.Rule) error {
+	err := (&rulekit.Ctx{
+		Functions: rulekitext.Functions,
+		Macros:    macros,
+	}).Validate()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func UnmarshalConfig(bytes []byte) (*Config, error) {

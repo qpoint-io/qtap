@@ -43,7 +43,9 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 		return
 	}
 
-	for key, svcConfig := range config.Services.ToMap() {
+	svcs := config.Services.ToMap()
+	svcs["rulekit"] = config.Rulekit
+	for key, svcConfig := range svcs {
 		fn, exists := sm.factories[ServiceType(key)]
 		if !exists {
 			sm.logger.Debug("no factory registered for service type", zap.String("service_type", key))

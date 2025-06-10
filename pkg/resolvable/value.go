@@ -8,7 +8,14 @@ import (
 
 type V[T any] func(ctx context.Context) (T, error)
 
-type Value[T any] struct {
+// Static creates a resolvable that returns the same value every time
+func Static[T any](value T) V[T] {
+	return func(ctx context.Context) (T, error) {
+		return value, nil
+	}
+}
+
+type value[T any] struct {
 	options  *options
 	value    T
 	err      error
@@ -17,17 +24,35 @@ type Value[T any] struct {
 	fn       V[T]
 }
 
+func New[T any](fn V[T], opts ...Option) V[T] {
+	o := options{
+		now: time.Now,
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	v := &value[T]{fn: fn, options: &o}
+	return v.Resolve
+}
+
 type options struct {
-	retryable bool
-	expiry    time.Duration
-	now       func() time.Time
+	retry    bool
+	expiry   time.Duration
+	now      func() time.Time
+	graceful bool
 }
 
 type Option func(*options)
 
-func WithRetryable() Option {
+func WithRetry() Option {
 	return func(o *options) {
-		o.retryable = true
+		o.retry = true
+	}
+}
+
+func WithGraceful() Option {
+	return func(o *options) {
+		o.graceful = true
 	}
 }
 
@@ -43,36 +68,52 @@ func WithNow(now func() time.Time) Option {
 	}
 }
 
-func New[T any](fn V[T], opts ...Option) V[T] {
-	o := options{
-		now: time.Now,
-	}
-	for _, opt := range opts {
-		opt(&o)
-	}
-	v := &Value[T]{fn: fn, options: &o}
-	return v.Resolve
-}
-
-func (v *Value[T]) Resolve(ctx context.Context) (T, error) {
+func (v *value[T]) Resolve(ctx context.Context) (T, error) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
-	if !v.resolved.IsZero() && !v.expired() {
+	if !v.expired() {
 		return v.value, v.err
 	}
 
-	v.value, v.err = v.fn(ctx)
-	if !v.options.retryable || v.err == nil {
-		// if not retryable or no error, this result is final
+	value, err := v.fn(ctx)
+	v.err = err // always cache the error itself
+	if err == nil {
+		// success, cache the value and reset the expiry
+		v.value = value
+		v.resolved = v.options.now()
+		return value, nil
+	}
+
+	if !v.options.retry {
+		// if not retrying on errors, reset the expiry
+		// otherwise keep it expired so we can retry
 		v.resolved = v.options.now()
 	}
-	return v.value, v.err
+
+	if v.options.graceful {
+		// restore the last known good value
+		value = v.value
+	} else {
+		// persist the errored value
+		v.value = value
+	}
+
+	// if not graceful, return the resolved result as is
+	return value, err
 }
 
-func (v *Value[T]) expired() bool {
-	if v.options.expiry == 0 || v.resolved.IsZero() {
+func (v *value[T]) expired() bool {
+	if v.resolved.IsZero() {
+		// if never resolved, pretend it's expired
+		return true
+	}
+
+	if v.options.expiry == 0 {
+		// no expiry
 		return false
 	}
+
+	// check if the value is expired
 	return v.options.now().Sub(v.resolved) > v.options.expiry
 }

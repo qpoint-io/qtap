@@ -71,7 +71,6 @@ type Process struct {
 	Pod       *Pod
 
 	// internal
-	uid      int
 	hostname string
 	filter   uint8
 	elf      *binutils.Elf

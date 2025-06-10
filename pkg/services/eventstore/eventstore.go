@@ -159,6 +159,10 @@ type PIIEntity struct {
 	FieldPath    string    `json:"fieldPath"`
 	// ValueHash is a SHA-256 hash of the value. The length is 32 bytes (64 characters) enforced by ClickHouse.
 	ValueHash string `json:"valueHash"`
+
+	// optional http request meta
+	RequestMethod string `json:"requestMethod,omitempty"`
+	RequestPath   string `json:"requestPath,omitempty"`
 }
 
 type ArtifactType string

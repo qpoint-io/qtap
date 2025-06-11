@@ -1,7 +1,6 @@
 package connection
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -108,7 +107,7 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 			if hostname, _ := proc.Hostname(); hostname != "" {
 				localEndpoint.Hostname = hostname
 			}
-			if user, _ := proc.User(context.TODO()); user != nil {
+			if user, _ := proc.User(); user != nil {
 				localEndpoint.User = user.Username
 			}
 			if proc.Container != nil {

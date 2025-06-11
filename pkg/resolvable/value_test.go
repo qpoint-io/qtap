@@ -110,34 +110,33 @@ func TestExpiry(t *testing.T) {
 		},
 		WithExpiry(2*time.Second),
 		WithNow(func() time.Time { return now }),
-	)
+	).WithContext(ctx)
 
 	// first call, no error
-	value, err := v(ctx)
+	value, err := v()
 	require.NoError(t, err)
 	require.Equal(t, 1, value)
 
 	// still not expired
 	now = now.Add(time.Second)
-	value, err = v(ctx)
+	value, err = v()
 	require.NoError(t, err)
 	require.Equal(t, 1, value)
 
 	// expired, return an error
 	now = now.Add(2 * time.Second)
 	resolveErr = errors.New("try again")
-	value, err = v(ctx)
+	value, err = v()
 	require.EqualError(t, err, "try again")
 	require.Equal(t, 2, value)
 
 	// errors are cached unless retry is enabled
-	value, err = v(ctx)
+	value, err = v()
 	require.EqualError(t, err, "try again")
 	require.Equal(t, 2, value)
 }
 
 func TestExpiry_Retry(t *testing.T) {
-	ctx := context.Background()
 	now := time.Now()
 	var (
 		count      int
@@ -151,29 +150,29 @@ func TestExpiry_Retry(t *testing.T) {
 		WithRetry(),
 		WithExpiry(2*time.Second),
 		WithNow(func() time.Time { return now }),
-	)
+	).WithBgContext()
 
 	// first call, no error
-	value, err := v(ctx)
+	value, err := v()
 	require.NoError(t, err)
 	require.Equal(t, 1, value)
 
 	// still not expired
 	now = now.Add(time.Second)
-	value, err = v(ctx)
+	value, err = v()
 	require.NoError(t, err)
 	require.Equal(t, 1, value)
 
 	// expired, return an error
 	now = now.Add(2 * time.Second)
 	resolveErr = errors.New("try again")
-	value, err = v(ctx)
+	value, err = v()
 	require.EqualError(t, err, "try again")
 	require.Equal(t, 2, value)
 
 	// errors are not cached because we set WithRetry()
 	// it is resolved again even though the clock did not advance
-	value, err = v(ctx)
+	value, err = v()
 	require.EqualError(t, err, "try again")
 	require.Equal(t, 3, value)
 }

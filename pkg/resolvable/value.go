@@ -6,10 +6,26 @@ import (
 	"time"
 )
 
-type V[T any] func(ctx context.Context) (T, error)
+type Ctx[T any] func(ctx context.Context) (T, error)
+
+type V[T any] func() (T, error)
+
+// WithContext binds a context to the resolvable.
+func (v Ctx[T]) WithContext(ctx context.Context) V[T] {
+	return func() (T, error) {
+		return v(ctx)
+	}
+}
+
+// WithBgContext binds a background context to the resolvable.
+func (v Ctx[T]) WithBgContext() V[T] {
+	return func() (T, error) {
+		return v(context.Background())
+	}
+}
 
 // Static creates a resolvable that returns the same value every time
-func Static[T any](value T) V[T] {
+func Static[T any](value T) Ctx[T] {
 	return func(ctx context.Context) (T, error) {
 		return value, nil
 	}
@@ -21,10 +37,10 @@ type value[T any] struct {
 	err      error
 	resolved time.Time
 	mutex    sync.Mutex
-	fn       V[T]
+	fn       Ctx[T]
 }
 
-func New[T any](fn V[T], opts ...Option) V[T] {
+func New[T any](fn Ctx[T], opts ...Option) Ctx[T] {
 	o := options{
 		now: time.Now,
 	}

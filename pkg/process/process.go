@@ -100,7 +100,7 @@ func NewProcess(pid int, exeFilename string) *Process {
 	}
 	p.User = resolvable.New(func(ctx context.Context) (*ProcessUser, error) {
 		return GetProcessUser(p.Pid)
-	})
+	}, resolvable.WithRetry()).WithBgContext()
 	return p
 }
 
@@ -266,9 +266,7 @@ func (p *Process) CacheKey() string {
 }
 
 func (p *Process) SetUser(uid uint, user string) {
-	p.User = func(ctx context.Context) (*ProcessUser, error) {
-		return &ProcessUser{UID: uid, Username: user}, nil
-	}
+	p.User = resolvable.Static(&ProcessUser{UID: uid, Username: user}).WithBgContext()
 }
 
 func (p *Process) Hostname() (string, error) {
@@ -514,7 +512,7 @@ func (p *Process) ControlValues() map[string]any {
 
 	// user
 	user := map[string]any{}
-	if u, err := p.User(context.TODO()); err == nil {
+	if u, err := p.User(); err == nil {
 		user["id"] = u.UID
 		user["name"] = u.Username
 	}

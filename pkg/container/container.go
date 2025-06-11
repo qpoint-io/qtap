@@ -2,10 +2,10 @@ package container
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
-	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
 )
 
@@ -22,8 +22,6 @@ type Accessor interface {
 }
 
 type Manager struct {
-	process.DefaultObserver
-
 	logger *zap.Logger
 
 	accessors []Accessor
@@ -92,35 +90,28 @@ func (a *Manager) GetByID(containerID string) *Container {
 		c = a.k8s.AddPodToContainer(c)
 	}
 
+	// Set the manager reference so Update() can work
+	c.SetManager(a)
+	if c.p != nil {
+		c.p.SetManager(a)
+	}
+
 	return c
 }
 
-func (m *Manager) ProcessStarted(p *process.Process) error {
-	// discover the container metadata if it exists
-	if p.ContainerID != "" && p.ContainerID != "root" {
-		container := m.GetByID(p.ContainerID)
-		if container != nil {
-			p.Container = &process.Container{
-				ID:          container.ID,
-				Name:        container.TidyName(),
-				Labels:      container.Labels,
-				Image:       container.Image,
-				ImageDigest: container.ImageDigest,
-				RootFS:      container.RootFS,
-			}
-
-			if pod := container.Pod(); pod != nil {
-				p.Pod = &process.Pod{
-					Name:        pod.Name,
-					Namespace:   pod.Namespace,
-					Labels:      pod.Labels,
-					Annotations: pod.Annotations,
-				}
-			}
-		}
+// RefreshPodByNamespace refreshes pod information by name and namespace
+func (a *Manager) RefreshPodByNamespace(name, namespace string) (*Pod, error) {
+	if a.k8s == nil {
+		return nil, errors.New("no kubernetes accessor available")
 	}
 
-	return nil
+	pod := a.k8s.GetPodByName(context.Background(), name, namespace)
+	if pod.Name == "" {
+		return nil, ErrPodNotFound
+	}
+
+	pod.SetManager(a)
+	return &pod, nil
 }
 
 func formatContainerSocketEndpoint(raw string) string {

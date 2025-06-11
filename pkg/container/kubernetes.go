@@ -49,6 +49,11 @@ func (m *KubernetesAccessor) AddPodToContainer(c *Container) *Container {
 	return c
 }
 
+// GetPodByName retrieves pod information by name and namespace
+func (m *KubernetesAccessor) GetPodByName(ctx context.Context, name, namespace string) Pod {
+	return m.getPodByName(ctx, name, namespace)
+}
+
 func (m *KubernetesAccessor) getPodByName(ctx context.Context, name, namespace string) (p Pod) {
 	if m.rs == nil {
 		return

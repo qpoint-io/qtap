@@ -7,6 +7,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
+	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -18,15 +19,15 @@ import (
 func Test_toEventStoreConnection(t *testing.T) {
 	process := &process.Process{
 		Exe: "/bin/test",
-		Container: &process.Container{
+		Container: resolvable.Static(&process.Container{
 			ID:    "container-id",
 			Name:  "container-name",
 			Image: "container-image",
-		},
-		Pod: &process.Pod{
+		}).WithBgContext(),
+		Pod: resolvable.Static(&process.Pod{
 			Name:      "pod-name",
 			Namespace: "pod-namespace",
-		},
+		}).WithBgContext(),
 	}
 	process.SetHostname("local-hostname")
 	process.SetUser(1000, "test-user")

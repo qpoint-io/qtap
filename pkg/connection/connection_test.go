@@ -9,6 +9,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
+	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/tlsutils"
 
@@ -283,7 +284,7 @@ func TestConnection_ControlValues(t *testing.T) {
 	proc.Env = map[string]string{
 		"TEST_ENV": "testvalue",
 	}
-	proc.Container = &process.Container{
+	container := &process.Container{
 		ID:    "dba11ada3983ee0d6dda08b584f940b6cc4941bdfc3b953a76313b6915da60ff",
 		Name:  "testcontainer",
 		Image: "testimage",
@@ -291,13 +292,15 @@ func TestConnection_ControlValues(t *testing.T) {
 			"is-container": "i guess",
 		},
 	}
-	proc.Pod = &process.Pod{
+	pod := &process.Pod{
 		Name:      "testpod",
 		Namespace: "testnamespace",
 		Labels: map[string]string{
 			"pod-version": "v1",
 		},
 	}
+	proc.Container = resolvable.Static(container).WithBgContext()
+	proc.Pod = resolvable.Static(pod).WithBgContext()
 
 	conn := NewConnection(
 		context.Background(),

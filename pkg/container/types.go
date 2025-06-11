@@ -1,8 +1,22 @@
 package container
 
 import (
+	"errors"
 	"strings"
 )
+
+// Error definitions
+var (
+	ErrNoManager         = errors.New("no manager reference available for update")
+	ErrContainerNotFound = errors.New("container not found")
+	ErrPodNotFound       = errors.New("pod not found")
+)
+
+// ManagerInterface defines the interface for refreshing container and pod data
+type ManagerInterface interface {
+	GetByID(containerID string) *Container
+	RefreshPodByNamespace(name, namespace string) (*Pod, error)
+}
 
 type Container struct {
 	ID     string            `json:"id"`
@@ -14,7 +28,8 @@ type Container struct {
 	ImageDigest string `json:"imageDigest"`
 	RootFS      string `json:"-"`
 
-	p *Pod
+	p       *Pod
+	manager ManagerInterface
 }
 
 func (c Container) TidyName() string {
@@ -51,6 +66,39 @@ func (c *Container) SetPod(p *Pod) {
 	c.p = p
 }
 
+// SetManager sets the manager reference for this container
+func (c *Container) SetManager(m ManagerInterface) {
+	c.manager = m
+}
+
+// Update refreshes the container data from the underlying container runtime
+func (c *Container) Update() error {
+	if c.manager == nil {
+		return ErrNoManager
+	}
+
+	fresh := c.manager.GetByID(c.ID)
+	if fresh == nil {
+		return ErrContainerNotFound
+	}
+
+	// Update all fields except the manager reference
+	c.Name = fresh.Name
+	c.Labels = fresh.Labels
+	c.RootPID = fresh.RootPID
+	c.Image = fresh.Image
+	c.ImageDigest = fresh.ImageDigest
+	c.RootFS = fresh.RootFS
+	c.p = fresh.p
+
+	// Ensure the updated pod also has the manager reference
+	if c.p != nil {
+		c.p.manager = c.manager
+	}
+
+	return nil
+}
+
 const (
 	ContainerLabelKeyPodName      = "io.kubernetes.pod.name"
 	ContainerLabelKeyPodNamespace = "io.kubernetes.pod.namespace"
@@ -63,6 +111,8 @@ type Pod struct {
 	UID         string
 	Labels      map[string]string
 	Annotations map[string]string
+
+	manager ManagerInterface
 }
 
 func (p *Pod) LoadFromContainer(c *Container) {
@@ -73,4 +123,32 @@ func (p *Pod) LoadFromContainer(c *Container) {
 	p.Name = labels[ContainerLabelKeyPodName]
 	p.Namespace = labels[ContainerLabelKeyPodNamespace]
 	p.UID = labels[ContainerLabelKeyPodUID]
+}
+
+// SetManager sets the manager reference for this pod
+func (p *Pod) SetManager(m ManagerInterface) {
+	p.manager = m
+}
+
+// Update refreshes the pod data from the underlying Kubernetes runtime
+func (p *Pod) Update() error {
+	if p.manager == nil {
+		return ErrNoManager
+	}
+
+	fresh, err := p.manager.RefreshPodByNamespace(p.Name, p.Namespace)
+	if err != nil {
+		return err
+	}
+
+	if fresh == nil {
+		return ErrPodNotFound
+	}
+
+	// Update all fields except the manager reference
+	p.UID = fresh.UID
+	p.Labels = fresh.Labels
+	p.Annotations = fresh.Annotations
+
+	return nil
 }

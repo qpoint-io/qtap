@@ -1,6 +1,12 @@
 package process
 
-import "go.uber.org/zap"
+import (
+	"time"
+
+	"github.com/qpoint-io/qtap/pkg/container"
+	"github.com/qpoint-io/qtap/pkg/resolvable"
+	"go.uber.org/zap"
+)
 
 type Container struct {
 	ID          string            `json:"container_id,omitempty"`
@@ -86,4 +92,65 @@ func (p Pod) ControlValues() map[string]any {
 	}
 
 	return v
+}
+
+type ContainerEnricher struct {
+	DefaultObserver
+	containerManager *container.Manager
+}
+
+func NewContainerEnricher(containerManager *container.Manager) *ContainerEnricher {
+	return &ContainerEnricher{
+		containerManager: containerManager,
+	}
+}
+
+func (e *ContainerEnricher) ProcessStarted(p *Process) error {
+	// discover the container metadata if it exists
+	if e.containerManager == nil || p.ContainerID == "" || p.ContainerID == "root" {
+		return nil
+	}
+
+	// Set up Container resolvable
+	p.Container = resolvable.NewV(func() (*Container, error) {
+		container := e.containerManager.GetByID(p.ContainerID)
+		if container == nil {
+			return nil, nil
+		}
+		return &Container{
+			ID:          container.ID,
+			Name:        container.TidyName(),
+			Labels:      container.Labels,
+			Image:       container.Image,
+			ImageDigest: container.ImageDigest,
+			RootFS:      container.RootFS,
+		}, nil
+	},
+		resolvable.WithRetry(),
+		resolvable.WithGraceful(),
+	)
+
+	// Set up Pod resolvable
+	p.Pod = resolvable.NewV(func() (*Pod, error) {
+		container := e.containerManager.GetByID(p.ContainerID)
+		if container == nil {
+			return nil, nil
+		}
+		pod := container.Pod()
+		if pod == nil {
+			return nil, nil
+		}
+		return &Pod{
+			Name:        pod.Name,
+			Namespace:   pod.Namespace,
+			Labels:      pod.Labels,
+			Annotations: pod.Annotations,
+		}, nil
+	},
+		resolvable.WithRetry(),
+		resolvable.WithGraceful(),
+		resolvable.WithExpiry(5*time.Second),
+	)
+
+	return nil
 }

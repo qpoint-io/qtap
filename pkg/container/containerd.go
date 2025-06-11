@@ -158,9 +158,9 @@ func (c *Containerd) addContainer(cr *Container) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.logger.Debug("discovered containerd container", zap.Any("container", cr), zap.Bool("is_sandbox", cr.IsSandbox()))
+	c.logger.Debug("discovered containerd container", zap.Any("container", cr), zap.Bool("is_sandbox", cr.isSandbox()))
 
-	if cr.IsSandbox() {
+	if cr.isSandbox() {
 		return
 	}
 

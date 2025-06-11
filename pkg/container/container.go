@@ -2,7 +2,6 @@ package container
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -87,31 +86,10 @@ func (a *Manager) GetByID(containerID string) *Container {
 	}
 
 	if c.ID != "" && a.k8s != nil {
-		c = a.k8s.AddPodToContainer(c)
-	}
-
-	// Set the manager reference so Update() can work
-	c.SetManager(a)
-	if c.p != nil {
-		c.p.SetManager(a)
+		c = a.k8s.addPodToContainer(c)
 	}
 
 	return c
-}
-
-// RefreshPodByNamespace refreshes pod information by name and namespace
-func (a *Manager) RefreshPodByNamespace(name, namespace string) (*Pod, error) {
-	if a.k8s == nil {
-		return nil, errors.New("no kubernetes accessor available")
-	}
-
-	pod := a.k8s.GetPodByName(context.Background(), name, namespace)
-	if pod.Name == "" {
-		return nil, ErrPodNotFound
-	}
-
-	pod.SetManager(a)
-	return &pod, nil
 }
 
 func formatContainerSocketEndpoint(raw string) string {

@@ -33,7 +33,7 @@ func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*Kube
 	return &KubernetesAccessor{logger: logger, rs: rs}, endpoint, nil
 }
 
-func (m *KubernetesAccessor) AddPodToContainer(c *Container) *Container {
+func (m *KubernetesAccessor) addPodToContainer(c *Container) *Container {
 	// get the pod from the container
 	p := c.Pod()
 
@@ -43,15 +43,10 @@ func (m *KubernetesAccessor) AddPodToContainer(c *Container) *Container {
 		p.Labels = tmp.Labels
 		p.Annotations = tmp.Annotations
 
-		c.SetPod(p)
+		c.setPod(p)
 	}
 
 	return c
-}
-
-// GetPodByName retrieves pod information by name and namespace
-func (m *KubernetesAccessor) GetPodByName(ctx context.Context, name, namespace string) Pod {
-	return m.getPodByName(ctx, name, namespace)
 }
 
 func (m *KubernetesAccessor) getPodByName(ctx context.Context, name, namespace string) (p Pod) {

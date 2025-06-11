@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
 )
 
@@ -22,8 +21,6 @@ type Accessor interface {
 }
 
 type Manager struct {
-	process.DefaultObserver
-
 	logger *zap.Logger
 
 	accessors []Accessor
@@ -89,38 +86,10 @@ func (a *Manager) GetByID(containerID string) *Container {
 	}
 
 	if c.ID != "" && a.k8s != nil {
-		c = a.k8s.AddPodToContainer(c)
+		c = a.k8s.addPodToContainer(c)
 	}
 
 	return c
-}
-
-func (m *Manager) ProcessStarted(p *process.Process) error {
-	// discover the container metadata if it exists
-	if p.ContainerID != "" && p.ContainerID != "root" {
-		container := m.GetByID(p.ContainerID)
-		if container != nil {
-			p.Container = &process.Container{
-				ID:          container.ID,
-				Name:        container.TidyName(),
-				Labels:      container.Labels,
-				Image:       container.Image,
-				ImageDigest: container.ImageDigest,
-				RootFS:      container.RootFS,
-			}
-
-			if pod := container.Pod(); pod != nil {
-				p.Pod = &process.Pod{
-					Name:        pod.Name,
-					Namespace:   pod.Namespace,
-					Labels:      pod.Labels,
-					Annotations: pod.Annotations,
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 func formatContainerSocketEndpoint(raw string) string {

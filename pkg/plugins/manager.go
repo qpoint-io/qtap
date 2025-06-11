@@ -288,20 +288,21 @@ func (m *Manager) reconcileStacks(conf *config.Config) error {
 func (m *Manager) connectionStack(typ ConnectionType, conn *connection.Connection) (*StackDeployment, error) {
 	ll := conn.Logger()
 	// use pod label if set
-	if proc := conn.Process(); proc != nil && proc.Pod != nil {
-		pod := proc.Pod
-		if stackName, ok := pod.Labels[PodLabelStack]; ok {
-			ll = ll.With(
-				zap.String("stack", stackName),
-				zap.String("pod", pod.Name),
-				zap.String("pod_namespace", pod.Namespace),
-			)
-			stack, ok := m.stacks.Load(stackName)
-			if ok {
-				ll.Debug("resolved connection stack from pod label")
-				return stack.GetActiveDeployment(), nil
-			} else {
-				ll.Warn("ignoring invalid pod stack label")
+	if proc := conn.Process(); proc != nil {
+		if pod, _ := proc.Pod(); pod != nil {
+			if stackName, ok := pod.Labels[PodLabelStack]; ok {
+				ll = ll.With(
+					zap.String("stack", stackName),
+					zap.String("pod", pod.Name),
+					zap.String("pod_namespace", pod.Namespace),
+				)
+				stack, ok := m.stacks.Load(stackName)
+				if ok {
+					ll.Debug("resolved connection stack from pod label")
+					return stack.GetActiveDeployment(), nil
+				} else {
+					ll.Warn("ignoring invalid pod stack label")
+				}
 			}
 		}
 	}

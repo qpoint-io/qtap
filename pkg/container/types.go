@@ -25,7 +25,7 @@ func (c Container) TidyName() string {
 // that sets up the shared Linux namespaces (network, IPC, etc.) for the pod. Other
 // containers in the pod then join these namespaces. This function helps identify
 // these special sandbox containers by their labels.
-func (c Container) IsSandbox() bool {
+func (c Container) isSandbox() bool {
 	if len(c.Labels) == 0 {
 		return false
 	}
@@ -41,13 +41,13 @@ func (c *Container) Pod() *Pod {
 	}
 
 	var p Pod
-	p.LoadFromContainer(c)
+	p.loadFromContainer(c)
 	c.p = &p
 
 	return &p
 }
 
-func (c *Container) SetPod(p *Pod) {
+func (c *Container) setPod(p *Pod) {
 	c.p = p
 }
 
@@ -65,7 +65,7 @@ type Pod struct {
 	Annotations map[string]string
 }
 
-func (p *Pod) LoadFromContainer(c *Container) {
+func (p *Pod) loadFromContainer(c *Container) {
 	labels := c.Labels
 	if len(labels) == 0 {
 		return

@@ -268,7 +268,7 @@ func runTapCmd(logger *zap.Logger) {
 	if err := containerManager.Start(ctx); err != nil {
 		logger.Fatal("failed to start container manager", zap.Error(err))
 	}
-	pm.Observe(containerManager)
+	pm.Observe(process.NewContainerEnricher(containerManager))
 
 	// Initialize BPF trace manager
 	tm, err := trace.NewTraceManager(logger, tapObjs.TraceToggleMap, tapObjs.TraceEvents, pm, bpfTraceQuery)

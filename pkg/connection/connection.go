@@ -466,13 +466,13 @@ func (c *Connection) ProcessMeta() map[string]any {
 		"pod_id":       p.PodID,
 	}
 
-	if c := p.Container; c != nil {
+	if c, _ := p.Container(); c != nil {
 		setIfNotEmpty(m, "container_name", c.Name)
 		setIfNotEmpty(m, "container_image", c.Image)
 	}
-	if p := p.Pod; p != nil {
-		setIfNotEmpty(m, "pod_name", p.Name)
-		setIfNotEmpty(m, "pod_namespace", p.Namespace)
+	if pod, _ := p.Pod(); pod != nil {
+		setIfNotEmpty(m, "pod_name", pod.Name)
+		setIfNotEmpty(m, "pod_namespace", pod.Namespace)
 	}
 
 	return m
@@ -558,9 +558,9 @@ func (c *Connection) ControlValues() map[string]any {
 	if p := c.Process(); p != nil {
 		src["process"] = p.ControlValues()
 
-		if container := p.Container; container != nil && container.ID != "" {
+		if container, _ := p.Container(); container != nil && container.ID != "" {
 			src["container"] = container.ControlValues()
-			if pod := p.Pod; pod != nil && pod.Name != "" {
+			if pod, _ := p.Pod(); pod != nil && pod.Name != "" {
 				src["pod"] = pod.ControlValues()
 			}
 		}

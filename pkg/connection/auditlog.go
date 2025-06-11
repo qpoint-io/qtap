@@ -110,8 +110,9 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 			if user, _ := proc.User(); user != nil {
 				localEndpoint.User = user.Username
 			}
-			if proc.Container != nil {
-				localEndpoint.Container = toEventStoreContainer(proc.Container, proc.Pod)
+			if container, _ := proc.Container(); container != nil {
+				pod, _ := proc.Pod() // pod can be nil
+				localEndpoint.Container = toEventStoreContainer(container, pod)
 			}
 		}
 
@@ -171,6 +172,9 @@ func toEventStoreL7Protocol(protocol Protocol) eventstore.L7Protocol {
 }
 
 func toEventStoreContainer(container *process.Container, pod *process.Pod) *eventstore.Container {
+	if container == nil {
+		return nil
+	}
 	c := &eventstore.Container{
 		ID:    container.ID,
 		Name:  container.Name,

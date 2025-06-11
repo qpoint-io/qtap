@@ -33,7 +33,7 @@ func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*Kube
 	return &KubernetesAccessor{logger: logger, rs: rs}, endpoint, nil
 }
 
-func (m *KubernetesAccessor) AddPodToContainer(c *Container) *Container {
+func (m *KubernetesAccessor) addPodToContainer(c *Container) *Container {
 	// get the pod from the container
 	p := c.Pod()
 
@@ -43,7 +43,7 @@ func (m *KubernetesAccessor) AddPodToContainer(c *Container) *Container {
 		p.Labels = tmp.Labels
 		p.Annotations = tmp.Annotations
 
-		c.SetPod(p)
+		c.setPod(p)
 	}
 
 	return c

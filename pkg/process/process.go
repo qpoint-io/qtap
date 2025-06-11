@@ -1,7 +1,6 @@
 package process
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -67,8 +66,8 @@ type Process struct {
 	PredatesQpoint bool
 	User           resolvable.V[*ProcessUser]
 
-	Container *Container
-	Pod       *Pod
+	Container resolvable.V[*Container]
+	Pod       resolvable.V[*Pod]
 
 	// internal
 	hostname string
@@ -97,10 +96,12 @@ func NewProcess(pid int, exeFilename string) *Process {
 		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
 		ExeFilename: exeFilename,
 		tags:        tags.New(),
+		Container:   resolvable.Static[*Container](nil).WithBgContext(),
+		Pod:         resolvable.Static[*Pod](nil).WithBgContext(),
 	}
-	p.User = resolvable.New(func(ctx context.Context) (*ProcessUser, error) {
+	p.User = resolvable.NewV(func() (*ProcessUser, error) {
 		return GetProcessUser(p.Pid)
-	}, resolvable.WithRetry()).WithBgContext()
+	}, resolvable.WithRetry())
 	return p
 }
 
@@ -316,8 +317,8 @@ func (p *Process) SetTlsOk(tlsOk bool) error {
 }
 
 func (p *Process) RootFS() string {
-	if p.Container != nil {
-		return path.Join("/proc/1/root", p.Container.RootFS)
+	if c, err := p.Container(); err == nil && c != nil {
+		return path.Join("/proc/1/root", c.RootFS)
 	}
 	return fmt.Sprintf("/proc/%d/root", p.Pid)
 }

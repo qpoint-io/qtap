@@ -51,6 +51,12 @@ func New[T any](fn Ctx[T], opts ...Option) Ctx[T] {
 	return v.Resolve
 }
 
+func NewV[T any](fn V[T], opts ...Option) V[T] {
+	return New(func(ctx context.Context) (T, error) {
+		return fn()
+	}, opts...).WithContext(context.TODO())
+}
+
 type options struct {
 	retry    bool
 	expiry   time.Duration

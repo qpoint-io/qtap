@@ -339,7 +339,7 @@ func TestConnection_ControlValues(t *testing.T) {
 			"process": map[string]any{
 				"hostname": "testhost",
 				"user": map[string]any{
-					"id":   1000,
+					"id":   uint(1000),
 					"name": "testuser",
 				},
 				"binary": "curl",

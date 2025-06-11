@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.uber.org/zap"
@@ -63,13 +65,12 @@ type Process struct {
 	Env            map[string]string
 	Strategy       QpointStrategy
 	PredatesQpoint bool
+	User           resolvable.V[*ProcessUser]
 
 	Container *Container
 	Pod       *Pod
 
 	// internal
-	uid      int
-	user     string
 	hostname string
 	filter   uint8
 	elf      *binutils.Elf
@@ -91,12 +92,16 @@ type Process struct {
 }
 
 func NewProcess(pid int, exeFilename string) *Process {
-	return &Process{
+	p := &Process{
 		Pid:         pid,
 		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
 		ExeFilename: exeFilename,
 		tags:        tags.New(),
 	}
+	p.User = resolvable.New(func(ctx context.Context) (*ProcessUser, error) {
+		return GetProcessUser(p.Pid)
+	}, resolvable.WithRetry()).WithBgContext()
+	return p
 }
 
 func AllProcesses() ([]*Process, error) {
@@ -260,36 +265,8 @@ func (p *Process) CacheKey() string {
 	return p.ContainerID + "-" + p.Exe
 }
 
-func (p *Process) UID() (int, error) {
-	_, err := p.User()
-	return p.uid, err
-}
-
-func (p *Process) User() (string, error) {
-	// return the user if it's already been resolved
-	if p.user != "" {
-		return p.user, nil
-	}
-
-	// get the user
-	user, err := GetProcessUser(p.Pid)
-	if err != nil {
-		return "", fmt.Errorf("getting process user: %w", err)
-	}
-
-	// set the user
-	if uid, err := strconv.Atoi(user.UID); err == nil {
-		p.uid = uid
-	}
-	p.user = user.Username
-
-	// return from cache
-	return p.user, nil
-}
-
-func (p *Process) SetUser(uid int, user string) {
-	p.uid = uid
-	p.user = user
+func (p *Process) SetUser(uid uint, user string) {
+	p.User = resolvable.Static(&ProcessUser{UID: uid, Username: user}).WithBgContext()
 }
 
 func (p *Process) Hostname() (string, error) {
@@ -535,15 +512,9 @@ func (p *Process) ControlValues() map[string]any {
 
 	// user
 	user := map[string]any{}
-	if id, err := p.UID(); err == nil {
-		user["id"] = id
-	}
-
-	if id, err := p.UID(); err == nil {
-		user["id"] = id
-	}
-	if name, err := p.User(); err == nil {
-		user["name"] = name
+	if u, err := p.User(); err == nil {
+		user["id"] = u.UID
+		user["name"] = u.Username
 	}
 	v["user"] = user
 

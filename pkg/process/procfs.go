@@ -79,9 +79,8 @@ func parseCgroups(data []byte) ([]Cgroup, error) {
 
 // ProcessUser contains information about the user running a process
 type ProcessUser struct {
-	UID      string
+	UID      uint
 	Username string
-	Name     string
 }
 
 // GetProcessUser retrieves user information for a given process ID using the /proc filesystem
@@ -116,9 +115,8 @@ func GetProcessUser(pid int) (*ProcessUser, error) {
 	}
 
 	return &ProcessUser{
-		UID:      uid,
+		UID:      uint(stat.Uid),
 		Username: u.Username,
-		Name:     u.Name,
 	}, nil
 }
 

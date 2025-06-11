@@ -42,6 +42,7 @@ type Connection struct {
 	stackInstance StackInstance
 	metadata      map[string]MetadataValue
 	tags          tags.List
+	controlValues map[string]any
 	bufferSize    int
 }
 
@@ -105,6 +106,10 @@ func (c *Connection) SetResponse(res *http.Response) {
 	// set the response and response body
 	c.resp = res
 	c.resHeaderMap = NewHeaders(res.Header)
+}
+
+func (c *Connection) SetControlValues(values map[string]any) {
+	c.controlValues = values
 }
 
 // session is done

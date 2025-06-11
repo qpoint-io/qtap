@@ -86,15 +86,15 @@ func (i *instance) Destroy() {
 		// Create rule evaluation pairs from request, response headers and metadata
 		reqPairs := tools.NewHeaderMap(i.reqheaders).RulePairs("request")
 		resPairs := tools.NewHeaderMap(i.resheaders).RulePairs("response")
-		metaPairs := tools.MetadataRulePairs(i.conn.Metadata())
+		connPairs := i.conn.ControlValues()
 
 		// Combine all pairs for rule evaluation
-		allPairs := make(map[string]any, len(reqPairs)+len(resPairs)+len(metaPairs))
+		allPairs := make(map[string]any, len(reqPairs)+len(resPairs)+len(connPairs))
 
 		// Add all pairs using maps.Copy
 		maps.Copy(allPairs, reqPairs)
 		maps.Copy(allPairs, resPairs)
-		maps.Copy(allPairs, metaPairs)
+		maps.Copy(allPairs, connPairs)
 
 		var (
 			macros    map[string]rulekit.Rule

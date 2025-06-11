@@ -59,3 +59,7 @@ func (c *ConnectionContext) Tags() tags.List {
 func (c *ConnectionContext) Context() context.Context {
 	return c.connection.ctx
 }
+
+func (c *ConnectionContext) ControlValues() map[string]any {
+	return c.connection.controlValues
+}

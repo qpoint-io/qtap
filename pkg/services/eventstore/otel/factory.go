@@ -52,10 +52,11 @@ type Factory struct {
 	environment string
 }
 
+var mustacheRegex = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+
 func expandEnvVarsInBraces(s string) string {
-	re := regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
-	return re.ReplaceAllStringFunc(s, func(str string) string {
-		matches := re.FindStringSubmatch(str)
+	return mustacheRegex.ReplaceAllStringFunc(s, func(str string) string {
+		matches := mustacheRegex.FindStringSubmatch(str)
 		if len(matches) == 2 {
 			key := matches[1]
 			if val, ok := os.LookupEnv(key); ok {

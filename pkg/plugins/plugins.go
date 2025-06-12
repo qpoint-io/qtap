@@ -57,6 +57,7 @@ type PluginContext interface {
 	GetMetadata(key string) MetadataValue
 	Tags() tags.List
 	Context() context.Context
+	ControlValues() map[string]any
 }
 
 type Headers interface {

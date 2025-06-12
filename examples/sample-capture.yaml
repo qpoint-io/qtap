@@ -26,6 +26,12 @@ stacks:
             - name: full log on 400
               expr: is_4xx() # see rulekit config below
               level: full
+            - name: full log on container label
+              expr: src.container.labels.qpoint_debug_level == "debug"
+              level: full
+            - name: full log on pod label
+              expr: src.pod.labels.qpoint_debug_level == "debug"
+              level: full
 
 # rulekit config
 rulekit:

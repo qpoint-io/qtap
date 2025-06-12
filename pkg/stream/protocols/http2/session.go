@@ -182,6 +182,9 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 			s.pluginConn.AppendMetadata("process-"+k, fmt.Sprintf("%v", v))
 		}
 
+		// set the control values
+		s.pluginConn.SetControlValues(s.conn.ControlValues())
+
 		// call the request headers callback
 		if err := s.pluginConn.OnHttpRequestHeaders(endOfStream); err != nil {
 			s.logger.Error("plugin request headers", zap.Error(err))

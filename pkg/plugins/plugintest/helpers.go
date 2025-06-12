@@ -114,12 +114,13 @@ func Headers(kv map[string]string) *plugins.HttpHeaderMap {
 }
 
 type Context struct {
-	T         *testing.T
-	VReqBody  []byte
-	VResBody  []byte
-	VMetadata map[string]any
-	VTags     map[string]string
-	VContext  context.Context
+	T              *testing.T
+	VReqBody       []byte
+	VResBody       []byte
+	VMetadata      map[string]any
+	VTags          map[string]string
+	VContext       context.Context
+	VControlValues map[string]any
 }
 
 // plugins.HttpPluginInstance interface implementation
@@ -163,6 +164,10 @@ func (c *Context) Context() context.Context {
 		return c.VContext
 	}
 	return context.TODO()
+}
+
+func (c *Context) ControlValues() map[string]any {
+	return c.VControlValues
 }
 
 func Buffer[T string | []byte](data T) *synq.LinkedBuffer {

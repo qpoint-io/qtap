@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -51,6 +52,20 @@ type Factory struct {
 	environment string
 }
 
+func expandEnvVarsInBraces(s string) string {
+	re := regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
+	return re.ReplaceAllStringFunc(s, func(str string) string {
+		matches := re.FindStringSubmatch(str)
+		if len(matches) == 2 {
+			key := matches[1]
+			if val, ok := os.LookupEnv(key); ok {
+				return val
+			}
+		}
+		return str
+	})
+}
+
 func (f *Factory) Init(ctx context.Context, cfg any) error {
 	c, ok := cfg.(config.ServiceEventStore)
 	if !ok {
@@ -75,8 +90,9 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	default:
 		endpoint = "localhost:4317" // Default OTLP gRPC endpoint
 	}
+
 	if c.Endpoint != "" {
-		endpoint = c.Endpoint
+		endpoint = expandEnvVarsInBraces(c.Endpoint)
 	}
 
 	// Service name and environment from config

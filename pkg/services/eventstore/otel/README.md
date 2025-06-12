@@ -23,6 +23,28 @@ eventstore:
     environment: "production"
 ```
 
+### Environment Variable Support
+
+Environment variables can be referenced in the endpoint configuration using mustache-style syntax:
+
+```yaml
+eventstore:
+  - type: otel
+    endpoint: "{{ OTEL_ENDPOINT }}"
+    protocol: grpc
+    service_name: "qtap"
+    environment: "production"
+```
+
+```yaml
+eventstore:
+  - type: otel
+    endpoint: "https://example.com/org/{{ OTEL_ORG_ID }}/dataset/{{ OTEL_DATASET_ID }}"
+    protocol: grpc
+    service_name: "qtap"
+    environment: "production"
+```
+
 ### HTTP Protocol Configuration
 
 ```yaml

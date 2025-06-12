@@ -304,3 +304,33 @@ func TestFactory_ProtocolDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestExpandEnvVarsInBraces(t *testing.T) {
+	t.Setenv("FOO", "bar")
+	t.Setenv("BAZ", "qux")
+
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"no vars", "hello world", "hello world"},
+		{"single var", "foo={{FOO}}", "foo=bar"},
+		{"single var with spaces", "foo={{ FOO }}", "foo=bar"},
+		{"var with spaces", "foo={{   FOO   }}", "foo=bar"},
+		{"multiple vars", "a={{FOO}},b={{BAZ}}", "a=bar,b=qux"},
+		{"unknown var", "foo={{UNKNOWN}}", "foo={{UNKNOWN}}"},
+		{"mixed known/unknown", "foo={{FOO}},x={{UNKNOWN}}", "foo=bar,x={{UNKNOWN}}"},
+		{"nested braces", "foo={{{FOO}}}", "foo={bar}"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := expandEnvVarsInBraces(tt.in)
+			if got != tt.want {
+				t.Errorf("expandEnvVarsInBraces(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}

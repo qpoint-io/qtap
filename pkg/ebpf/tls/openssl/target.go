@@ -65,25 +65,6 @@ func (t *OpenSSLTarget) Start() error {
 		return fmt.Errorf("opening executable: %w", err)
 	}
 
-	// probes := []struct {
-	// 	Symbol   string
-	// 	Prog     *ebpf.Program
-	// 	IsReturn bool
-	// }{
-	// 	// ssl probes for anything that implements openssl
-	// 	{Symbol: "SSL_read", Prog: t.objs.OpensslProbeEntrySSL_read, IsReturn: false},
-	// 	{Symbol: "SSL_read_ex", Prog: t.objs.OpensslProbeEntrySSL_readEx, IsReturn: false},
-	// 	{Symbol: "SSL_write", Prog: t.objs.OpensslProbeEntrySSL_write, IsReturn: false},
-	// 	{Symbol: "SSL_write_ex", Prog: t.objs.OpensslProbeEntrySSL_writeEx, IsReturn: false},
-
-	// 	{Symbol: "SSL_read", Prog: t.objs.OpensslProbeRetSSL_read, IsReturn: true},
-	// 	{Symbol: "SSL_read_ex", Prog: t.objs.OpensslProbeRetSSL_readEx, IsReturn: true},
-	// 	{Symbol: "SSL_write", Prog: t.objs.OpensslProbeRetSSL_write, IsReturn: true},
-	// 	{Symbol: "SSL_write_ex", Prog: t.objs.OpensslProbeRetSSL_writeEx, IsReturn: true},
-	// 	{Symbol: "SSL_new", Prog: t.objs.OpensslProbeRetSSL_new, IsReturn: true},
-	// 	{Symbol: "SSL_free", Prog: t.objs.OpensslProbeEntrySSL_free, IsReturn: false},
-	// }
-
 	// searched symbols to use
 	var syms []elf.Symbol
 

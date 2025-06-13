@@ -115,7 +115,3 @@ func (c *Container) Cleanup() error {
 
 	return nil
 }
-
-type StringerFunc func() string
-
-func (f StringerFunc) String() string { return f() }

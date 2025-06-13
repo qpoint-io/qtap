@@ -84,24 +84,24 @@ func (t *OpenSSLTarget) Start() error {
 		}
 
 		// open the ELF file if we don't have one
-		if t.ef == nil {
-			ef, err := binutils.NewElf(t.location, "/", false)
+		ef := t.ef
+		if ef == nil {
+			ef, err = binutils.NewElf(t.location, "/", false)
 			if err != nil {
 				return err
 			}
-			t.ef = ef
 
-			defer t.ef.Close()
+			defer ef.Close()
 		}
 
 		// find the symbols from the binary
-		syms, err = t.ef.SearchSymbols(search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
+		syms, err = ef.SearchSymbols(search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
 		if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
 			t.logger.Debug("Failed to search for symbols", zap.Error(err))
 		}
 
 		// calculate the addresses of the symbols
-		syms = t.ef.CalculateUprobeAddresses(syms)
+		syms = ef.CalculateUprobeAddresses(syms)
 
 		// cache the result
 		if t.cacheEntry != nil {

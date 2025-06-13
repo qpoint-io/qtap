@@ -17,7 +17,7 @@ const (
 
 type Container struct {
 	// pids in the container
-	pids *synq.Map[int, interface{}]
+	pids *synq.Map[int, any]
 
 	// openssl targets [/path/to/libssl.so]
 	targets map[string]*OpenSSLTarget
@@ -40,7 +40,7 @@ func NewContainer(logger *zap.Logger, probeFn func() []*common.Uprobe) *Containe
 		targets: make(map[string]*OpenSSLTarget),
 		logger:  logger,
 		probeFn: probeFn,
-		pids:    synq.NewMap[int, interface{}](),
+		pids:    synq.NewMap[int, any](),
 	}
 }
 
@@ -115,7 +115,3 @@ func (c *Container) Cleanup() error {
 
 	return nil
 }
-
-type StringerFunc func() string
-
-func (f StringerFunc) String() string { return f() }

@@ -65,25 +65,6 @@ func (t *OpenSSLTarget) Start() error {
 		return fmt.Errorf("opening executable: %w", err)
 	}
 
-	// probes := []struct {
-	// 	Symbol   string
-	// 	Prog     *ebpf.Program
-	// 	IsReturn bool
-	// }{
-	// 	// ssl probes for anything that implements openssl
-	// 	{Symbol: "SSL_read", Prog: t.objs.OpensslProbeEntrySSL_read, IsReturn: false},
-	// 	{Symbol: "SSL_read_ex", Prog: t.objs.OpensslProbeEntrySSL_readEx, IsReturn: false},
-	// 	{Symbol: "SSL_write", Prog: t.objs.OpensslProbeEntrySSL_write, IsReturn: false},
-	// 	{Symbol: "SSL_write_ex", Prog: t.objs.OpensslProbeEntrySSL_writeEx, IsReturn: false},
-
-	// 	{Symbol: "SSL_read", Prog: t.objs.OpensslProbeRetSSL_read, IsReturn: true},
-	// 	{Symbol: "SSL_read_ex", Prog: t.objs.OpensslProbeRetSSL_readEx, IsReturn: true},
-	// 	{Symbol: "SSL_write", Prog: t.objs.OpensslProbeRetSSL_write, IsReturn: true},
-	// 	{Symbol: "SSL_write_ex", Prog: t.objs.OpensslProbeRetSSL_writeEx, IsReturn: true},
-	// 	{Symbol: "SSL_new", Prog: t.objs.OpensslProbeRetSSL_new, IsReturn: true},
-	// 	{Symbol: "SSL_free", Prog: t.objs.OpensslProbeEntrySSL_free, IsReturn: false},
-	// }
-
 	// searched symbols to use
 	var syms []elf.Symbol
 
@@ -103,24 +84,24 @@ func (t *OpenSSLTarget) Start() error {
 		}
 
 		// open the ELF file if we don't have one
-		if t.ef == nil {
-			ef, err := binutils.NewElf(t.location, "/", false)
+		ef := t.ef
+		if ef == nil {
+			ef, err = binutils.NewElf(t.location, "/", false)
 			if err != nil {
 				return err
 			}
-			t.ef = ef
 
-			defer t.ef.Close()
+			defer ef.Close()
 		}
 
 		// find the symbols from the binary
-		syms, err = t.ef.SearchSymbols(search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
+		syms, err = ef.SearchSymbols(search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
 		if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
 			t.logger.Debug("Failed to search for symbols", zap.Error(err))
 		}
 
 		// calculate the addresses of the symbols
-		syms = t.ef.CalculateUprobeAddresses(syms)
+		syms = ef.CalculateUprobeAddresses(syms)
 
 		// cache the result
 		if t.cacheEntry != nil {

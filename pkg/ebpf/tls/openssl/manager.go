@@ -324,22 +324,6 @@ func (m *OpenSSLManager) detectStaticallyLinkedLibssl(proc *process.Process) (bo
 		return false, fmt.Errorf("failed to get elf: %w", err)
 	}
 
-	// quick search for ssl symbols
-	contains, err := e.ContainsAnySymbols(symbolScan, elf.SHT_SYMTAB)
-	if err != nil {
-		if errors.Is(err, binutils.ErrNoSymbols) {
-			return false, nil
-		}
-		m.logger.Debug("failed to check for SSL symbols",
-			zap.String("exe", proc.Exe),
-			zap.Error(err),
-		)
-	}
-
-	if !contains {
-		return false, nil
-	}
-
 	// find the symbols
 	matches, err := e.SearchSymbols(symbolScan, elf.SHT_SYMTAB)
 	if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {

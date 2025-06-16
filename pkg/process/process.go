@@ -1,6 +1,7 @@
 package process
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,9 +16,9 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/config"
-	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.uber.org/zap"
@@ -96,12 +97,12 @@ func NewProcess(pid int, exeFilename string) *Process {
 		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
 		ExeFilename: exeFilename,
 		tags:        tags.New(),
-		Container:   resolvable.Static[*Container](nil).WithBgContext(),
-		Pod:         resolvable.Static[*Pod](nil).WithBgContext(),
+		Container:   resolvable.Static[*Container](nil).WithBackgroundContext(),
+		Pod:         resolvable.Static[*Pod](nil).WithBackgroundContext(),
 	}
-	p.User = resolvable.NewV(func() (*ProcessUser, error) {
+	p.User = resolvable.New(func(context.Context) (*ProcessUser, error) {
 		return GetProcessUser(p.Pid)
-	}, resolvable.WithRetry())
+	}, resolvable.WithRetry()).WithBackgroundContext()
 	return p
 }
 
@@ -267,7 +268,7 @@ func (p *Process) CacheKey() string {
 }
 
 func (p *Process) SetUser(uid uint, user string) {
-	p.User = resolvable.Static(&ProcessUser{UID: uid, Username: user}).WithBgContext()
+	p.User = resolvable.Static(&ProcessUser{UID: uid, Username: user}).WithBackgroundContext()
 }
 
 func (p *Process) Hostname() (string, error) {

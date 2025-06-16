@@ -13,6 +13,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
 	github.com/moby/moby v28.1.1+incompatible
 	github.com/prometheus/client_golang v1.22.0

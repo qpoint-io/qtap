@@ -111,7 +111,7 @@ func GetProcessUser(pid int) (*ProcessUser, error) {
 	// Look up user info from UID
 	u, err := user.LookupId(uid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up user info: %w", err)
+		return &ProcessUser{UID: uint(stat.Uid)}, fmt.Errorf("failed to look up user info: %w", err)
 	}
 
 	return &ProcessUser{

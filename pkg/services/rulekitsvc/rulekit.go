@@ -2,10 +2,10 @@ package rulekitsvc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/rulekit"
@@ -19,7 +19,7 @@ type Service interface {
 	services.Service
 	Macros() map[string]rulekit.Rule
 	Functions() map[string]*rulekit.Function
-	IsCriticalErr(err error) bool
+	Values() rulekit.KV
 }
 
 type Factory struct {
@@ -60,11 +60,17 @@ func (f *Factory) Create(ctx context.Context) (services.Service, error) {
 }
 
 type service struct {
-	f *Factory
+	f    *Factory
+	conn *connection.Connection
 }
 
 func (s *service) ServiceType() services.ServiceType {
 	return TypeRulekit
+}
+
+// SetConnection implements the ConnectionAdapter interface.
+func (s *service) SetConnection(conn *connection.Connection) {
+	s.conn = conn
 }
 
 func (s *service) Macros() map[string]rulekit.Rule {
@@ -75,12 +81,10 @@ func (s *service) Functions() map[string]*rulekit.Function {
 	return rulekitext.Functions
 }
 
-// IsCriticalErr returns true if the error is a critical error.
-// e.g. invalid rule syntax is considered critical. Missing fields are not critical.
-func (s *service) IsCriticalErr(err error) bool {
-	mf := &rulekit.ErrMissingFields{}
-	if errors.As(err, &mf) {
-		return true
+func (s *service) Values() rulekit.KV {
+	if s.conn == nil {
+		return nil
 	}
-	return false
+
+	return s.conn.ControlValues()
 }

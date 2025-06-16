@@ -32,6 +32,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	eventstoreaxiom "github.com/qpoint-io/qtap/pkg/services/eventstore/axiom"
 	eventstoreconsole "github.com/qpoint-io/qtap/pkg/services/eventstore/console"
 	eventstorenoop "github.com/qpoint-io/qtap/pkg/services/eventstore/noop"
@@ -76,6 +77,7 @@ var (
 
 		// Add more services here...
 		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
+		func() services.ServiceFactory { return &connmeta.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{

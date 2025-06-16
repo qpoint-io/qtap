@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/tags"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -52,12 +52,46 @@ type PluginContext interface {
 	GetRequestBodyBuffer() BodyBuffer
 	GetResponseBodyBuffer() BodyBuffer
 
-	// TODO(Jon): these should be "services"
-	Metadata() map[string]MetadataValue
-	GetMetadata(key string) MetadataValue
-	Tags() tags.List
 	Context() context.Context
-	ControlValues() map[string]any
+	Meta() Meta
+}
+
+// Meta provides top-level-connection metadata extended with PluginContext-level metadata
+type Meta interface {
+	connmeta.Service
+	RequestID() string
+
+	ReadBytes() int64
+	WriteBytes() int64
+	SetReadBytes(int64)
+	SetWriteBytes(int64)
+}
+
+type meta struct {
+	connmeta.Service
+	requestID  string
+	readBytes  int64
+	writeBytes int64
+}
+
+func (m *meta) RequestID() string {
+	return m.requestID
+}
+
+func (m *meta) ReadBytes() int64 {
+	return m.readBytes
+}
+
+func (m *meta) WriteBytes() int64 {
+	return m.writeBytes
+}
+
+func (m *meta) SetReadBytes(bytes int64) {
+	m.readBytes = bytes
+}
+
+func (m *meta) SetWriteBytes(bytes int64) {
+	m.writeBytes = bytes
 }
 
 type Headers interface {

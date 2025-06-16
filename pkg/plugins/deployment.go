@@ -43,7 +43,7 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 		// create an plugin
 		plugin := d.pluginAccessor.Get(PluginType(cp.Type))
 		if plugin == nil {
-			d.logger.Warn("plugin not found", zap.String("type", cp.Type))
+			d.logger.Error("plugin not found", zap.String("type", cp.Type))
 			continue
 		}
 		plugin.Init(d.logger.With(zap.String("plugin", cp.Type)), cp.Config)

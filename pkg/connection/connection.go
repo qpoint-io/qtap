@@ -451,40 +451,6 @@ func (c *Connection) Proto() string {
 	return string(c.Protocol)
 }
 
-func (c *Connection) ProcessMeta() map[string]any {
-	p := c.Process()
-	if p == nil {
-		return nil
-	}
-
-	m := map[string]any{
-		"conn_id":      c.id,
-		"pid":          p.Pid,
-		"exe":          p.Exe,
-		"bin":          p.Binary,
-		"container_id": p.ContainerID,
-		"pod_id":       p.PodID,
-	}
-
-	if c, _ := p.Container(); c != nil {
-		setIfNotEmpty(m, "container_name", c.Name)
-		setIfNotEmpty(m, "container_image", c.Image)
-	}
-	if pod, _ := p.Pod(); pod != nil {
-		setIfNotEmpty(m, "pod_name", pod.Name)
-		setIfNotEmpty(m, "pod_namespace", pod.Namespace)
-	}
-
-	return m
-}
-
-// setIfNotEmpty sets a value in the map only if the string is not empty
-func setIfNotEmpty(m map[string]any, key, value string) {
-	if value != "" && value != "<nil>" {
-		m[key] = value
-	}
-}
-
 // Destination returns the original destination address of the connection
 func (c *Connection) Destination() qnet.NetAddr {
 	if c.OriginalDestination != nil {
@@ -519,7 +485,7 @@ func (c *Connection) Cookie() Cookie {
 }
 
 // ControlValues returns the values that are used to evaluate the control rules
-// NOTE: values types not supported by the rule engine are ignored (see top-level comment in pkg/rule/rule.go)
+// NOTE: please make sure to only use value types that are supported by rulekit.
 func (c *Connection) ControlValues() map[string]any {
 	var (
 		src = map[string]any{}

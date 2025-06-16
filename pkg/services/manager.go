@@ -43,8 +43,11 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 		return
 	}
 
+	// get services from config
 	svcs := config.Services.ToMap()
+	// add core services
 	svcs["rulekit"] = config.Rulekit
+	svcs["connmeta"] = nil
 	for key, svcConfig := range svcs {
 		fn, exists := sm.factories[ServiceType(key)]
 		if !exists {

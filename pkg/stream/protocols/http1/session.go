@@ -2,7 +2,6 @@ package http1
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -82,7 +81,7 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 		State:         SessionStateRequestHeaders,
 		ctx:           ctx,
 		id:            id,
-		logger:        logger.With(zap.String("session-id", id)),
+		logger:        logger.With(zap.String("qpoint_request_id", id)),
 		domain:        domain,
 		conn:          conn,
 		pluginManager: pluginManager,
@@ -153,7 +152,7 @@ func (s *Session) CreateRequest(req *http.Request, noBody bool) {
 	// create a plugin connection
 	if s.pluginManager != nil {
 		var err error
-		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn)
+		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn, s.id)
 		if err != nil {
 			s.logger.Error("creating plugin connection", zap.Error(err))
 		}
@@ -162,22 +161,6 @@ func (s *Session) CreateRequest(req *http.Request, noBody bool) {
 	if s.pluginConn != nil {
 		// set the request
 		s.pluginConn.SetRequest(s.req)
-
-		// add qpoint metadata
-		s.pluginConn.AppendMetadata("qpoint-request-id", s.id)
-		// set endpointID
-		s.pluginConn.AppendMetadata("endpoint-id", s.conn.Domain())
-		// set the direction header
-		s.pluginConn.AppendMetadata("direction", s.conn.Direction())
-		// set the protocol header
-		s.pluginConn.AppendMetadata("protocol", s.req.Proto)
-		// set process meta headers
-		for k, v := range s.conn.ProcessMeta() {
-			s.pluginConn.AppendMetadata("process-"+k, fmt.Sprintf("%v", v))
-		}
-
-		// set the control values
-		s.pluginConn.SetControlValues(s.conn.ControlValues())
 
 		// call the request headers callback
 		if err := s.pluginConn.OnHttpRequestHeaders(true); err != nil {
@@ -311,8 +294,8 @@ func (s *Session) Close() {
 
 	if s.pluginConn != nil {
 		// update the bandwidth metadata
-		s.pluginConn.AppendMetadata("wr_bytes", s.wrBytes)
-		s.pluginConn.AppendMetadata("rd_bytes", s.rdBytes)
+		s.pluginConn.Meta().SetReadBytes(s.rdBytes)
+		s.pluginConn.Meta().SetWriteBytes(s.wrBytes)
 		span.SetAttributes(
 			attribute.Int64("wr_bytes", s.wrBytes),
 			attribute.Int64("rd_bytes", s.rdBytes),

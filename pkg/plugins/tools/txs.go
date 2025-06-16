@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 )
 
 type Headers interface {
@@ -124,36 +125,42 @@ func (h HeaderMap) URL() (string, bool) {
 	return buildAuthorityURL(s, a, p)
 }
 
-func (h HeaderMap) RulePairs(prefix string) map[string]any {
-	rulePairs := make(map[string]any)
-
+func (h HeaderMap) RulePairs() map[string]any {
 	if h.headers == nil {
-		return rulePairs
+		return nil
 	}
 
-	for k, v := range h.headers.All() {
+	headers := h.headers.All()
+	rulePairs := make(map[string]any)
+	var headerPairs map[string]any
+	for k, v := range headers {
 		key := strings.ToLower(k)
 		if strings.HasPrefix(key, ":") {
-			rulePairs[prefix+"."+strings.TrimPrefix(key, ":")] = v
+			// special headers such as :status go outside the `headers` key
+			rulePairs[key[1:]] = v
 		} else {
-			rulePairs[prefix+".header."+key] = v
+			if headerPairs == nil {
+				headerPairs = make(map[string]any)
+			}
+			headerPairs[key] = v
 		}
+	}
+	if headerPairs != nil {
+		rulePairs["headers"] = headerPairs
 	}
 
 	// full url
 	if url, ok := h.URL(); ok {
-		rulePairs[prefix+".url"] = url
+		rulePairs["url"] = url
 	}
 
 	// host (just a different name for authority)
 	if host, ok := h.Authority(); ok {
-		rulePairs[prefix+".host"] = host
+		rulePairs["host"] = host
 	}
 
-	if _, ok := rulePairs["response.status"]; ok {
-		if status, ok := h.Status(); ok {
-			rulePairs[prefix+".status"] = status
-		}
+	if status, ok := h.Status(); ok {
+		rulePairs["status"] = status
 	}
 
 	return rulePairs
@@ -200,20 +207,25 @@ func (h HeaderMap) BinaryContentType() bool {
 	return false
 }
 
-func MetadataRulePairs(md map[string]plugins.MetadataValue) map[string]any {
-	rulePairs := make(map[string]any)
-
-	if md == nil {
-		return rulePairs
+func ConnectionValues(rk rulekitsvc.Service, reqheaders Headers, resheaders Headers) map[string]any {
+	var values map[string]any
+	// base connection values
+	if rk != nil {
+		values = rk.Values()
+	}
+	if values == nil {
+		values = make(map[string]any)
 	}
 
-	for k, v := range md {
-		if !v.OK() {
-			continue
-		}
-
-		rulePairs[strings.TrimPrefix(k, "process-")] = v.String()
+	// http values
+	httpValues := make(map[string]any, 2)
+	if reqValues := NewHeaderMap(reqheaders).RulePairs(); len(reqValues) > 0 {
+		httpValues["req"] = reqValues
 	}
+	if resValues := NewHeaderMap(resheaders).RulePairs(); len(resValues) > 0 {
+		httpValues["res"] = resValues
+	}
+	values["http"] = httpValues
 
-	return rulePairs
+	return values
 }

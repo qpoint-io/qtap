@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/plugins"
-	"github.com/qpoint-io/qtap/pkg/plugins/metadata"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/stretchr/testify/assert"
@@ -114,13 +115,39 @@ func Headers(kv map[string]string) *plugins.HttpHeaderMap {
 }
 
 type Context struct {
-	T              *testing.T
-	VReqBody       []byte
-	VResBody       []byte
-	VMetadata      map[string]any
-	VTags          tags.List
-	VContext       context.Context
-	VControlValues map[string]any
+	T        *testing.T
+	VReqBody []byte
+	VResBody []byte
+	VContext context.Context
+	VTags    tags.List
+	VMeta    *Meta
+}
+
+type Meta struct {
+	connmeta.Service
+	VRequestID  string
+	VReadBytes  int64
+	VWriteBytes int64
+}
+
+func (m *Meta) RequestID() string {
+	return m.VRequestID
+}
+
+func (m *Meta) ReadBytes() int64 {
+	return m.VReadBytes
+}
+
+func (m *Meta) WriteBytes() int64 {
+	return m.VWriteBytes
+}
+
+func (m *Meta) SetReadBytes(bytes int64) {
+	m.VReadBytes = bytes
+}
+
+func (m *Meta) SetWriteBytes(bytes int64) {
+	m.VWriteBytes = bytes
 }
 
 // plugins.HttpPluginInstance interface implementation
@@ -134,31 +161,6 @@ func (c *Context) GetResponseBodyBuffer() plugins.BodyBuffer {
 	return Buffer(c.VResBody)
 }
 
-// Metadata returns connection specific metadata in a map[string]any.
-func (c *Context) Metadata() map[string]plugins.MetadataValue {
-	m := make(map[string]plugins.MetadataValue, len(c.VMetadata))
-	for k, v := range c.VMetadata {
-		m[k] = &metadata.MetadataValue{Value: v}
-	}
-	return m
-}
-
-// GetMetadata returns a key value of type any, if the key exists.
-func (c *Context) GetMetadata(key string) plugins.MetadataValue {
-	if value, ok := c.VMetadata[key]; ok {
-		return &metadata.MetadataValue{Value: value}
-	}
-
-	// if the key doesn't exist, return an empty value
-	// this is to avoid nil pointers
-	// an OK() method is provided to check if the value is set
-	return &metadata.MetadataValue{}
-}
-
-func (c *Context) Tags() tags.List {
-	return c.VTags
-}
-
 func (c *Context) Context() context.Context {
 	if c.VContext != nil {
 		return c.VContext
@@ -166,10 +168,19 @@ func (c *Context) Context() context.Context {
 	return context.TODO()
 }
 
-func (c *Context) ControlValues() map[string]any {
-	return c.VControlValues
+func (c *Context) Meta() plugins.Meta {
+	return c.VMeta
 }
 
 func Buffer[T string | []byte](data T) *synq.LinkedBuffer {
 	return synq.NewLinkedBuffer(1024*1024*2, []byte(data))
+}
+
+func ConnmetaSvc(t *testing.T, ctx context.Context, conn *connection.Connection) connmeta.Service {
+	t.Helper()
+	svc, err := (&connmeta.Factory{}).Create(ctx)
+	require.NoError(t, err)
+
+	svc.(plugins.ConnectionAdapter).SetConnection(conn)
+	return svc.(connmeta.Service)
 }

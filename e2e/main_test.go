@@ -25,6 +25,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
@@ -79,6 +80,7 @@ func mainSetup() error {
 
 		// Add more services here...
 		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
+		func() services.ServiceFactory { return &connmeta.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{

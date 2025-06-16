@@ -6,7 +6,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/qpoint-io/qtap/pkg/connection"
+	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/plugintest"
+	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/rulekit"
@@ -160,6 +163,8 @@ func TestOutputFormatConstants(t *testing.T) {
 
 func TestHttpCapturePlugin(t *testing.T) {
 	logger := zaptest.NewLogger(t)
+	ctx := context.Background()
+	conn := connection.NewConnection(ctx, logger, &connection.OpenEvent{})
 
 	// factory
 	pluginConf := &HttpCaptureConfig{
@@ -181,25 +186,32 @@ func TestHttpCapturePlugin(t *testing.T) {
 	factory.Init(logger, pluginConfYaml)
 
 	// dependencies
-	macros := &rulekitsvc.Factory{
+	var svcs []services.Service
+	rulekit := &rulekitsvc.Factory{
 		Macros: map[string]rulekit.Rule{
-			"success_response": rulekit.MustParse("response.status >= 200 && response.status < 300"),
+			"success_response": rulekit.MustParse("http.res.status >= 200 && http.res.status < 300"),
 			"pi": rulekit.RuleFunc(func(ctx *rulekit.Ctx) rulekit.Result {
 				return rulekit.Result{Value: float64(math.Pi)}
 			}),
 		},
 	}
-	macrosSvc, err := macros.Create(context.Background())
+	rulekitSvc, err := rulekit.Create(ctx)
 	require.NoError(t, err)
+	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
+	svcs = append(svcs, rulekitSvc)
 
+	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup
-	t.Run("trigger", func(t *testing.T) {
+	t.Run("match", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockES := eventstore.NewMockEventStore(ctrl)
 		ctx := &plugintest.Context{
 			T:        t,
 			VReqBody: []byte("in"),
 			VResBody: []byte("out"),
+			VMeta: &plugintest.Meta{
+				Service: connMetaSvc,
+			},
 		}
 
 		mockES.EXPECT().Save(gomock.Any(), gomock.All(
@@ -214,7 +226,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		)).Return()
 
 		// simulate http tx
-		plugin := factory.NewInstance(ctx, macrosSvc, mockES)
+		plugin := factory.NewInstance(ctx, append([]services.Service{mockES}, svcs...)...)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 200 should trigger
@@ -224,7 +236,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		plugin.Destroy()
 	})
 
-	t.Run("no trigger", func(t *testing.T) {
+	t.Run("no match", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockES := eventstore.NewMockEventStore(ctrl)
 		ctx := &plugintest.Context{
@@ -232,7 +244,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		}
 
 		// simulate http tx
-		plugin := factory.NewInstance(ctx, macrosSvc, mockES)
+		plugin := factory.NewInstance(ctx, append([]services.Service{mockES}, svcs...)...)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 403 should NOT trigger

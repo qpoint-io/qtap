@@ -9,8 +9,10 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +24,14 @@ type ConnectionAdapter interface {
 const (
 	defaultBufferSize = 1024 * 1024 * 10 // 10MB
 	PodLabelStack     = "tap.qpoint.io/stack"
+)
+
+var (
+	// coreServices are services that are always included without
+	// having to be explicitly added to a stack in the config
+	coreServices = []services.ServiceType{
+		connmeta.Type,
+	}
 )
 
 var tracer = telemetry.Tracer()
@@ -209,7 +219,7 @@ func (m *Manager) Stop() {
 	})
 }
 
-func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionType, conn *connection.Connection) (*Connection, error) {
+func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionType, conn *connection.Connection, requestID string) (*Connection, error) {
 	ll := conn.Logger()
 	if connectionType == ConnectionType_UNKNOWN {
 		return nil, errors.New("connection type is required")
@@ -225,8 +235,12 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 		return nil, nil
 	}
 
-	svcs := make([]services.Service, 0, len(stack.requiredServices))
-	for _, s := range stack.requiredServices {
+	requiredSvcs := set.NewSet(stack.requiredServices...)
+	// ensure core services are included
+	requiredSvcs.Add(coreServices...)
+
+	svcs := make([]services.Service, 0, requiredSvcs.Len())
+	for _, s := range requiredSvcs.Items() {
 		svc := m.serviceRegistry.Get(s)
 		if svc == nil {
 			return nil, fmt.Errorf("service %s not found", s)
@@ -248,7 +262,7 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 		svcs = append(svcs, svcInstance)
 	}
 
-	return NewConnection(ctx, conn.Logger(), conn.ID(), m.bufferSize, connectionType, stack, conn.Tags(), svcs), nil
+	return NewConnection(ctx, conn.Logger(), requestID, m.bufferSize, connectionType, stack, svcs), nil
 }
 
 func (m *Manager) reconcileStacks(conf *config.Config) error {

@@ -6,11 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/qpoint-io/qtap/pkg/plugins/metadata"
 	"github.com/qpoint-io/qtap/pkg/services"
 	serviceRegistrar "github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -28,9 +27,9 @@ const (
 type Connection struct {
 	ctx    context.Context
 	logger *zap.Logger
-	id     string
 	Type   ConnectionType
 
+	meta         *meta
 	req          *http.Request
 	resp         *http.Response
 	reqHeaderMap *HttpHeaderMap
@@ -40,26 +39,35 @@ type Connection struct {
 
 	services      []serviceRegistrar.Service
 	stackInstance StackInstance
-	metadata      map[string]MetadataValue
-	tags          tags.List
 	controlValues map[string]any
 	bufferSize    int
 }
 
-func NewConnection(ctx context.Context, logger *zap.Logger, connID string, bufferSize int, connectionType ConnectionType, stack *StackDeployment, tags tags.List, svcs []services.Service) *Connection {
+func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bufferSize int, connectionType ConnectionType, stack *StackDeployment, svcs []services.Service) *Connection {
 	ctx, span := tracer.Start(ctx, "plugin.Connection")
 	span.SetAttributes(attribute.String("connection.type", string(connectionType)))
+
+	// TODO(kamal): this will be cleaned up in a follow-up PR
+	var connmetaService connmeta.Service
+	for _, svc := range svcs {
+		if ca, ok := svc.(connmeta.Service); ok {
+			connmetaService = ca
+			break
+		}
+	}
 
 	c := &Connection{
 		ctx:        ctx,
 		logger:     logger,
-		id:         connID,
 		Type:       connectionType,
 		bufferSize: bufferSize,
-		reqBody:    synq.NewLinkedBuffer(bufferSize),
-		resBody:    synq.NewLinkedBuffer(bufferSize),
-		tags:       tags,
-		services:   svcs,
+		meta: &meta{
+			Service:   connmetaService,
+			requestID: requestID,
+		},
+		reqBody:  synq.NewLinkedBuffer(bufferSize),
+		resBody:  synq.NewLinkedBuffer(bufferSize),
+		services: svcs,
 	}
 
 	// set the deployment
@@ -115,14 +123,6 @@ func (c *Connection) SetControlValues(values map[string]any) {
 // session is done
 func (c *Connection) ProxyOnDone() error {
 	return nil
-}
-
-func (c *Connection) AppendMetadata(key string, value any) {
-	if c.metadata == nil {
-		c.metadata = make(map[string]MetadataValue)
-	}
-
-	c.metadata[key] = &metadata.MetadataValue{Value: value}
 }
 
 // request headers are ready
@@ -229,4 +229,8 @@ func (c *Connection) Context() *ConnectionContext {
 	return &ConnectionContext{
 		connection: c,
 	}
+}
+
+func (c *Connection) Meta() Meta {
+	return c.meta
 }

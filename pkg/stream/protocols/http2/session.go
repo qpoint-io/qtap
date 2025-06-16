@@ -159,7 +159,7 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 
 	// create a plugin connection
 	if s.pluginManager != nil {
-		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn)
+		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn, id)
 		if err != nil {
 			return fmt.Errorf("creating plugin connection: %w", err)
 		}
@@ -168,22 +168,6 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 	if s.pluginConn != nil {
 		// set the request
 		s.pluginConn.SetRequest(s.req)
-
-		// add qpoint metadata
-		s.pluginConn.AppendMetadata("qpoint-request-id", id)
-		// set endpointID
-		s.pluginConn.AppendMetadata("endpoint-id", s.conn.Domain())
-		// set the direction header
-		s.pluginConn.AppendMetadata("direction", s.conn.Direction())
-		// set the protocol header
-		s.pluginConn.AppendMetadata("protocol", s.conn.Proto())
-		// set process meta headers
-		for k, v := range s.conn.ProcessMeta() {
-			s.pluginConn.AppendMetadata("process-"+k, fmt.Sprintf("%v", v))
-		}
-
-		// set the control values
-		s.pluginConn.SetControlValues(s.conn.ControlValues())
 
 		// call the request headers callback
 		if err := s.pluginConn.OnHttpRequestHeaders(endOfStream); err != nil {
@@ -320,8 +304,8 @@ func (s *Session) Close() {
 
 	if s.pluginConn != nil {
 		// update the bandwidth metadata
-		s.pluginConn.AppendMetadata("wr_bytes", s.wrBytes)
-		s.pluginConn.AppendMetadata("rd_bytes", s.rdBytes)
+		s.pluginConn.Meta().SetReadBytes(s.rdBytes)
+		s.pluginConn.Meta().SetWriteBytes(s.wrBytes)
 		span.SetAttributes(
 			attribute.Int64("wr_bytes", s.wrBytes),
 			attribute.Int64("rd_bytes", s.rdBytes),

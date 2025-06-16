@@ -16,6 +16,7 @@ type List interface {
 	Clone() List
 	Merge(List)
 	Map() map[string][]string
+	Get(string) ([]string, bool)
 }
 
 type tags struct {
@@ -138,6 +139,14 @@ func (t *tags) Map() map[string][]string {
 		m[k] = append(([]string)(nil), v...)
 	}
 	return m
+}
+
+func (t *tags) Get(key string) ([]string, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	values, ok := t.data[key]
+	return values, ok
 }
 
 func format(str string) string {

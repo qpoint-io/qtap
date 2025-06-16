@@ -80,9 +80,5 @@ var InZone = func(domain, zone string) bool {
 // IsCriticalErr returns true if the error is a critical error.
 // e.g. invalid rule syntax is considered critical. Missing fields are not critical.
 func IsCriticalErr(err error) bool {
-	mf := &rulekit.ErrMissingFields{}
-	if errors.As(err, &mf) {
-		return false
-	}
-	return true
+	return errors.As(err, &rulekit.ErrMissingFields{})
 }

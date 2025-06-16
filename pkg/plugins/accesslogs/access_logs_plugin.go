@@ -7,6 +7,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 
 	"github.com/qpoint-io/rulekit"
 	"go.uber.org/zap"
@@ -94,7 +95,7 @@ func (f *factory) Init(logger *zap.Logger, config yaml.Node) {
 
 func (f *factory) NewInstance(ctx plugins.PluginContext, svcs ...services.Service) plugins.HttpPluginInstance {
 	f.logger.Debug("new plugin instance created")
-	return &filterInstance{
+	i := &filterInstance{
 		ctx: ctx,
 
 		logger: f.logger,
@@ -104,10 +105,18 @@ func (f *factory) NewInstance(ctx plugins.PluginContext, svcs ...services.Servic
 		format: f.config.Format,
 		rules:  f.config.Rules,
 	}
+
+	for _, svc := range svcs {
+		if rk, ok := svc.(rulekitsvc.Service); ok {
+			i.rulekit = rk
+		}
+	}
+
+	return i
 }
 
 func (f *factory) RequiredServices() []services.ServiceType {
-	return nil
+	return []services.ServiceType{rulekitsvc.TypeRulekit}
 }
 
 func (f *factory) Destroy() {

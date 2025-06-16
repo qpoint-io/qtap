@@ -1,11 +1,10 @@
 package accesslogs
 
 import (
-	"errors"
-
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
+	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 
 	"github.com/qpoint-io/rulekit"
 	"go.uber.org/zap"
@@ -38,7 +37,10 @@ type logRule struct {
 type filterInstance struct {
 	logger *zap.Logger
 	writer *zap.Logger
-	ctx    plugins.PluginContext
+
+	// services
+	ctx     plugins.PluginContext
+	rulekit rulekitsvc.Service
 
 	mode   displayMode
 	format outputFormat
@@ -77,51 +79,33 @@ func (f *filterInstance) ResponseBody(frame plugins.BodyBuffer, endOfStream bool
 func (f *filterInstance) Destroy() {
 	mode := f.mode
 
-	reqPairs := tools.NewHeaderMap(f.reqheaders).RulePairs("request")
-	resPairs := tools.NewHeaderMap(f.resheaders).RulePairs("response")
-
-	var metaPairs map[string]any
-	if f.ctx != nil {
-		metaPairs = tools.MetadataRulePairs(f.ctx.Metadata())
-	} else {
-		metaPairs = make(map[string]any)
-	}
-
-	allPairs := make(map[string]any)
-	for k, v := range reqPairs {
-		allPairs[k] = v
-	}
-	for k, v := range resPairs {
-		allPairs[k] = v
-	}
-	for k, v := range metaPairs {
-		allPairs[k] = v
-	}
-
-	for _, r := range f.rules {
-		if r.rule == nil {
-			continue
-		}
-
-		res := r.rule.Eval(&rulekit.Ctx{
-			Functions: rulekitext.Functions,
-			KV:        allPairs,
-		})
-		if !res.Ok() {
-			// log any non-ErrMissingFields errors
-			mf := &rulekit.ErrMissingFields{}
-			if !errors.As(res.Error, &mf) {
-				f.logger.Error("error evaluating rule",
-					zap.Error(res.Error),
-					zap.String("evaluated_rule", res.EvaluatedRule.String()),
-				)
+	if f.rulekit != nil {
+		kvs := tools.ConnectionValues(f.rulekit, f.reqheaders, f.resheaders)
+		for _, r := range f.rules {
+			if r.rule == nil {
+				continue
 			}
-			continue
+
+			res := r.rule.Eval(&rulekit.Ctx{
+				Functions: f.rulekit.Functions(),
+				Macros:    f.rulekit.Macros(),
+				KV:        kvs,
+			})
+			if !res.Ok() {
+				if rulekitext.IsCriticalErr(res.Error) {
+					f.logger.Error("error evaluating rule",
+						zap.Error(res.Error),
+						zap.String("evaluated_rule", res.EvaluatedRule.String()))
+				}
+				continue
+			}
+			if res.Pass() {
+				mode = r.Mode
+				break
+			}
 		}
-		if res.Pass() {
-			mode = r.Mode
-			break
-		}
+	} else {
+		f.logger.Warn("rulekit service is missing, cannot evaluate rules. using default display mode")
 	}
 
 	if mode == displayModeNone {

@@ -59,13 +59,11 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 	tests := []struct {
 		name     string
 		headers  map[string]string
-		prefix   string
 		expected map[string]any
 	}{
 		{
 			name:     "empty headers",
 			headers:  map[string]string{},
-			prefix:   "request",
 			expected: map[string]any{},
 		},
 		{
@@ -76,14 +74,12 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":scheme":    "https",
 				":authority": "example.com",
 			},
-			prefix: "request",
 			expected: map[string]any{
-				"request.method":    "GET",
-				"request.path":      "/api/v1/users",
-				"request.scheme":    "https",
-				"request.authority": "example.com",
-				"request.url":       "https://example.com/api/v1/users",
-				"request.host":      "example.com",
+				"method": "GET",
+				"path":   "/api/v1/users",
+				"scheme": "https",
+				"url":    "https://example.com/api/v1/users",
+				"host":   "example.com",
 			},
 		},
 		{
@@ -93,11 +89,12 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				"User-Agent":   "test-client",
 				"x-request-id": "123456",
 			},
-			prefix: "response",
 			expected: map[string]any{
-				"response.header.content-type": "application/json",
-				"response.header.user-agent":   "test-client",
-				"response.header.x-request-id": "123456",
+				"headers": map[string]any{
+					"content-type": "application/json",
+					"user-agent":   "test-client",
+					"x-request-id": "123456",
+				},
 			},
 		},
 		{
@@ -110,16 +107,16 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				"content-type": "application/json",
 				"user-agent":   "test-client",
 			},
-			prefix: "req",
 			expected: map[string]any{
-				"req.method":              "POST",
-				"req.path":                "/api/v1/data",
-				"req.scheme":              "https",
-				"req.authority":           "api.example.com",
-				"req.header.content-type": "application/json",
-				"req.header.user-agent":   "test-client",
-				"req.url":                 "https://api.example.com/api/v1/data",
-				"req.host":                "api.example.com",
+				"method": "POST",
+				"path":   "/api/v1/data",
+				"scheme": "https",
+				"headers": map[string]any{
+					"content-type": "application/json",
+					"user-agent":   "test-client",
+				},
+				"url":  "https://api.example.com/api/v1/data",
+				"host": "api.example.com",
 			},
 		},
 		{
@@ -128,11 +125,9 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":path":      "/api/v1/items",
 				":authority": "example.org",
 			},
-			prefix: "request",
 			expected: map[string]any{
-				"request.path":      "/api/v1/items",
-				"request.authority": "example.org",
-				"request.host":      "example.org",
+				"path": "/api/v1/items",
+				"host": "example.org",
 			},
 		},
 		{
@@ -141,10 +136,9 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":scheme": "http",
 				":path":   "/api/v1/products",
 			},
-			prefix: "request",
 			expected: map[string]any{
-				"request.scheme": "http",
-				"request.path":   "/api/v1/products",
+				"scheme": "http",
+				"path":   "/api/v1/products",
 			},
 		},
 		{
@@ -153,10 +147,11 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":method":    "GET",
 				"user-agent": "mozilla",
 			},
-			prefix: "custom.prefix",
 			expected: map[string]any{
-				"custom.prefix.method":            "GET",
-				"custom.prefix.header.user-agent": "mozilla",
+				"method": "GET",
+				"headers": map[string]any{
+					"user-agent": "mozilla",
+				},
 			},
 		},
 		{
@@ -168,39 +163,17 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":path":        "/api/v1/success",
 				"content-type": "application/json",
 			},
-			prefix: "response",
 			expected: map[string]any{
 				// When prefix is "response", the ":status" header should be
 				// converted from a string to an integer after initial addition
-				"response.status":              200, // Integer, not string
-				"response.scheme":              "https",
-				"response.authority":           "example.com",
-				"response.path":                "/api/v1/success",
-				"response.header.content-type": "application/json",
-				"response.url":                 "https://example.com/api/v1/success",
-				"response.host":                "example.com",
-			},
-		},
-		{
-			name: "non-response prefix with status",
-			headers: map[string]string{
-				":status":      "404",
-				":scheme":      "https",
-				":authority":   "example.com",
-				":path":        "/api/v1/not-found",
-				"content-type": "application/json",
-			},
-			prefix: "other",
-			expected: map[string]any{
-				// When prefix is not "response", the special status conversion
-				// doesn't happen because it only checks for "response.status"
-				"other.status":              "404", // Remains a string
-				"other.scheme":              "https",
-				"other.authority":           "example.com",
-				"other.path":                "/api/v1/not-found",
-				"other.header.content-type": "application/json",
-				"other.url":                 "https://example.com/api/v1/not-found",
-				"other.host":                "example.com",
+				"status": 200, // Integer, not string
+				"scheme": "https",
+				"path":   "/api/v1/success",
+				"headers": map[string]any{
+					"content-type": "application/json",
+				},
+				"url":  "https://example.com/api/v1/success",
+				"host": "example.com",
 			},
 		},
 	}
@@ -210,7 +183,7 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 			mockH := &mockHeaders{headers: tt.headers}
 			headerMap := NewHeaderMap(mockH)
 
-			result := headerMap.RulePairs(tt.prefix)
+			result := headerMap.RulePairs()
 
 			require.Equal(t, tt.expected, result, "RulePairs should return expected map")
 		})

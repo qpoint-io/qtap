@@ -40,16 +40,17 @@ func NewConsolePrinter(
 
 // PrintSummary implements Printer.PrintSummary
 func (c *ConsolePrinter) PrintSummary() {
+	meta := c.ctx.Meta()
 	reqHeaders := tools.NewHeaderMap(c.reqheaders)
 	url, _ := reqHeaders.URL()
 	method, _ := reqHeaders.Method()
-	bin := c.ctx.GetMetadata("process-bin").String()
 
-	direction := "egress-external"
-	if d := c.ctx.GetMetadata("direction"); d.OK() {
-		direction = d.String()
+	var bin string
+	if p := meta.Process(); p != nil {
+		bin = p.Exe
 	}
 
+	direction := meta.Direction()
 	resHeaders := tools.NewHeaderMap(c.resheaders)
 	status, _ := resHeaders.Status()
 
@@ -67,33 +68,33 @@ func (c *ConsolePrinter) PrintFull() error {
 }
 
 func (c *ConsolePrinter) printConsoleDetails(includeBody bool) error {
+	meta := c.ctx.Meta()
 	reqHeaders := tools.NewHeaderMap(c.reqheaders)
 	url, _ := reqHeaders.URL()
 	method, _ := reqHeaders.Method()
 	host, _ := reqHeaders.Authority()
-	protocol := c.ctx.GetMetadata("protocol").String()
-	bin := c.ctx.GetMetadata("process-bin").String()
-
-	direction := "egress-external"
-	if d := c.ctx.GetMetadata("direction"); d.OK() {
-		direction = d.String()
-	}
-
-	wrBytes := c.ctx.GetMetadata("wr_bytes").Int64()
-	rdBytes := c.ctx.GetMetadata("rd_bytes").Int64()
+	protocol := meta.Protocol()
+	direction := meta.Direction()
+	var bin string
 
 	mp := map[string]string{
 		"direction": direction,
-		"pid":       c.ctx.GetMetadata("process-pid").String(),
-		"exe":       c.ctx.GetMetadata("process-exe").String(),
-		// "container_id": c.ctx.GetMetadata("process-container_id").String(),
-		// "pod_id":       c.ctx.GetMetadata("process-pod_id").String(),
-		"container_name":  c.ctx.GetMetadata("process-container_name").String(),
-		"container_image": c.ctx.GetMetadata("process-container_image").String(),
-		"pod_name":        c.ctx.GetMetadata("process-pod_name").String(),
-		"pod_namespace":   c.ctx.GetMetadata("process-pod_namespace").String(),
-		"wr_bytes":        strconv.FormatInt(wrBytes, 10),
-		"rd_bytes":        strconv.FormatInt(rdBytes, 10),
+		"wr_bytes":  strconv.FormatInt(meta.WriteBytes(), 10),
+		"rd_bytes":  strconv.FormatInt(meta.ReadBytes(), 10),
+	}
+
+	if p := meta.Process(); p != nil {
+		bin = p.Exe
+		mp["pid"] = strconv.Itoa(p.Pid)
+		mp["exe"] = p.Exe
+		if c, _ := p.Container(); c != nil {
+			mp["container_name"] = c.Name
+			mp["container_image"] = c.Image
+		}
+		if p, _ := p.Pod(); p != nil {
+			mp["pod_name"] = p.Name
+			mp["pod_namespace"] = p.Namespace
+		}
 	}
 
 	resHeaders := tools.NewHeaderMap(c.resheaders)
@@ -166,12 +167,6 @@ func printMeta(meta map[string]string) string {
 	sb.WriteString("\n------------------ META ------------------\n")
 	fmt.Fprintf(&sb, "PID: %s\n", meta["pid"])
 	fmt.Fprintf(&sb, "Exe: %s\n", meta["exe"])
-	// if cid := meta["container_id"]; cid != "root" {
-	// 	fmt.Fprintf(&sb, "Container ID: %s\n", cid)
-	// }
-	// if pid := meta["pod_id"]; pid != "" {
-	// 	fmt.Fprintf(&sb, "POD ID: %s\n", pid)
-	// }
 	if cname := meta["container_name"]; cname != "" && cname != "<nil>" {
 		fmt.Fprintf(&sb, "Container Name: %s\n", cname)
 	}

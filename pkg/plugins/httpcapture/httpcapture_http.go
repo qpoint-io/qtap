@@ -2,12 +2,11 @@ package httpcapture
 
 import (
 	"context"
-	"errors"
-	"maps"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
+	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/rulekit"
@@ -18,6 +17,7 @@ import (
 type instance struct {
 	logger *zap.Logger
 
+	// services
 	ctx        context.Context
 	conn       plugins.PluginContext
 	rulekit    rulekitsvc.Service
@@ -78,65 +78,7 @@ func (i *instance) Destroy() {
 	}
 
 	// Determine the capture level based on rules
-	captureLevel := i.level
-	outputFormat := i.format
-
-	// Check if any rules match and should override default capture level
-	if len(i.rules) > 0 {
-		// Create rule evaluation pairs from request, response headers and metadata
-		reqPairs := tools.NewHeaderMap(i.reqheaders).RulePairs("request")
-		resPairs := tools.NewHeaderMap(i.resheaders).RulePairs("response")
-		connPairs := i.conn.ControlValues()
-
-		// Combine all pairs for rule evaluation
-		allPairs := make(map[string]any, len(reqPairs)+len(resPairs)+len(connPairs))
-
-		// Add all pairs using maps.Copy
-		maps.Copy(allPairs, reqPairs)
-		maps.Copy(allPairs, resPairs)
-		maps.Copy(allPairs, connPairs)
-
-		var (
-			macros    map[string]rulekit.Rule
-			functions map[string]*rulekit.Function
-		)
-		if i.rulekit != nil {
-			macros = i.rulekit.Macros()
-			functions = i.rulekit.Functions()
-		}
-
-		// Evaluate rules in order
-		for _, r := range i.rules {
-			if r.rule == nil {
-				continue
-			}
-
-			res := r.rule.Eval(&rulekit.Ctx{
-				Functions: functions,
-				Macros:    macros,
-				KV:        allPairs,
-			})
-			if !res.Ok() {
-				// log any non-ErrMissingFields errors
-				mf := &rulekit.ErrMissingFields{}
-				if !errors.As(res.Error, &mf) {
-					i.logger.Error("error evaluating rule",
-						zap.Error(res.Error),
-						zap.String("evaluated_rule", res.EvaluatedRule.String()),
-					)
-				}
-				continue
-			}
-			if res.Pass() {
-				captureLevel = r.Level
-				// Override format if specified in the rule
-				if r.Format != "" {
-					outputFormat = r.Format
-				}
-				break
-			}
-		}
-	}
+	captureLevel, outputFormat := i.evaluateRules()
 
 	// If capture level is none, don't capture anything
 	if captureLevel == CaptureLevelNone {
@@ -190,15 +132,16 @@ func (i *instance) Destroy() {
 		return
 	}
 
+	meta := i.conn.Meta()
 	// Create the artifact
 	artifact := &eventstore.Artifact{
 		Type:        eventstore.ArtifactType_HTTPTransaction,
 		Data:        data,
 		ContentType: contentType,
 	}
-
-	// Set metadata
-	setArtifactMetadata(artifact, i.conn)
+	artifact.SetConnectionID(meta.ConnectionID())
+	artifact.SetEndpointID(meta.Endpoint())
+	artifact.SetRequestID(meta.RequestID())
 
 	// Attach the summary to the artifact
 	if summary := transaction.Summary(); len(summary) > 0 {
@@ -214,24 +157,47 @@ func (i *instance) Destroy() {
 	i.eventstore.Save(ctx, artifact)
 }
 
-// setArtifactMetadata sets metadata from the connection context on the artifact
-func setArtifactMetadata(artifact *eventstore.Artifact, ctx plugins.PluginContext) {
-	if ctx == nil || artifact == nil {
-		return
+func (i *instance) evaluateRules() (CaptureLevel, OutputFormat) {
+	level, format := i.level, i.format
+	if len(i.rules) == 0 {
+		return level, format
 	}
 
-	// Set connection ID if available
-	if connID := ctx.GetMetadata("process-conn_id").String(); connID != "" {
-		artifact.SetConnectionID(connID)
+	// Check if any rules match and should override default capture level
+	if i.rulekit == nil {
+		i.logger.Warn("rulekit service is missing, cannot evaluate rules. using default capture level and format")
+		return level, format
 	}
 
-	// Set endpoint ID if available
-	if endpointID := ctx.GetMetadata("endpoint-id").String(); endpointID != "" {
-		artifact.SetEndpointID(endpointID)
+	// Evaluate rules in order
+	kvs := tools.ConnectionValues(i.rulekit, i.reqheaders, i.resheaders)
+	for _, r := range i.rules {
+		if r.rule == nil {
+			continue
+		}
+
+		res := r.rule.Eval(&rulekit.Ctx{
+			Functions: i.rulekit.Functions(),
+			Macros:    i.rulekit.Macros(),
+			KV:        kvs,
+		})
+		if !res.Ok() {
+			if rulekitext.IsCriticalErr(res.Error) {
+				i.logger.Error("error evaluating rule",
+					zap.Error(res.Error),
+					zap.String("evaluated_rule", res.EvaluatedRule.String()))
+			}
+			continue
+		}
+		if res.Pass() {
+			level = r.Level
+			// Override format if specified in the rule
+			if r.Format != "" {
+				format = r.Format
+			}
+			break
+		}
 	}
 
-	// Set request ID if available from the metadata
-	if requestID := ctx.GetMetadata("qpoint-request-id").String(); requestID != "" {
-		artifact.SetRequestID(requestID)
-	}
+	return level, format
 }

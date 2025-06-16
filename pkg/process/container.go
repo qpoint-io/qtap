@@ -1,10 +1,11 @@
 package process
 
 import (
+	"context"
 	"time"
 
+	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/container"
-	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"go.uber.org/zap"
 )
 
@@ -112,7 +113,7 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	}
 
 	// Set up Container resolvable
-	p.Container = resolvable.NewV(func() (*Container, error) {
+	p.Container = resolvable.New(func(context.Context) (*Container, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
 			return nil, nil
@@ -128,16 +129,16 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	},
 		resolvable.WithRetry(),
 		resolvable.WithGraceful(),
-	)
+	).WithBackgroundContext()
 
 	// Set up Pod resolvable
-	p.Pod = resolvable.NewV(func() (*Pod, error) {
+	p.Pod = resolvable.New(func(context.Context) (*Pod, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
 			return nil, nil
 		}
 		pod := container.Pod()
-		if pod == nil {
+		if pod == nil || pod.Name == "" {
 			return nil, nil
 		}
 		return &Pod{
@@ -149,8 +150,8 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	},
 		resolvable.WithRetry(),
 		resolvable.WithGraceful(),
-		resolvable.WithExpiry(5*time.Second),
-	)
+		resolvable.WithCacheTTL(5*time.Second),
+	).WithBackgroundContext()
 
 	return nil
 }

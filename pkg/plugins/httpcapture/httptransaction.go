@@ -49,6 +49,7 @@ type Request struct {
 	Path        string            `json:"path,omitempty"`
 	Authority   string            `json:"authority,omitempty"`
 	Protocol    string            `json:"protocol,omitempty"`
+	RequestID   string            `json:"request_id,omitempty"`
 	UserAgent   string            `json:"user_agent,omitempty"`
 	ContentType string            `json:"content_type,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
@@ -78,57 +79,50 @@ func NewHttpTransaction(ctx plugins.PluginContext, reqHeaders, resHeaders plugin
 		}
 	}
 
+	meta := ctx.Meta()
 	// Set direction
-	tx.Direction = "egress-external"
-	if d := ctx.GetMetadata("direction"); d.OK() {
-		tx.Direction = d.String()
-	}
+	tx.Direction = meta.Direction()
 
 	// Get process and connection metadata
-	tx.Metadata = getMetadata(ctx)
+	tx.Metadata = getMetadata(meta)
 
 	// Get request info
-	tx.Request = getRequestInfo(reqHeaders, ctx)
+	tx.Request = getRequestInfo(reqHeaders, meta)
 
 	// Get response info
-	tx.Response = getResponseInfo(resHeaders, ctx)
+	tx.Response = getResponseInfo(resHeaders, meta)
 
 	return tx
 }
 
 // getMetadata extracts process and connection metadata from plugin context
-func getMetadata(ctx plugins.PluginContext) Metadata {
-	m := Metadata{}
-
-	// Process information
-	m.ProcessID = ctx.GetMetadata("process-pid").String()
-	m.ProcessExe = ctx.GetMetadata("process-exe").String()
-
-	// Container/Pod information (if available)
-	if cname := ctx.GetMetadata("process-container_name").String(); cname != "" && cname != "<nil>" {
-		m.ContainerName = cname
-	}
-	if cimage := ctx.GetMetadata("process-container_image").String(); cimage != "" && cimage != "<nil>" {
-		m.ContainerImage = cimage
-	}
-	if pname := ctx.GetMetadata("process-pod_name").String(); pname != "" && pname != "<nil>" {
-		m.PodName = pname
-	}
-	if pnamespace := ctx.GetMetadata("process-pod_namespace").String(); pnamespace != "" && pnamespace != "<nil>" {
-		m.PodNamespace = pnamespace
+func getMetadata(meta plugins.Meta) Metadata {
+	m := Metadata{
+		BytesSent:     meta.WriteBytes(),
+		BytesReceived: meta.ReadBytes(),
+		EndpointID:    meta.Endpoint(),
+		ConnectionID:  meta.ConnectionID(),
 	}
 
-	// Connection information
-	m.BytesSent = ctx.GetMetadata("wr_bytes").Int64()
-	m.BytesReceived = ctx.GetMetadata("rd_bytes").Int64()
-	m.EndpointID = ctx.GetMetadata("endpoint-id").String()
-	m.ConnectionID = ctx.GetMetadata("process-conn_id").String()
+	if p := meta.Process(); p != nil {
+		m.ProcessID = strconv.Itoa(p.Pid)
+		m.ProcessExe = p.Exe
+
+		if c, _ := p.Container(); c != nil {
+			m.ContainerName = c.Name
+			m.ContainerImage = c.Image
+		}
+		if p, _ := p.Pod(); p != nil {
+			m.PodName = p.Name
+			m.PodNamespace = p.Namespace
+		}
+	}
 
 	return m
 }
 
 // getRequestInfo extracts HTTP request information
-func getRequestInfo(headers plugins.Headers, ctx plugins.PluginContext) Request {
+func getRequestInfo(headers plugins.Headers, meta plugins.Meta) Request {
 	r := Request{}
 
 	// Use HeaderMap to easily extract header information
@@ -142,21 +136,19 @@ func getRequestInfo(headers plugins.Headers, ctx plugins.PluginContext) Request 
 	r.Scheme, _ = headerMap.Scheme()
 	r.UserAgent, _ = headerMap.UserAgent()
 	r.ContentType, _ = headerMap.ContentType()
-	r.Protocol = ctx.GetMetadata("protocol").String()
+	r.Protocol = meta.Protocol()
+	r.RequestID = meta.RequestID()
 
 	// Get request headers
 	if headers != nil {
 		r.Headers = headers.All()
 	}
 
-	// Get QpointRequestID from headers if available
-	_, _ = headerMap.QpointRequestID() // Just check if it exists, we don't need to do anything with it
-
 	return r
 }
 
 // getResponseInfo extracts HTTP response information
-func getResponseInfo(headers plugins.Headers, _ plugins.PluginContext) Response {
+func getResponseInfo(headers plugins.Headers, _ plugins.Meta) Response {
 	r := Response{}
 
 	// Use HeaderMap to easily extract header information

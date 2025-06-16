@@ -36,16 +36,18 @@ func NewJSONPrinter(
 
 // PrintSummary implements Printer.PrintSummary
 func (j *JSONPrinter) PrintSummary() {
+	meta := j.ctx.Meta()
 	reqHeaders := tools.NewHeaderMap(j.reqheaders)
-	qpointRequestID, _ := reqHeaders.QpointRequestID()
 	url, _ := reqHeaders.URL()
 	method, _ := reqHeaders.Method()
-	bin := j.ctx.GetMetadata("process-bin").String()
 
-	direction := "egress-external"
-	if d := j.ctx.GetMetadata("direction"); d.OK() {
-		direction = d.String()
+	requestID := meta.RequestID()
+	var bin string
+	if p := meta.Process(); p != nil {
+		bin = p.Exe
 	}
+
+	direction := meta.Direction()
 
 	resHeaders := tools.NewHeaderMap(j.resheaders)
 	status, _ := resHeaders.Status()
@@ -56,7 +58,7 @@ func (j *JSONPrinter) PrintSummary() {
 		zap.String("method", method),
 		zap.String("url", url),
 		zap.Int("status", status),
-		zap.String("qpoint_request_id", qpointRequestID))
+		zap.String("qpoint_request_id", requestID))
 }
 
 // PrintDetails implements Printer.PrintDetails
@@ -70,19 +72,14 @@ func (j *JSONPrinter) PrintFull() error {
 }
 
 func (j *JSONPrinter) printJSONDetails(includeBody bool) error {
+	meta := j.ctx.Meta()
 	reqHeaders := tools.NewHeaderMap(j.reqheaders)
 	qpointRequestID, _ := reqHeaders.QpointRequestID()
 	url, _ := reqHeaders.URL()
 	method, _ := reqHeaders.Method()
-	protocol := j.ctx.GetMetadata("protocol").String()
+	protocol := meta.Protocol()
 
-	direction := "egress-external"
-	if d := j.ctx.GetMetadata("direction"); d.OK() {
-		direction = d.String()
-	}
-
-	wrBytes := j.ctx.GetMetadata("wr_bytes").Int64()
-	rdBytes := j.ctx.GetMetadata("rd_bytes").Int64()
+	direction := meta.Direction()
 
 	resHeaders := tools.NewHeaderMap(j.resheaders)
 	status, _ := resHeaders.Status()
@@ -96,7 +93,7 @@ func (j *JSONPrinter) printJSONDetails(includeBody bool) error {
 	}
 	if includeBody {
 		if reqHeaders.BinaryContentType() {
-			req["body"] = "\t(Omitted - Binary Format)"
+			req["body"] = "<binary>"
 		} else {
 			req["body"] = string(j.ctx.GetRequestBodyBuffer().Copy())
 		}
@@ -108,36 +105,34 @@ func (j *JSONPrinter) printJSONDetails(includeBody bool) error {
 	}
 	if includeBody {
 		if resHeaders.BinaryContentType() {
-			resp["body"] = "\t(Omitted - Binary Format)"
+			resp["body"] = "<binary>"
 		} else {
 			resp["body"] = string(j.ctx.GetResponseBodyBuffer().Copy())
 		}
 	}
 
-	meta := map[string]string{
-		"pid": j.ctx.GetMetadata("process-pid").String(),
-		"exe": j.ctx.GetMetadata("process-exe").String(),
-		// "container_id":   j.ctx.GetMetadata("process-container_id").String(),
-		// "pod_id":         j.ctx.GetMetadata("process-pod_id").String(),
-		"bytes_sent":     strconv.FormatInt(wrBytes, 10),
-		"bytes_received": strconv.FormatInt(rdBytes, 10),
+	values := map[string]any{
+		"bytes_sent":     strconv.FormatInt(meta.WriteBytes(), 10),
+		"bytes_received": strconv.FormatInt(meta.ReadBytes(), 10),
 	}
 
-	if cname := j.ctx.GetMetadata("process-container_name").String(); cname != "" && cname != "<nil>" {
-		meta["container_name"] = cname
-	}
-	if cimage := j.ctx.GetMetadata("process-container_image").String(); cimage != "" && cimage != "<nil>" {
-		meta["container_image"] = cimage
-	}
-	if pname := j.ctx.GetMetadata("process-pod_name").String(); pname != "" && pname != "<nil>" {
-		meta["pod_name"] = pname
-	}
-	if pnamespace := j.ctx.GetMetadata("process-pod_namespace").String(); pnamespace != "" && pnamespace != "<nil>" {
-		meta["pod_namespace"] = pnamespace
+	if p := meta.Process(); p != nil {
+		values["pid"] = p.Pid
+		values["exe"] = p.Exe
+
+		if c, _ := p.Container(); c != nil {
+			values["container_name"] = c.Name
+			values["container_image"] = c.Image
+		}
+
+		if p, _ := p.Pod(); p != nil {
+			values["pod_name"] = p.Name
+			values["pod_namespace"] = p.Namespace
+		}
 	}
 
 	j.writer.Info("HTTP transaction",
-		zap.Any("meta", meta),
+		zap.Any("meta", values),
 		zap.Any("direction", direction),
 		zap.Any("request", req),
 		zap.Any("response", resp),

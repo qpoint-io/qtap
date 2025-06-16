@@ -54,18 +54,15 @@ func (h *filterInstance) Destroy() {
 		h.finishTime = time.Now()
 	}
 
+	meta := h.ctx.Meta()
 	hm := tools.NewHeaderMap(h.reqheaders)
 
 	userAgent, _ := hm.UserAgent()
 	path, _ := hm.Path()
 	method, _ := hm.Method()
-	endpointId := h.ctx.GetMetadata("endpoint-id").String()
+	endpoint := meta.Endpoint()
 	url, _ := hm.URL()
-	qpointRequestID, _ := hm.QpointRequestID()
-	direction := "egress-external"
-	if d := h.ctx.GetMetadata("direction"); d.OK() {
-		direction = d.String()
-	}
+	direction := meta.Direction()
 
 	// ----- Response
 	rhm := tools.NewHeaderMap(h.resheaders)
@@ -84,12 +81,9 @@ func (h *filterInstance) Destroy() {
 		}
 	}
 
-	wrBytes := h.ctx.GetMetadata("wr_bytes").Int64()
-	rdBytes := h.ctx.GetMetadata("rd_bytes").Int64()
-
 	r := eventstore.Request{
-		WrBytes: wrBytes,
-		RdBytes: rdBytes,
+		WrBytes: meta.WriteBytes(),
+		RdBytes: meta.ReadBytes(),
 
 		Timestamp: time.Now().UTC(),
 		Duration:  durationMS,
@@ -105,8 +99,8 @@ func (h *filterInstance) Destroy() {
 		Agent:       userAgent,
 	}
 
-	r.SetRequestID(qpointRequestID)
-	r.SetEndpointID(endpointId)
+	r.SetRequestID(meta.RequestID())
+	r.SetEndpointID(endpoint)
 
 	// Scan for auth tokens
 	authTokenSource, authToken, authTokenFound := h.scanForAuthTokens()

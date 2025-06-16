@@ -104,8 +104,8 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Servi
 	f.logger.Debug("new plugin instance created")
 	fi := &instance{
 		logger: f.logger,
-		conn:   conn,
 		ctx:    ctx,
+		conn:   conn,
 		level:  f.config.Level,
 		format: f.config.Format,
 		rules:  f.config.Rules,

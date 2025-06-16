@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
-	"github.com/qpoint-io/qtap/pkg/resolvable"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/tlsutils"
 
@@ -299,8 +299,8 @@ func TestConnection_ControlValues(t *testing.T) {
 			"pod-version": "v1",
 		},
 	}
-	proc.Container = resolvable.Static(container).WithBgContext()
-	proc.Pod = resolvable.Static(pod).WithBgContext()
+	proc.Container = resolvable.Static(container).WithBackgroundContext()
+	proc.Pod = resolvable.Static(pod).WithBackgroundContext()
 
 	conn := NewConnection(
 		context.Background(),

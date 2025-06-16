@@ -118,7 +118,7 @@ type Context struct {
 	VReqBody       []byte
 	VResBody       []byte
 	VMetadata      map[string]any
-	VTags          map[string]string
+	VTags          tags.List
 	VContext       context.Context
 	VControlValues map[string]any
 }
@@ -156,7 +156,7 @@ func (c *Context) GetMetadata(key string) plugins.MetadataValue {
 }
 
 func (c *Context) Tags() tags.List {
-	return tags.FromValues(c.VTags)
+	return c.VTags
 }
 
 func (c *Context) Context() context.Context {

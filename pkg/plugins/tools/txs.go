@@ -135,6 +135,10 @@ func (h HeaderMap) RulePairs() map[string]any {
 	var headerPairs map[string]any
 	for k, v := range headers {
 		key := strings.ToLower(k)
+		if key == ":authority" {
+			// we manually add authority as `host` below
+			continue
+		}
 		if strings.HasPrefix(key, ":") {
 			// special headers such as :status go outside the `headers` key
 			rulePairs[key[1:]] = v
@@ -159,6 +163,7 @@ func (h HeaderMap) RulePairs() map[string]any {
 		rulePairs["host"] = host
 	}
 
+	// set status as an int
 	if status, ok := h.Status(); ok {
 		rulePairs["status"] = status
 	}

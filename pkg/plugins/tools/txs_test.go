@@ -75,12 +75,11 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":authority": "example.com",
 			},
 			expected: map[string]any{
-				"method":    "GET",
-				"path":      "/api/v1/users",
-				"scheme":    "https",
-				"authority": "example.com",
-				"url":       "https://example.com/api/v1/users",
-				"host":      "example.com",
+				"method": "GET",
+				"path":   "/api/v1/users",
+				"scheme": "https",
+				"url":    "https://example.com/api/v1/users",
+				"host":   "example.com",
 			},
 		},
 		{
@@ -109,10 +108,9 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				"user-agent":   "test-client",
 			},
 			expected: map[string]any{
-				"method":    "POST",
-				"path":      "/api/v1/data",
-				"scheme":    "https",
-				"authority": "api.example.com",
+				"method": "POST",
+				"path":   "/api/v1/data",
+				"scheme": "https",
 				"headers": map[string]any{
 					"content-type": "application/json",
 					"user-agent":   "test-client",
@@ -128,9 +126,8 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 				":authority": "example.org",
 			},
 			expected: map[string]any{
-				"path":      "/api/v1/items",
-				"authority": "example.org",
-				"host":      "example.org",
+				"path": "/api/v1/items",
+				"host": "example.org",
 			},
 		},
 		{
@@ -169,10 +166,9 @@ func TestHeaderMap_RulePairs(t *testing.T) {
 			expected: map[string]any{
 				// When prefix is "response", the ":status" header should be
 				// converted from a string to an integer after initial addition
-				"status":    200, // Integer, not string
-				"scheme":    "https",
-				"authority": "example.com",
-				"path":      "/api/v1/success",
+				"status": 200, // Integer, not string
+				"scheme": "https",
+				"path":   "/api/v1/success",
 				"headers": map[string]any{
 					"content-type": "application/json",
 				},

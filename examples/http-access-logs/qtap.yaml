@@ -14,42 +14,42 @@ stacks:
           rules:
             # # ignore sshd docker forwarding
             # - name: ignore sshd docker forwarding
-            #   expr: exe matches |sshd$|
+            #   expr: src.process.binary eq "sshd"
             #   mode: none
 
             # # show all details when not GET
             # - name: details when not GET
-            #   expr: request.method != "GET"
+            #   expr: http.req.method != "GET"
             #   mode: details
 
             # # capture details and payloads on errors
             # - name: full log on errors
-            #   expr: response.status >= 400
+            #   expr: http.res.status >= 400
             #   mode: full
 
             # # show full details and payloads for example.com
             # - name: details for example.com
-            #   expr: request.host == "example.com"
+            #   expr: http.req.host == "example.com"
             #   mode: full
 
             # # show full details and payloads when the container name is qpoint_qtap_demo
             # - name: details for qpoint_qtap_demo
-            #   expr: container_name == "qpoint_qtap_demo"
+            #   expr: src.container.name == "qpoint_qtap_demo"
             #   mode: full
 
             # # show full details and payloads when the container image is alpine
             # - name: details for alpine
-            #   expr: container_image == "alpine"
+            #   expr: src.container.image == "alpine"
             #   mode: full
 
             # # show full details and payloads when the pod name is qpoint_qtap_demo
             # - name: details for qpoint_qtap_demo
-            #   expr: pod_name == "qpoint_qtap_demo"
+            #   expr: src.pod.name == "qpoint_qtap_demo"
             #   mode: full
 
             # # show full details and payloads when the pod namespace is qpoint_qtap_demo_ns
             # - name: details for qpoint_qtap_demo_ns
-            #   expr: pod_namespace == "qpoint_qtap_demo_ns"
+            #   expr: src.pod.namespace == "qpoint_qtap_demo_ns"
             #   mode: full
 
 # tap config

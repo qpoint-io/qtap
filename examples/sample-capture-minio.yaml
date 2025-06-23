@@ -43,13 +43,13 @@ stacks:
           format: text # (json|text)
           rules:
             - name: full log httpbin.org
-              expr: request.host == "httpbin.org"
+              expr: http.req.host == "httpbin.org"
               level: full
             - name: details log on 500
-              expr: response.status >= 500
+              expr: http.res.status >= 500
               level: details
             - name: full log on 400
-              expr: response.status >= 400 && response.status < 500
+              expr: http.res.status >= 400 && http.res.status < 500
               level: full
 
       - type: report_usage

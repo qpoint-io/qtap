@@ -13,16 +13,16 @@ stacks:
           format: console # (json|console)
           rules:
             - name: full log httpbin.org
-              expr: request.host == "httpbin.org"
+              expr: http.req.host == "httpbin.org"
               mode: full
             - name: details log on 500
-              expr: response.status >= 500
+              expr: http.res.status >= 500
               mode: details
             - name: details log on example.com and any subdomains
-              expr: in_zone(request.host, "example.com")
+              expr: in_zone(http.req.host, "example.com")
               mode: details
             - name: full log on 400
-              expr: response.status >= 400 && response.status < 500
+              expr: http.res.status >= 400 && http.res.status < 500
               mode: full
       - type: report_usage
 tap:

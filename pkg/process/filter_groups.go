@@ -58,5 +58,6 @@ var predefinedFilters = map[string][]Filter{
 	"qpoint": {
 		// Filter out the current qtap process
 		&PIDFilter{PID: os.Getpid(), bitmask: config.SkipAllFlag},
+		&ExeFilter{pattern: "/qtap", strategy: config.MatchStrategy_SUFFIX, bitmask: config.SkipAllFlag},
 	},
 }

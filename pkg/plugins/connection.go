@@ -159,8 +159,6 @@ func (c *Connection) OnHttpResponseHeaders(endOfStream bool) error {
 			// stop plugin execution and buffer the response
 			return nil
 
-		// [not implemented] case abi.ResponseHeadersStatusStopAllIterationAndBuffer:
-
 		default:
 			c.logger.DPanic("unimplemented response headers status", zap.Any("status", status))
 		}
@@ -176,12 +174,16 @@ func (c *Connection) OnHttpRequestBody(frame []byte, endOfStream bool) error {
 		c.logger.Error("error writing request body", zap.Error(err))
 	}
 
+	shouldClearBuffer := !endOfStream
 	for _, i := range c.stackInstance {
 		status := i.RequestBody(c.reqBody, endOfStream)
 
 		switch status {
 		case BodyStatusContinue:
 			// continue to the next plugin
+		case BodyStatusContinueAndBuffer:
+			// buffer the response and continue
+			shouldClearBuffer = false
 		case BodyStatusStopIterationAndBuffer:
 			// stop plugin execution and buffer the response
 			return nil
@@ -191,7 +193,7 @@ func (c *Connection) OnHttpRequestBody(frame []byte, endOfStream bool) error {
 	}
 
 	// all plugins returned continue, clear the buffer and continue
-	if !endOfStream {
+	if shouldClearBuffer {
 		c.reqBody.Replace(nil)
 	}
 	return nil
@@ -204,12 +206,16 @@ func (c *Connection) OnHttpResponseBody(frame []byte, endOfStream bool) error {
 		c.logger.Error("error writing response body", zap.Error(err))
 	}
 
+	shouldClearBuffer := !endOfStream
 	for _, i := range c.stackInstance {
 		status := i.ResponseBody(c.resBody, endOfStream)
 
 		switch status {
 		case BodyStatusContinue:
 			// continue to the next plugin
+		case BodyStatusContinueAndBuffer:
+			// buffer the response and continue
+			shouldClearBuffer = false
 		case BodyStatusStopIterationAndBuffer:
 			// stop plugin execution and buffer the response
 			return nil
@@ -219,7 +225,7 @@ func (c *Connection) OnHttpResponseBody(frame []byte, endOfStream bool) error {
 	}
 
 	// all plugins returned continue, clear the buffer and continue
-	if !endOfStream {
+	if shouldClearBuffer {
 		c.resBody.Replace(nil)
 	}
 	return nil

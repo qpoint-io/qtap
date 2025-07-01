@@ -3,6 +3,7 @@ package connection
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
@@ -74,6 +75,14 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 }
 
 func (c *Connection) processEvent(event any) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("panic while processing connection event",
+				zap.Any("panic", r),
+				zap.String("event", fmt.Sprintf("%T", event)))
+		}
+	}()
+
 	c.reportEvent(event)
 
 	switch e := event.(type) {

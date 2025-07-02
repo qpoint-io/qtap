@@ -28,6 +28,7 @@ type BodyStatus int
 const (
 	BodyStatusContinue               BodyStatus = 0
 	BodyStatusStopIterationAndBuffer BodyStatus = 1
+	BodyStatusContinueAndBuffer      BodyStatus = 2
 )
 
 var NewHttpPlugin func(config map[string]any) HttpPlugin
@@ -114,13 +115,6 @@ type HeaderValue interface {
 	String() string
 	Bytes() []byte
 	Equal(str string) bool
-}
-
-type MetadataValue interface {
-	OK() bool
-	Raw() any
-	String() string
-	Int64() int64
 }
 
 // PluginAccessor is a type that can access the plugin registry

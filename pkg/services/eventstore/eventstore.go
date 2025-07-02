@@ -175,6 +175,7 @@ var (
 	ArtifactType_DLPMatches      ArtifactType = "dlp_matches"
 	ArtifactType_SensitiveData   ArtifactType = "sensitive_data"
 	ArtifactType_HTTPTransaction ArtifactType = "http_transaction"
+	ArtifactType_LLMConversation ArtifactType = "llm_conversation"
 )
 
 func (a ArtifactType) String() string {

@@ -298,6 +298,12 @@ func (c *Connection) warmup() {
 }
 
 func (c *Connection) watch() {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("panic in connection event loop", zap.Any("panic", r))
+		}
+	}()
+
 	if c.controlManager != nil {
 		// evaluate control rules following the open event
 		c.controlManager.Control(c)

@@ -67,6 +67,9 @@ type Process struct {
 	PredatesQpoint bool
 	User           resolvable.V[*ProcessUser]
 
+	// TLSProbeTypesDetected are the the probes that have scanned the process binary and found matching hooks.
+	TLSProbeTypesDetected []string
+
 	Container resolvable.V[*Container]
 	Pod       resolvable.V[*Pod]
 
@@ -556,4 +559,12 @@ func (p *Process) IsFiltered(flag ...config.FilterLevel) bool {
 	}
 
 	return false
+}
+
+func (p *Process) AddDetectedTLSProbeType(t string) {
+	if p.TLSProbeTypesDetected == nil {
+		p.TLSProbeTypesDetected = make([]string, 0, 1)
+	}
+
+	p.TLSProbeTypesDetected = append(p.TLSProbeTypesDetected, t)
 }

@@ -148,6 +148,11 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 	// increment the container process count
 	container.AddProcess(p.Pid)
 
+	// if the container has OpenSSL libraries, add as detected
+	if container.HasOpenSSL() {
+		p.AddDetectedTLSProbeType("openssl")
+	}
+
 	// determine if this process has statically linked libssl
 	staticOpenSSL := false
 	var err error
@@ -219,6 +224,9 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 
 		// set the target version
 		m.targetVersions.Store(p.Pid, cacheKey)
+
+		// register that the process has been detected to contain openssl probe endpoints
+		p.AddDetectedTLSProbeType("openssl")
 
 		// debug
 		m.logger.Info("OpenSSL static symbols detected",

@@ -31,6 +31,9 @@ type Container struct {
 	// initialized
 	initialized bool
 
+	// hasOpenSSL indicates if this container has OpenSSL libraries
+	hasOpenSSL bool
+
 	// mutex
 	mu sync.Mutex
 }
@@ -76,11 +79,17 @@ func (c *Container) Init(p *process.Process) error {
 		// add the target to the container
 		c.targets[lib] = target
 
+		// mark that this container has OpenSSL
+		c.hasOpenSSL = true
+
 		// debug
 		c.logger.Info("detected OpenSSL shared library",
 			zap.String("path", name),
 			zap.String("container_id", p.ContainerID),
 		)
+
+		// register that the process has been detected to contain openssl probe endpoints
+		p.AddDetectedTLSProbeType("openssl")
 	}
 
 	// set initialized
@@ -100,6 +109,12 @@ func (c *Container) RemoveProcess(pid int) {
 
 func (c *Container) IsEmpty() bool {
 	return c.pids.Len() == 0
+}
+
+func (c *Container) HasOpenSSL() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.hasOpenSSL
 }
 
 func (c *Container) Cleanup() error {

@@ -41,9 +41,10 @@ func (b *BaseEventStore) SetRegistry(registry services.RegistryAccessor) {
 }
 
 type meta struct {
-	ConnectionID string `json:"connectionId,omitzero"`
-	EndpointId   string `json:"endpointId,omitzero"`
-	RequestId    string `json:"requestId,omitzero"`
+	ConnectionID          string   `json:"connectionId,omitzero"`
+	EndpointId            string   `json:"endpointId,omitzero"`
+	RequestId             string   `json:"requestId,omitzero"`
+	TLSProbeTypesDetected []string `json:"tlsProbeTypesDetected,omitempty"`
 }
 
 func (m *meta) Fields() []zap.Field {

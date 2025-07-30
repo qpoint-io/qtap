@@ -114,6 +114,9 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 				pod, _ := proc.Pod() // pod can be nil
 				localEndpoint.Container = toEventStoreContainer(container, pod)
 			}
+			if tlsProbes := proc.TLSProbeTypesDetected; tlsProbes == nil || len(tlsProbes) > 0 {
+				c.TLSProbeTypesDetected = tlsProbes
+			}
 		}
 
 		remoteEndpoint := &eventstore.ConnectionEndpointRemote{

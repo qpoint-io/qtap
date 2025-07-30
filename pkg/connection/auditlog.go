@@ -96,6 +96,12 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 		c.TLSVersion = conn.TLSClientHello.Version
 	}
 
+	// For TLS connections that have data events we can resolve
+	// that the connection was introspected by one of the probes
+	if conn.IsTLS && conn.dataEventCount > 0 {
+		c.TLSIntrospected = true
+	}
+
 	if conn.OpenEvent != nil {
 		c.SocketProtocol = toEventStoreSocketType(conn.OpenEvent.SocketType)
 		localEndpoint := &eventstore.ConnectionEndpointLocal{

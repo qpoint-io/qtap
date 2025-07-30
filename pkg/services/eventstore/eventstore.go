@@ -44,7 +44,8 @@ type meta struct {
 	ConnectionID          string   `json:"connectionId,omitzero"`
 	EndpointId            string   `json:"endpointId,omitzero"`
 	RequestId             string   `json:"requestId,omitzero"`
-	TLSProbeTypesDetected []string `json:"tlsProbeTypesDetected,omitempty"`
+	TLSProbeTypesDetected []string `json:"tlsProbeTypesDetected,omitzero"`
+	TLSIntrospected       bool     `json:"tlsProbeIntrospected,omitzero"`
 }
 
 func (m *meta) Fields() []zap.Field {

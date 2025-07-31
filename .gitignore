@@ -43,3 +43,8 @@ tmp/
 *.key
 *.srl
 *.pem
+
+# ai stuff
+CLAUDE.md
+CRUSH.md
+.crush/

@@ -101,11 +101,14 @@ struct {
 
 static int process_exec_ret() {
 	struct exec_info_event *info_event;
+	int pid = bpf_get_current_pid_tgid() >> 32;
 
 	// reserve space in the ring buffer for the event
 	info_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_info_event), 0);
-	if (!info_event)
+	if (!info_event) {
+		bpf_printk("process_exec_ret: failed to reserve space in ring buffer, pid=%d", pid);
 		return 0;
+	}
 
 	// set the event type and pid
 	info_event->type = PROC_EXEC_END;
@@ -124,8 +127,10 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 	// reserve space in the ring buffer for the event
 	struct exec_start_event *start_event;
 	start_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_start_event), 0);
-	if (!start_event)
+	if (!start_event) {
+		bpf_printk("process_exec_entry: failed to reserve space in ring buffer for start_event, pid=%d", pid);
 		return 0;
+	}
 
 	// initialize event
 	start_event->type = PROC_EXEC_START;
@@ -136,6 +141,10 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 	if (read_result > 0) {
 		// set the path size
 		start_event->exe_size = read_result;
+	} else {
+		// failed to read executable path
+		bpf_printk("process_exec_entry: failed to read executable path, pid=%d, read_result=%d", pid, read_result);
+		start_event->exe_size = 0;
 	}
 	bpf_ringbuf_submit(start_event, 0);
 
@@ -143,14 +152,18 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 	const char **argv = (const char **)(ctx->args[1]);
 	for (int i = 1; i < MAX_ARGV_COUNT; i++) {
 		const char *arg;
-		if (bpf_probe_read(&arg, sizeof(arg), &argv[i]) != 0 || !arg)
+		if (bpf_probe_read(&arg, sizeof(arg), &argv[i]) != 0 || !arg) {
+			bpf_printk("process_exec_entry: failed to read argv pointer or reached end, pid=%d, arg_index=%d", pid, i);
 			break;
+		}
 
 		// reserve space in the ring buffer for the exec argv event
 		struct exec_argv_event *argv_event;
 		argv_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_argv_event), 0);
-		if (!argv_event)
+		if (!argv_event) {
+			bpf_printk("process_exec_entry: failed to reserve space in ring buffer for argv_event, pid=%d, arg_index=%d", pid, i);
 			return 0;
+		}
 
 		// initialize event
 		argv_event->type = PROC_EXEC_ARGV;
@@ -168,6 +181,7 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 			bpf_ringbuf_submit(argv_event, 0);
 		} else {
 			// discard the event
+			bpf_printk("process_exec_entry: failed to read argument string, pid=%d, arg_index=%d, read_result=%d", pid, i, read_result);
 			bpf_ringbuf_discard(argv_event, 0);
 		}
 	}
@@ -203,8 +217,10 @@ int tracepoint__sched__process_exit(struct trace_event_raw_sched_process_templat
 	struct exit_info_event *exit_event;
 
 	exit_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exit_info_event), 0);
-	if (!exit_event)
+	if (!exit_event) {
+		bpf_printk("tracepoint__sched__process_exit: failed to reserve space in ring buffer, pid=%d", ctx->pid);
 		return 0;
+	}
 
 	exit_event->type = PROC_EXIT;
 	exit_event->pid  = ctx->pid;

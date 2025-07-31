@@ -40,13 +40,20 @@ type Manager struct {
 }
 
 func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *Manager {
-	return &Manager{
+	m := &Manager{
 		logger:      logger,
 		rb:          rb,
 		metaMap:     mmap,
 		tracepoints: tps,
 		cache:       expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
 	}
+
+	// track cache size metrics
+	trackCacheSize(func() int {
+		return m.cache.Len()
+	})
+
+	return m
 }
 
 func (m *Manager) Start() error {
@@ -90,12 +97,15 @@ func (m *Manager) readProcEvents() {
 			if errors.Is(err, os.ErrClosed) {
 				break
 			}
+			incrementProcEventError()
 			m.logger.Error("failed to read from proc buffer", zap.Error(err))
 			continue
 		}
 
+		incrementProcEventRead()
 		err = m.readProcEvent(record)
 		if err != nil {
+			incrementProcEventError()
 			m.logger.Error("failed to read proc event", zap.Error(err))
 		}
 

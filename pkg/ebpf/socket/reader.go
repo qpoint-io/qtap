@@ -193,13 +193,13 @@ func (m *SocketEventManager) handleSocketTLSClientHelloEvent(r *bytes.Reader) {
 	msg := make([]byte, attr.Size)
 
 	if _, err := r.Read(msg); err != nil {
-		m.logger.Error("failed to parse event (tls handshake)", zap.Error(err))
+		m.logger.Error("failed to read event (tls handshake)", zap.Any("attr", attr), zap.Error(err))
 		return
 	}
 
 	h, ok := tlsutils.ParseClientHello(msg)
 	if !ok {
-		m.logger.Error("failed to parse event (tls handshake)")
+		m.logger.Error("failed to parse event (tls handshake)", zap.Any("attr", attr))
 		return
 	}
 

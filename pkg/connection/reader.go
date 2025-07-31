@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"go.uber.org/zap"
@@ -15,21 +14,24 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 		return
 	}
 
-	// Because the process manager runs independently of the connection manager,
-	// very rarely a race will occur where we get the connection open event
-	// before the process manager has discovered the process.
-	//
-	// We give a 50ms buffer to avoid this race. If we time out we will proceed
-	// with creating the connection without the process. On following events,
-	// the connection manager will attempt to rediscover the process.
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	proc, err := m.processManager.Await(ctx, int(event.PID))
-	if err != nil {
-		m.logger.Warn("connection process has not been discovered yet",
-			zap.Error(err),
-			zap.Uint32("pid", event.PID))
-	}
+	// // Because the process manager runs independently of the connection manager,
+	// // very rarely a race will occur where we get the connection open event
+	// // before the process manager has discovered the process.
+	// //
+	// // We give a 50ms buffer to avoid this race. If we time out we will proceed
+	// // with creating the connection without the process. On following events,
+	// // the connection manager will attempt to rediscover the process.
+	// ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	// defer cancel()
+	// proc, err := m.processManager.Await(ctx, int(event.PID))
+	// if err != nil {
+	// 	m.logger.Warn("connection process has not been discovered yet",
+	// 		zap.Error(err),
+	// 		zap.Uint32("pid", event.PID))
+	// }
+
+	// TODO(Jon): Do not merge this to main
+	proc := m.processManager.Get(int(event.PID))
 
 	// get associated dns record
 	var dnsRecord *dns.Record

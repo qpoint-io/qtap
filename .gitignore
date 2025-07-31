@@ -43,3 +43,7 @@ tmp/
 *.key
 *.srl
 *.pem
+
+# crush agent
+.crush/
+CRUSH.md

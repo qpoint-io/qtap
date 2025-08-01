@@ -80,7 +80,7 @@ struct {
 
 // File descriptor requests from uprobes
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t); // pid_tgid
 	__type(value, struct fd_request);
 	__uint(max_entries, 1024);

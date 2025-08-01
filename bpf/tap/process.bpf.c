@@ -153,7 +153,8 @@ static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
 	for (int i = 1; i < MAX_ARGV_COUNT; i++) {
 		const char *arg;
 		if (bpf_probe_read(&arg, sizeof(arg), &argv[i]) != 0 || !arg) {
-			bpf_printk("process_exec_entry: failed to read argv pointer or reached end, pid=%d, arg_index=%d", pid, i);
+			// this is expected if there are no more arguments
+			// bpf_printk("process_exec_entry: failed to read argv pointer or reached end, pid=%d, arg_index=%d", pid, i);
 			break;
 		}
 

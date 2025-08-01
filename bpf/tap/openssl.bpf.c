@@ -34,7 +34,7 @@ enum SSL_DIRECTION {
 
 // persist the read args for exit handler
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t); // pid_tgid
 	__type(value, struct data_args);
 	__uint(max_entries, 1024);
@@ -42,7 +42,7 @@ struct {
 
 // persist the write args for exit handler
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t); // pid_tgid
 	__type(value, struct data_args);
 	__uint(max_entries, 1024);

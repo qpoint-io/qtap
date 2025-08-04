@@ -115,6 +115,7 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 			}
 			if user, _ := proc.User(); user != nil {
 				localEndpoint.User = user.Username
+				localEndpoint.UserID = user.UID
 			}
 			if container, _ := proc.Container(); container != nil {
 				pod, _ := proc.Pod() // pod can be nil

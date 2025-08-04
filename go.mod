@@ -12,6 +12,7 @@ require (
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
+	github.com/gopacket/gopacket v1.3.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
@@ -35,7 +36,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.36.0
 	go.uber.org/mock v0.5.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.38.0
 	golang.org/x/net v0.40.0
 	golang.org/x/term v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -322,6 +322,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.5.0 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/exp v0.0.0-20250228200357-dead58393ab7 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20250210185358-939b2ce775ac // indirect
 	golang.org/x/mod v0.24.0 // indirect

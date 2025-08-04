@@ -260,6 +260,12 @@ func (c *Connection) setProcess(process *process.Process) {
 			c.tags.Add("host", hostname)
 		}
 	}
+
+	if humanControlled, err := c.process.HumanControlled(); err == nil {
+		c.tags.Add("human_controlled_process", strconv.FormatBool(humanControlled))
+	} else {
+		c.logger.Warn("failed to process human controlled indication check", zap.Error(err))
+	}
 }
 
 // Open initializes the connection monitoring

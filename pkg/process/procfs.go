@@ -197,6 +197,257 @@ func Executable(pid int) (string, error) {
 	return exe, err
 }
 
+// readProcStat reads and parses /proc/PID/stat file
+func readProcStat(pid int) ([]string, error) {
+	statPath := fmt.Sprintf("/proc/%d/stat", pid)
+	data, err := os.ReadFile(statPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read stat: %w", err)
+	}
+
+	// The comm field (process name) can contain spaces and parentheses
+	// Find the last closing parenthesis to correctly parse the fields
+	statStr := string(data)
+	lastParen := strings.LastIndex(statStr, ")")
+	if lastParen == -1 {
+		return nil, errors.New("invalid stat format: no closing parenthesis found")
+	}
+
+	// Split the fields after the closing parenthesis
+	afterParen := strings.TrimSpace(statStr[lastParen+1:])
+	fields := strings.Fields(afterParen)
+
+	// Prepend the pid and comm fields
+	firstParen := strings.Index(statStr, "(")
+	if firstParen == -1 {
+		return nil, errors.New("invalid stat format: no opening parenthesis found")
+	}
+
+	pidStr := strings.TrimSpace(statStr[:firstParen])
+	comm := statStr[firstParen+1 : lastParen]
+
+	result := []string{pidStr, comm}
+	result = append(result, fields...)
+
+	return result, nil
+}
+
+// getControllingTerminal returns the controlling terminal device number for a process
+func getControllingTerminal(pid int) (int, error) {
+	fields, err := readProcStat(pid)
+	if err != nil {
+		return 0, err
+	}
+
+	// tty_nr is the 7th field after the closing parenthesis (index 8 in our array)
+	if len(fields) < 9 {
+		return 0, errors.New("stat file has insufficient fields")
+	}
+
+	ttyNr, err := strconv.Atoi(fields[8])
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse tty_nr: %w", err)
+	}
+
+	return ttyNr, nil
+}
+
+// getSessionID returns the session ID for a process
+func getSessionID(pid int) (int, error) {
+	fields, err := readProcStat(pid)
+	if err != nil {
+		return 0, err
+	}
+
+	// session ID is the 6th field after the closing parenthesis (index 7 in our array)
+	if len(fields) < 8 {
+		return 0, errors.New("stat file has insufficient fields")
+	}
+
+	sid, err := strconv.Atoi(fields[7])
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse session ID: %w", err)
+	}
+
+	return sid, nil
+}
+
+// getPPID returns the parent process ID
+func getPPID(pid int) (int, error) {
+	fields, err := readProcStat(pid)
+	if err != nil {
+		return 0, err
+	}
+
+	// ppid is the 4th field (index 3 in our array)
+	if len(fields) < 4 {
+		return 0, errors.New("stat file has insufficient fields")
+	}
+
+	ppid, err := strconv.Atoi(fields[3])
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse ppid: %w", err)
+	}
+
+	return ppid, nil
+}
+
+// isTerminalFD checks if /proc/PID/fd/0 points to a terminal device
+func isTerminalFD(pid int) (bool, error) {
+	fdPath := fmt.Sprintf("/proc/%d/fd/0", pid)
+	target, err := os.Readlink(fdPath)
+	if err != nil {
+		// If we can't read the fd, it might be due to permissions
+		if os.IsPermission(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	// Check if it points to a terminal device
+	return strings.HasPrefix(target, "/dev/pts/") || strings.HasPrefix(target, "/dev/tty"), nil
+}
+
+// Known interactive shells
+var interactiveShells = map[string]bool{
+	"bash": true,
+	"zsh":  true,
+	"sh":   true,
+	"fish": true,
+	"ksh":  true,
+	"tcsh": true,
+	"csh":  true,
+}
+
+// Known terminal emulators
+var terminalEmulators = map[string]bool{
+	"gnome-terminal": true,
+	"konsole":        true,
+	"xterm":          true,
+	"terminal":       true,
+	"iTerm":          true,
+	"iTerm2":         true,
+	"ghostty":        true,
+}
+
+// getProcessName returns the name of a process
+func getProcessName(pid int) (string, error) {
+	fields, err := readProcStat(pid)
+	if err != nil {
+		return "", err
+	}
+
+	// Process name is the second field (index 1)
+	if len(fields) < 2 {
+		return "", errors.New("stat file has insufficient fields")
+	}
+
+	return fields[1], nil
+}
+
+// isInteractiveShell checks if a process name is a known interactive shell
+func isInteractiveShell(processName string) bool {
+	// Extract just the binary name if it's a full path
+	baseName := filepath.Base(processName)
+	return interactiveShells[baseName]
+}
+
+// isTerminalEmulator checks if a process name is a known terminal emulator
+func isTerminalEmulator(processName string) bool {
+	// Extract just the binary name if it's a full path
+	baseName := filepath.Base(processName)
+	return terminalEmulators[baseName]
+}
+
+// isSSHSession checks if a process name matches SSH session pattern
+func isSSHSession(processName string) bool {
+	// SSH sessions typically have pattern: "sshd: username@pts/"
+	return strings.HasPrefix(processName, "sshd:") && strings.Contains(processName, "@pts/")
+}
+
+// walkParentChain walks up the parent process tree and checks each process
+func walkParentChain(pid int, maxDepth int) (bool, error) {
+	currentPID := pid
+	depth := 0
+
+	for depth < maxDepth && currentPID > 1 {
+		// Get process name
+		processName, err := getProcessName(currentPID)
+		if err != nil {
+			// If we can't read the process, it might have exited
+			// Continue with parent if we can get it
+			if ppid, ppidErr := getPPID(currentPID); ppidErr == nil {
+				currentPID = ppid
+				depth++
+				continue
+			}
+			return false, err
+		}
+
+		// Check if this process indicates human interaction
+		if isInteractiveShell(processName) || isTerminalEmulator(processName) || isSSHSession(processName) {
+			return true, nil
+		}
+
+		// Get parent PID
+		ppid, err := getPPID(currentPID)
+		if err != nil {
+			return false, err
+		}
+
+		// Check if we've reached init
+		if ppid <= 1 {
+			break
+		}
+
+		currentPID = ppid
+		depth++
+	}
+
+	return false, nil
+}
+
+// isHumanInitiated determines if a process was initiated by a human user
+func isHumanInitiated(pid int) (bool, error) {
+	// Check if process exists
+	if _, err := os.Stat(fmt.Sprintf("/proc/%d", pid)); os.IsNotExist(err) {
+		return false, fmt.Errorf("process %d not found", pid)
+	}
+
+	// Check for controlling terminal
+	ttyNr, err := getControllingTerminal(pid)
+	if err != nil {
+		// If we can't read the stat file due to permissions, assume not human-initiated
+		if os.IsPermission(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	// No controlling terminal means likely not human-initiated
+	if ttyNr == 0 {
+		return false, nil
+	}
+
+	// Also check if fd/0 points to a terminal (as an additional check)
+	isTerminal, err := isTerminalFD(pid)
+	if err != nil && !os.IsPermission(err) {
+		// Only fail on non-permission errors
+		return false, err
+	}
+
+	// Check the parent process chain (limit depth to prevent infinite loops)
+	hasInteractiveParent, err := walkParentChain(pid, 50)
+	if err != nil {
+		return false, err
+	}
+
+	// A process is considered human-initiated if:
+	// - It has a controlling terminal (ttyNr > 0) OR fd/0 is a terminal AND
+	// - Its parent chain includes an interactive shell, SSH session, or terminal emulator
+	return (ttyNr > 0 || isTerminal) && hasInteractiveParent, nil
+}
+
 // IsKernelProcess returns true if the process is a kernel process.
 func IsKernelProcess(pid int) (bool, error) {
 	// Read the status file directly from /proc

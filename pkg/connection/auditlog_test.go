@@ -59,6 +59,7 @@ func Test_toEventStoreConnection(t *testing.T) {
 				},
 				Exe:      "/bin/test",
 				User:     "test-user",
+				UserID:   1000,
 				Hostname: "local-hostname",
 				Container: &eventstore.Container{
 					ID:    "container-id",
@@ -137,6 +138,7 @@ func Test_toEventStoreConnection(t *testing.T) {
 				},
 				Exe:      "/bin/test",
 				User:     "test-user",
+				UserID:   1000,
 				Hostname: "local-hostname",
 				Container: &eventstore.Container{
 					ID:    "container-id",

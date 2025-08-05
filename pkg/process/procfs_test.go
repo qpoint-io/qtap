@@ -76,17 +76,6 @@ func TestGetControllingTerminal(t *testing.T) {
 	}
 }
 
-func TestGetSessionID(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Skipping test on non-Linux platform")
-	}
-
-	pid := os.Getpid()
-	sid, err := getSessionID(pid)
-	require.NoError(t, err)
-	assert.Positive(t, sid)
-}
-
 func TestGetPPID(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Skipping test on non-Linux platform")

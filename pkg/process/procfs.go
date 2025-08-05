@@ -252,26 +252,6 @@ func getControllingTerminal(pid int) (int, error) {
 	return ttyNr, nil
 }
 
-// getSessionID returns the session ID for a process
-func getSessionID(pid int) (int, error) {
-	fields, err := readProcStat(pid)
-	if err != nil {
-		return 0, err
-	}
-
-	// session ID is the 6th field after the closing parenthesis (index 7 in our array)
-	if len(fields) < 8 {
-		return 0, errors.New("stat file has insufficient fields")
-	}
-
-	sid, err := strconv.Atoi(fields[7])
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse session ID: %w", err)
-	}
-
-	return sid, nil
-}
-
 // getPPID returns the parent process ID
 func getPPID(pid int) (int, error) {
 	fields, err := readProcStat(pid)

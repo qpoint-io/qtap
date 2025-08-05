@@ -295,6 +295,7 @@ type Connection struct {
 	Destination    ConnectionEndpoint  `json:"destination,omitempty"`
 	BytesReceived  uint64              `json:"bytesReceived,omitempty"`
 	BytesSent      uint64              `json:"bytesSent,omitempty"`
+	Labels         []string            `json:"labels,omitempty"`
 }
 
 type ConnectionSystem struct {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
+	"github.com/qpoint-io/qtap/pkg/labels"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
 	servicespkg "github.com/qpoint-io/qtap/pkg/services"
@@ -98,8 +99,9 @@ type Connection struct {
 	skipStreamProcessing       bool
 	skipStreamProcessingReason string
 
-	// tags
-	tags tags.List
+	// tags & labels
+	tags   tags.List
+	labels labels.Set
 
 	// auditCount is the number of times a connection audit log as been reported
 	auditCount uint32
@@ -184,6 +186,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		eventQueue:  synq.NewQueue(ctx),
 		HandlerType: handlerType,
 		tags:        t,
+		labels:      labels.New(),
 	}
 
 	// apply options
@@ -261,10 +264,12 @@ func (c *Connection) setProcess(process *process.Process) {
 		}
 	}
 
-	if humanControlled, err := c.process.HumanControlled(); err == nil {
-		c.tags.Add("human_controlled_process", strconv.FormatBool(humanControlled))
-	} else {
+	// add labels
+	humanControlled, err := c.process.HumanControlled()
+	if err != nil {
 		c.logger.Warn("failed to process human controlled indication check", zap.Error(err))
+	} else if humanControlled {
+		c.labels.Add("human-controlled")
 	}
 }
 

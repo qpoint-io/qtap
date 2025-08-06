@@ -79,6 +79,7 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 			AgentInstance: telemetry.InstanceID(),
 		},
 		L7Protocol: toEventStoreL7Protocol(conn.Protocol),
+		Labels:     conn.labels.Items(),
 	}
 	c.SetConnectionID(conn.ID())
 	c.SetEndpointID(conn.Domain())
@@ -115,6 +116,7 @@ func toEventStoreConnection(conn *Connection) *eventstore.Connection {
 			}
 			if user, _ := proc.User(); user != nil {
 				localEndpoint.User = user.Username
+				localEndpoint.UserID = user.UID
 			}
 			if container, _ := proc.Container(); container != nil {
 				pod, _ := proc.Pod() // pod can be nil

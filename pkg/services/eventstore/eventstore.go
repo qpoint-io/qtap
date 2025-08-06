@@ -295,6 +295,7 @@ type Connection struct {
 	Destination    ConnectionEndpoint  `json:"destination,omitempty"`
 	BytesReceived  uint64              `json:"bytesReceived,omitempty"`
 	BytesSent      uint64              `json:"bytesSent,omitempty"`
+	Labels         []string            `json:"labels,omitempty"`
 }
 
 type ConnectionSystem struct {
@@ -312,6 +313,7 @@ type ConnectionEndpointLocal struct {
 	Hostname  string       `json:"hostname,omitempty"`
 	Exe       string       `json:"exe,omitempty"`
 	User      string       `json:"user,omitempty"`
+	UserID    uint         `json:"userId,omitempty"`
 	Container *Container   `json:"container,omitempty"`
 }
 

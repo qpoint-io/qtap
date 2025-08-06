@@ -265,11 +265,11 @@ func (c *Connection) setProcess(process *process.Process) {
 	}
 
 	// add labels
-	humanControlled, err := c.process.HumanControlled()
+	userShell, err := c.process.UserShell()
 	if err != nil {
-		c.logger.Warn("failed to process human controlled indication check", zap.Error(err))
-	} else if humanControlled {
-		c.labels.Add("human-controlled")
+		c.logger.Warn("failed to process user shellindication check", zap.Error(err))
+	} else if userShell {
+		c.labels.Add("user-shell")
 	}
 }
 

@@ -387,8 +387,8 @@ func walkParentChain(pid int, maxDepth int) (bool, error) {
 	return false, nil
 }
 
-// isHumanInitiated determines if a process was initiated by a human user
-func isHumanInitiated(pid int) (bool, error) {
+// isUserShell determines if a process was initiated by a human user
+func isUserShell(pid int) (bool, error) {
 	// Check if process exists
 	if _, err := os.Stat(fmt.Sprintf("/proc/%d", pid)); os.IsNotExist(err) {
 		return false, fmt.Errorf("process %d not found", pid)

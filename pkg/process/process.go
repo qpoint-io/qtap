@@ -51,22 +51,22 @@ func (e UnknownProcessError) Error() string {
 }
 
 type Process struct {
-	Pid             int
-	PidExe          string // PidExe is the path to the /proc process symlink
-	PodID           string // TODO: remove
-	Cgroup          string
-	ContainerID     string
-	RootID          uint64
-	Binary          string
-	Exe             string
-	ExeFilename     string // ExeFilename is the path to the file that was called by the syscall. It can be empty.
-	Args            []string
-	Root            string
-	Env             map[string]string
-	Strategy        QpointStrategy
-	PredatesQpoint  bool
-	User            resolvable.V[*ProcessUser]
-	HumanControlled resolvable.V[bool]
+	Pid            int
+	PidExe         string // PidExe is the path to the /proc process symlink
+	PodID          string // TODO: remove
+	Cgroup         string
+	ContainerID    string
+	RootID         uint64
+	Binary         string
+	Exe            string
+	ExeFilename    string // ExeFilename is the path to the file that was called by the syscall. It can be empty.
+	Args           []string
+	Root           string
+	Env            map[string]string
+	Strategy       QpointStrategy
+	PredatesQpoint bool
+	User           resolvable.V[*ProcessUser]
+	UserShell      resolvable.V[bool]
 
 	// TLSProbeTypesDetected are the the probes that have scanned the process binary and found matching hooks.
 	TLSProbeTypesDetected []string
@@ -108,14 +108,14 @@ func NewProcess(pid int, exeFilename string) *Process {
 		return GetProcessUser(p.Pid)
 	}, resolvable.WithRetry()).WithBackgroundContext()
 
-	p.HumanControlled = resolvable.New(func(context.Context) (bool, error) {
-		// check if the process is human-initiated
-		isHuman, err := isHumanInitiated(p.Pid)
+	p.UserShell = resolvable.New(func(context.Context) (bool, error) {
+		// check if the process was created by a user shell
+		u, err := isUserShell(p.Pid)
 		if err != nil {
 			return false, err
 		}
 
-		return isHuman, nil
+		return u, nil
 	}, resolvable.WithRetry()).WithBackgroundContext()
 
 	return p

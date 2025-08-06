@@ -201,7 +201,7 @@ func TestWalkParentChain(t *testing.T) {
 	_ = found
 }
 
-func TestIsHumanInitiated(t *testing.T) {
+func TestIsUserShell(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Skipping test on non-Linux platform")
 	}
@@ -260,7 +260,7 @@ func TestIsHumanInitiated(t *testing.T) {
 			pid, cleanup := tt.setupFunc()
 			defer cleanup()
 
-			isHuman, err := isHumanInitiated(pid)
+			isUser, err := isUserShell(pid)
 			if tt.expectError {
 				assert.Error(t, err)
 			} else {
@@ -269,7 +269,7 @@ func TestIsHumanInitiated(t *testing.T) {
 					assert.False(t, os.IsNotExist(err), "Process should exist")
 				}
 				// Result depends on how test is run (terminal vs CI)
-				_ = isHuman
+				_ = isUser
 			}
 		})
 	}
@@ -347,7 +347,7 @@ func TestEdgeCases(t *testing.T) {
 		}
 
 		// Try PID 1 which often requires elevated permissions
-		_, err := isHumanInitiated(1)
+		_, err := isUserShell(1)
 		// Should handle permission errors gracefully (not fail)
 		if err != nil {
 			assert.False(t, os.IsNotExist(err))
@@ -370,7 +370,7 @@ func TestEdgeCases(t *testing.T) {
 }
 
 // Benchmark functions
-func BenchmarkIsHumanInitiated(b *testing.B) {
+func BenchmarkIsUserShell(b *testing.B) {
 	if runtime.GOOS != "linux" {
 		b.Skip("Skipping benchmark on non-Linux platform")
 	}
@@ -379,7 +379,7 @@ func BenchmarkIsHumanInitiated(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, _ = isHumanInitiated(pid)
+		_, _ = isUserShell(pid)
 	}
 }
 

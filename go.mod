@@ -1,6 +1,6 @@
 module github.com/qpoint-io/qtap
 
-go 1.24.4
+go 1.24.6
 
 require (
 	github.com/andybalholm/brotli v1.1.1

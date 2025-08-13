@@ -230,6 +230,60 @@ static bool detect_dns(struct conn_info *conn_info) {
 	return false;
 }
 
+// Reference: https://www.mongodb.com/docs/manual/reference/mongodb-wire-protocol/
+static bool detect_mongodb(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	// MongoDB wire protocol messages have at least 16 bytes header
+	if (count < 16 || !buf_info->buf) {
+		return false;
+	}
+
+	// Read the first 16 bytes for MongoDB wire protocol header
+	unsigned char hdr[16] = {0};
+	if (buf_read((char *)&hdr, sizeof(hdr), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// MongoDB wire protocol structure:
+	// https://www.mongodb.com/docs/manual/reference/mongodb-wire-protocol/#standard-message-header
+	// - 4 bytes: message length (little-endian)
+	// - 4 bytes: request ID
+	// - 4 bytes: response to
+	// - 4 bytes: opCode (little-endian)
+
+	// Get message length (little-endian)
+	uint32_t msg_len = hdr[0] | (hdr[1] << 8) | (hdr[2] << 16) | (hdr[3] << 24);
+
+	// Get opCode (little-endian)
+	uint32_t opcode = hdr[12] | (hdr[13] << 8) | (hdr[14] << 16) | (hdr[15] << 24);
+
+	// Valid MongoDB opcodes
+	// https://www.mongodb.com/docs/manual/reference/mongodb-wire-protocol/#opcodes
+	bool valid_opcode = (opcode == 1 || // OP_REPLY
+						 opcode == 2001 || // OP_UPDATE
+						 opcode == 2002 || // OP_INSERT
+						 opcode == 2003 || // RESERVED
+						 opcode == 2004 || // OP_QUERY
+						 opcode == 2005 || // OP_GET_MORE
+						 opcode == 2006 || // OP_DELETE
+						 opcode == 2007 || // OP_KILL_CURSORS
+						 opcode == 2010 || // OP_COMMAND
+						 opcode == 2011 || // OP_COMMANDREPLY
+						 opcode == 2012 || // OP_COMPRESSED
+						 opcode == 2013); // OP_MSG
+
+	// Sanity check: message length should be reasonable (at least header size, not too large)
+	// Note: 16MiB (16777216 bytes) is the max for a BSON submission. However, when doing bulk inserts the max
+	// is 48MiB (50331648 bytes). In the interest of flexibility, support the upper limit.
+	bool valid_length = (msg_len >= 16 && msg_len <= 50331648);
+
+	if (valid_opcode && valid_length) {
+		conn_info->protocol = P_MONGODB;
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// bpf_printk("detect_tls: Starting TLS detection, count: %zu", count);
 
@@ -269,6 +323,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect dns
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_dns(conn_info);
+
+	// detect mongodb - check before HTTP as MongoDB binary data might be misdetected as HTTP
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_mongodb(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

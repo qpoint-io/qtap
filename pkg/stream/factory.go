@@ -55,6 +55,12 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		return dnsStream.NewDNSStream(conn.Context(), logger, conn, m.dnsManager)
 	}
 
+	// handle mongodb streams (one day we will parse them)
+	if conn.Protocol == connection.Protocol_MONGODB {
+		logger.Debug("MongoDB connection detected - protocol parsing not implemented")
+		return nil
+	}
+
 	// parse http streams
 	if conn.Protocol == connection.Protocol_HTTP1 || conn.Protocol == connection.Protocol_HTTP2 {
 		// extract the domain

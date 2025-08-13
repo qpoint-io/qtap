@@ -141,6 +141,10 @@ func initLogger() *zap.Logger {
 		cfg.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
 	}
 
+	if cfg.Level.Level() == zapcore.DebugLevel {
+		cfg.Sampling = nil // disable sampling in debug mode
+	}
+
 	l, err := cfg.Build()
 	if err != nil {
 		panic("error: couldn't create a logger: " + err.Error())

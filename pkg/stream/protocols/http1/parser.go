@@ -16,6 +16,10 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	ErrMalformedRequest = errors.New("malformed HTTP request")
+)
+
 var tracer = telemetry.Tracer()
 
 // HeaderHandler is a callback function type for handling parsed HTTP messages
@@ -105,8 +109,10 @@ func (sp *StreamParser[T]) parse() error {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
 			sp.logger.Warn("connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err))
 		} else {
-			sp.logger.Error("error parsing message", zap.Error(err))
+			sp.logger.Debug("malformed HTTP message", zap.Error(err))
+			return ErrMalformedRequest
 		}
+
 		return err
 	}
 

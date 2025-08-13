@@ -230,6 +230,55 @@ static bool detect_dns(struct conn_info *conn_info) {
 	return false;
 }
 
+// MongoDB detection - because sometimes life isn't fair and MongoDB
+// connection establishment can look suspiciously like HTTP traffic
+// that we could parse, but it's actually MongoDB wire protocol.
+//
+// Reference: https://www.mongodb.com/docs/manual/reference/mongodb-wire-protocol/
+static bool detect_mongodb(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	// MongoDB wire protocol messages have at least 16 bytes header
+	if (count < 16 || !buf_info->buf) {
+		return false;
+	}
+
+	// Read the first 16 bytes for MongoDB wire protocol header
+	unsigned char mongo_header[16] = {0};
+	if (buf_read((char *)&mongo_header, sizeof(mongo_header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// MongoDB wire protocol structure:
+	// - 4 bytes: message length (little-endian)
+	// - 4 bytes: request ID
+	// - 4 bytes: response to
+	// - 4 bytes: opCode (little-endian)
+
+	// Get message length (little-endian)
+	uint32_t msg_len = mongo_header[0] | (mongo_header[1] << 8) | (mongo_header[2] << 16) | (mongo_header[3] << 24);
+
+	// Get opCode (little-endian)
+	uint32_t opcode = mongo_header[12] | (mongo_header[13] << 8) | (mongo_header[14] << 16) | (mongo_header[15] << 24);
+
+	// Valid MongoDB opcodes (wire protocol v3.6+)
+	// 2013: OP_MSG (most common in modern MongoDB)
+	// 2004: OP_QUERY (deprecated but still used)
+	// 2010: OP_COMMAND (deprecated)
+	// 2007: OP_GET_MORE
+	// 1: OP_REPLY
+	bool valid_opcode = (opcode == 2013 || opcode == 2004 || opcode == 2010 || opcode == 2007 || opcode == 1 || opcode == 2001 || opcode == 2002 ||
+						 opcode == 2003 || opcode == 2005 || opcode == 2006);
+
+	// Sanity check: message length should be reasonable (at least header size, not too large)
+	bool valid_length = (msg_len >= 16 && msg_len <= 16777216); // 16MB max BSON document size
+
+	if (valid_opcode && valid_length) {
+		conn_info->protocol = P_MONGODB;
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// bpf_printk("detect_tls: Starting TLS detection, count: %zu", count);
 
@@ -269,6 +318,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect dns
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_dns(conn_info);
+
+	// detect mongodb - check before HTTP as MongoDB binary data might be misdetected as HTTP
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_mongodb(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

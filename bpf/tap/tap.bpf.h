@@ -60,6 +60,7 @@ enum PROTOCOL {
 	P_HTTP1,
 	P_HTTP2,
 	P_DNS,
+	P_MONGODB,
 };
 
 enum DIRECTION {

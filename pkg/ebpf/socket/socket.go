@@ -57,6 +57,7 @@ const (
 	Protocol_HTTP1
 	Protocol_HTTP2
 	Protocol_DNS
+	Protocol_MONGODB
 	Protocol_GRPC
 )
 
@@ -70,6 +71,8 @@ func (p Protocol) String() string {
 		return "HTTP2"
 	case Protocol_DNS:
 		return "DNS"
+	case Protocol_MONGODB:
+		return "MONGODB"
 	case Protocol_GRPC:
 		return "GRPC"
 	default:
@@ -286,6 +289,8 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 		p = connection.Protocol_HTTP1
 	case Protocol_HTTP2:
 		p = connection.Protocol_HTTP2
+	case Protocol_MONGODB:
+		p = connection.Protocol_MONGODB
 	case Protocol_GRPC:
 		p = connection.Protocol_GRPC
 	}

@@ -225,9 +225,8 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read) {
 		read_args->fd = get_fd(pid_tgid, read_args->ssl);
 
 		// ensure we have a valid fd
-		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
-		if (read_args->fd < 3) {
-			TRACE_OPENSSL(pid, "openssl/read (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
+		if (read_args->fd == 0) {
+			TRACE_OPENSSL(pid, "openssl/read (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
 			return 0;
 		}
 
@@ -324,10 +323,8 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read_ex) {
 		read_args->fd = get_fd(pid_tgid, read_args->ssl);
 
 		// ensure we have a valid fd
-		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
-		if (read_args->fd < 3) {
-			TRACE_OPENSSL(pid, "openssl/read_ex (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
-
+		if (read_args->fd == 0) {
+			TRACE_OPENSSL(pid, "openssl/read_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
 			return 0;
 		}
 
@@ -411,10 +408,8 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write) {
 		write_args->fd = get_fd(pid_tgid, write_args->ssl);
 
 		// ensure we have a valid fd
-		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
-		if (write_args->fd < 3) {
-			TRACE_OPENSSL(pid, "openssl/write (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
-
+		if (write_args->fd == 0) {
+			TRACE_OPENSSL(pid, "openssl/write (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
 			return 0;
 		}
 
@@ -504,11 +499,9 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write_ex) {
 		write_args->fd = get_fd(pid_tgid, write_args->ssl);
 
 		// ensure we have a valid fd
-		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
-		if (write_args->fd < 3) {
+		if (write_args->fd == 0) {
 			TRACE_OPENSSL(
-				pid, "openssl/write_ex (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));
-
+				pid, "openssl/write_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));
 			return 0;
 		}
 

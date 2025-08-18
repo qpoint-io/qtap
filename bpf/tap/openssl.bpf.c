@@ -34,7 +34,7 @@ enum SSL_DIRECTION {
 
 // persist the read args for exit handler
 struct {
-	__uint(type, BPF_MAP_TYPE_LRU_HASH);
+	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, uint64_t); // pid_tgid
 	__type(value, struct data_args);
 	__uint(max_entries, 1024);
@@ -42,7 +42,7 @@ struct {
 
 // persist the write args for exit handler
 struct {
-	__uint(type, BPF_MAP_TYPE_LRU_HASH);
+	__uint(type, BPF_MAP_TYPE_HASH);
 	__type(key, uint64_t); // pid_tgid
 	__type(value, struct data_args);
 	__uint(max_entries, 1024);
@@ -225,8 +225,12 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read) {
 		read_args->fd = get_fd(pid_tgid, read_args->ssl);
 
 		// ensure we have a valid fd
-		if (read_args->fd == 0) {
-			TRACE_OPENSSL(pid, "openssl/read (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
+		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
+		if (read_args->fd < 3) {
+			TRACE_OPENSSL(pid, "openssl/read (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
+			
+			// clean the entry
+			bpf_map_delete_elem(&active_ssl_read_args_map, &pid_tgid);
 			return 0;
 		}
 
@@ -323,8 +327,12 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_read_ex) {
 		read_args->fd = get_fd(pid_tgid, read_args->ssl);
 
 		// ensure we have a valid fd
-		if (read_args->fd == 0) {
-			TRACE_OPENSSL(pid, "openssl/read_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
+		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
+		if (read_args->fd < 3) {
+			TRACE_OPENSSL(pid, "openssl/read_ex (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_read));
+
+			// clean the entry
+			bpf_map_delete_elem(&active_ssl_read_args_map, &pid_tgid);
 			return 0;
 		}
 
@@ -408,8 +416,12 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write) {
 		write_args->fd = get_fd(pid_tgid, write_args->ssl);
 
 		// ensure we have a valid fd
-		if (write_args->fd == 0) {
-			TRACE_OPENSSL(pid, "openssl/write (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
+		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
+		if (write_args->fd < 3) {
+			TRACE_OPENSSL(pid, "openssl/write (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_count));
+
+			// clean the entry
+			bpf_map_delete_elem(&active_ssl_write_args_map, &pid_tgid);
 			return 0;
 		}
 
@@ -499,9 +511,13 @@ int BPF_URETPROBE(openssl__probe_ret_SSL_write_ex) {
 		write_args->fd = get_fd(pid_tgid, write_args->ssl);
 
 		// ensure we have a valid fd
-		if (write_args->fd == 0) {
+		// fd 0, 1, and 2 are reserved for stdin, stdout, and stderr
+		if (write_args->fd < 3) {
 			TRACE_OPENSSL(
-				pid, "openssl/write_ex (fd == 0)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));
+				pid, "openssl/write_ex (fd < 3)", TRACE_INT("pid", pid), TRACE_INT("fd", write_args->fd), TRACE_INT("bytes", bytes_written));
+
+			// clean the entry
+			bpf_map_delete_elem(&active_ssl_write_args_map, &pid_tgid);
 			return 0;
 		}
 

@@ -149,20 +149,17 @@ func AllProcesses() ([]*Process, error) {
 
 func (p *Process) Discover(mountPoint string, envMask *synq.Map[string, bool]) error {
 	// extract the executable
-	if p.Exe == "" {
-		exe, err := Executable(p.Pid)
-		if err != nil {
-			return fmt.Errorf("extracting executable: %w", err)
-		}
-		p.Exe = exe
+	exe, err := Executable(p.Pid)
+	if err != nil {
+		return fmt.Errorf("extracting executable: %w", err)
 	}
+	p.Exe = exe
 
 	// apply process filters
 	p.filter = applyFilters(p)
 
-	if p.Binary == "" {
-		p.Binary = filepath.Base(p.Exe)
-	}
+	// set binary
+	p.Binary = filepath.Base(p.Exe)
 
 	// set the root path
 	if p.Root == "" {

@@ -82,3 +82,13 @@ static inline __u64 _strlen(const char *s, __u64 max) {
 		len++;
 	return len;
 }
+
+static __always_inline __u32 bpf_get_current_pid() {
+	// Lower 32 bits = PID (thread ID in userspace)
+	return (__u32)bpf_get_current_pid_tgid();
+}
+
+static __always_inline __u32 bpf_get_current_tgid() {
+	// Upper 32 bits = TGID (process ID in userspace)
+	return bpf_get_current_pid_tgid() >> 32;
+}

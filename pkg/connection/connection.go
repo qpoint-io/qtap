@@ -30,6 +30,12 @@ import (
 
 const (
 	WarmupTimeout = 10 * time.Second
+
+	// Connection lifecycle management timeouts
+	DefaultSweeperInterval     = 30 * time.Second // How often the sweeper runs
+	DefaultIdleTimeout         = 5 * time.Minute  // Max idle time for open connections
+	DefaultClosedTimeout       = 30 * time.Second // Max time in closing state
+	DefaultFinalizationTimeout = 10 * time.Second // Max time in finalizing state
 )
 
 var tracer = telemetry.Tracer()

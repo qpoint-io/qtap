@@ -44,12 +44,12 @@ func (m *managerMetrics) Collect() {
 		connectionsByTLSVersion = map[tlsutils.TLSVersion]int{}
 	)
 
-	m.m.connections.Iter(func(key Cookie, conn *Connection) bool {
-		if conn.OpenEvent != nil {
-			connectionsByType[conn.OpenEvent.SocketType]++
+	m.m.connections.Iter(func(key Cookie, managedConn *ManagedConnection) bool {
+		if managedConn.OpenEvent != nil {
+			connectionsByType[managedConn.OpenEvent.SocketType]++
 		}
-		if conn.TLSClientHello != nil {
-			connectionsByTLSVersion[conn.TLSClientHello.Version]++
+		if managedConn.TLSClientHello != nil {
+			connectionsByTLSVersion[managedConn.TLSClientHello.Version]++
 		}
 		return true
 	})

@@ -50,8 +50,9 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 		WithServiceRegistry(m.serviceRegistry),
 	)
 
-	// store connection
-	m.connections.Store(event.Key(), conn)
+	// store connection in managed wrapper
+	managedConn := NewManagedConnection(conn)
+	m.connections.Store(event.Key(), managedConn)
 
 	m.logger.Debug("socket open event",
 		zap.String("conn_id", conn.ID()),
@@ -203,9 +204,15 @@ func (c *Connection) processCloseEvent(event CloseEvent) {
 		zap.Int64("read_bytes", event.RdBytes),
 	)
 
-	// finalize connection if it's not held
-	if !c.held {
+	// Note: State transition is now handled by ManagedConnection.processCloseEvent
+	// For held connections, we still close immediately for backward compatibility
+	// For non-held connections, the sweeper will manage the lifecycle
+	if c.held {
+		c.logger.Debug("held connection received close event, closing immediately")
 		c.Close()
+	} else {
+		c.logger.Debug("non-held connection received close event, deferring cleanup to connection sweeper",
+			zap.String("conn_id", c.ID()))
 	}
 }
 

@@ -1,6 +1,9 @@
 package connection
 
 import (
+	"context"
+	"time"
+
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/process"
@@ -41,7 +44,16 @@ type Manager struct {
 	config *config.Config
 
 	// connections
-	connections *synq.Map[Cookie, *Connection]
+	connections *synq.Map[Cookie, *ManagedConnection]
+	
+	// sweeper management
+	sweeperCancel context.CancelFunc
+	
+	// sweeper configuration
+	sweeperInterval       time.Duration
+	idleTimeout          time.Duration
+	closedTimeout        time.Duration
+	finalizationTimeout  time.Duration
 }
 
 type ManagerOpt func(*Manager)
@@ -90,14 +102,21 @@ func SetControlManager(cm ControlManager) ManagerOpt {
 
 func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 	m := &Manager{
-		logger:      logger,
-		connections: synq.NewMap[Cookie, *Connection](),
+		logger:              logger,
+		connections:         synq.NewMap[Cookie, *ManagedConnection](),
+		sweeperInterval:     DefaultSweeperInterval,
+		idleTimeout:        DefaultIdleTimeout,
+		closedTimeout:      DefaultClosedTimeout,
+		finalizationTimeout: DefaultFinalizationTimeout,
 	}
 	for _, opt := range opts {
 		opt(m)
 	}
 
 	telemetry.RegisterCollector(newManagerMetrics(m))
+	
+	// Start the connection sweeper
+	m.startSweeper()
 
 	return m
 }
@@ -120,21 +139,29 @@ func (m *Manager) HandleEvent(event Keyer) {
 		return
 	}
 
-	if conn, exists := m.connections.Load(event.Key()); exists {
+	if managedConn, exists := m.connections.Load(event.Key()); exists {
 		// In most cases, processOpenEvent() will set the process. Very rarely,
 		// a race will occur where the connection is created without the process.
 		// More details on this in processOpenEvent().
 		//
 		// As a backup, attempt to rediscover the process on following events.
-		if conn.Process() == nil && conn.OpenEvent != nil {
-			proc := m.processManager.Get(int(conn.OpenEvent.PID))
+		if managedConn.Process() == nil && managedConn.OpenEvent != nil {
+			proc := m.processManager.Get(int(managedConn.OpenEvent.PID))
 			if proc != nil {
 				m.logger.Info("discovered process", zap.Int("pid", proc.Pid))
-				conn.SetProcess(proc)
+				managedConn.SetProcess(proc)
 			}
 		}
 
-		if err := conn.eventQueue.Push(event); err != nil {
+		// Update event time and push to queue
+		managedConn.UpdateEventTime()
+		
+		// Handle state transitions for certain events
+		if closeEvent, ok := event.(CloseEvent); ok {
+			managedConn.processCloseEvent(closeEvent)
+		}
+		
+		if err := managedConn.eventQueue.Push(event); err != nil {
 			m.logger.Error("failed to push event to connection queue", zap.Error(err))
 		}
 		return
@@ -148,4 +175,119 @@ func (m *Manager) finalizeConnection(conn *Connection) {
 
 func (m *Manager) createStreamer(conn *Connection) StreamProcessor {
 	return m.streamFactory.OnConnection(conn)
+}
+
+// startSweeper begins the connection lifecycle management goroutine
+func (m *Manager) startSweeper() {
+	ctx, cancel := context.WithCancel(context.Background())
+	m.sweeperCancel = cancel
+	
+	go func() {
+		ticker := time.NewTicker(m.sweeperInterval)
+		defer ticker.Stop()
+		
+		m.logger.Debug("connection sweeper started", 
+			zap.Duration("interval", m.sweeperInterval))
+		
+		for {
+			select {
+			case <-ctx.Done():
+				m.logger.Debug("connection sweeper stopped")
+				return
+			case <-ticker.C:
+				m.sweepConnections()
+			}
+		}
+	}()
+}
+
+// stopSweeper stops the connection lifecycle management goroutine
+// This is useful for clean shutdown and testing
+func (m *Manager) stopSweeper() {
+	if m.sweeperCancel != nil {
+		m.sweeperCancel()
+		m.sweeperCancel = nil
+	}
+}
+
+// sweepConnections processes all connections for lifecycle management
+func (m *Manager) sweepConnections() {
+	totalConnections := m.connections.Len()
+	if totalConnections == 0 {
+		return
+	}
+	
+	var (
+		processed      int
+		stateTransitions int
+		cleaned       int
+	)
+	
+	m.connections.Iter(func(cookie Cookie, managedConn *ManagedConnection) bool {
+		processed++
+		
+		switch managedConn.State() {
+		case StateOpen:
+			if managedConn.IsIdle(m.idleTimeout) {
+				m.logger.Debug("connection idle timeout, initiating close",
+					zap.String("conn_id", managedConn.ID()),
+					zap.Duration("idle_time", managedConn.TimeSinceLastEvent()))
+				
+				// Trigger graceful closure by transitioning to closing
+				if managedConn.TransitionTo(StateClosing) {
+					stateTransitions++
+					// We don't call Close() here - let the normal close event flow handle it
+					// or transition to finalizing if already closed
+					if managedConn.CloseEvent != nil && !managedConn.held {
+						managedConn.Close()
+					}
+				}
+			}
+			
+		case StateClosing:
+			if managedConn.HasBeenInStateFor(m.closedTimeout) {
+				if managedConn.CanFinalize() || managedConn.HasBeenInStateFor(2*m.closedTimeout) {
+					m.logger.Debug("transitioning connection to finalizing",
+						zap.String("conn_id", managedConn.ID()),
+						zap.Duration("time_in_closing", managedConn.TimeSinceStateChange()),
+						zap.Bool("can_finalize", managedConn.CanFinalize()))
+					
+					if managedConn.TransitionTo(StateFinalizing) {
+						stateTransitions++
+						// Start the finalization process
+						go func(conn *ManagedConnection) {
+							conn.Close()
+						}(managedConn)
+					}
+				}
+			}
+			
+		case StateFinalizing:
+			if managedConn.HasBeenInStateFor(m.finalizationTimeout) {
+				m.logger.Debug("finalizing connection cleanup timeout",
+					zap.String("conn_id", managedConn.ID()),
+					zap.Duration("time_in_finalizing", managedConn.TimeSinceStateChange()))
+				
+				if managedConn.TransitionTo(StateFinalized) {
+					stateTransitions++
+				}
+			}
+			
+		case StateFinalized:
+			m.logger.Debug("removing finalized connection from manager",
+				zap.String("conn_id", managedConn.ID()))
+			m.connections.Delete(cookie)
+			cleaned++
+		}
+		
+		return true // Continue iteration
+	})
+	
+	if processed > 0 {
+		m.logger.Debug("connection sweep completed",
+			zap.Int("total_connections", totalConnections),
+			zap.Int("processed", processed),
+			zap.Int("state_transitions", stateTransitions),
+			zap.Int("cleaned", cleaned))
+	}
 }

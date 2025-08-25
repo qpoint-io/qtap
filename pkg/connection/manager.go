@@ -2,6 +2,8 @@ package connection
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -45,15 +47,15 @@ type Manager struct {
 
 	// connections
 	connections *synq.Map[Cookie, *ManagedConnection]
-	
+
 	// sweeper management
 	sweeperCancel context.CancelFunc
-	
+
 	// sweeper configuration
-	sweeperInterval       time.Duration
-	idleTimeout          time.Duration
-	closedTimeout        time.Duration
-	finalizationTimeout  time.Duration
+	sweeperInterval     time.Duration
+	idleTimeout         time.Duration
+	closedTimeout       time.Duration
+	finalizationTimeout time.Duration
 }
 
 type ManagerOpt func(*Manager)
@@ -105,8 +107,8 @@ func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 		logger:              logger,
 		connections:         synq.NewMap[Cookie, *ManagedConnection](),
 		sweeperInterval:     DefaultSweeperInterval,
-		idleTimeout:        DefaultIdleTimeout,
-		closedTimeout:      DefaultClosedTimeout,
+		idleTimeout:         DefaultIdleTimeout,
+		closedTimeout:       DefaultClosedTimeout,
 		finalizationTimeout: DefaultFinalizationTimeout,
 	}
 	for _, opt := range opts {
@@ -114,8 +116,9 @@ func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 	}
 
 	telemetry.RegisterCollector(newManagerMetrics(m))
-	
+
 	// Start the connection sweeper
+	// TODO:add start/stop funcs
 	m.startSweeper()
 
 	return m
@@ -155,16 +158,18 @@ func (m *Manager) HandleEvent(event Keyer) {
 
 		// Update event time and push to queue
 		managedConn.UpdateEventTime()
-		
+
 		// Handle state transitions for certain events
 		if closeEvent, ok := event.(CloseEvent); ok {
 			managedConn.processCloseEvent(closeEvent)
 		}
-		
+
 		if err := managedConn.eventQueue.Push(event); err != nil {
 			m.logger.Error("failed to push event to connection queue", zap.Error(err))
 		}
 		return
+	} else {
+		m.logger.Warn("⚠️ connection not found", zap.Any("cookie", event.Key()), zap.String("event_name", strings.TrimPrefix(reflect.TypeOf(event).String(), "connection.")))
 	}
 }
 
@@ -181,14 +186,14 @@ func (m *Manager) createStreamer(conn *Connection) StreamProcessor {
 func (m *Manager) startSweeper() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.sweeperCancel = cancel
-	
+
 	go func() {
 		ticker := time.NewTicker(m.sweeperInterval)
 		defer ticker.Stop()
-		
-		m.logger.Debug("connection sweeper started", 
+
+		m.logger.Debug("connection sweeper started",
 			zap.Duration("interval", m.sweeperInterval))
-		
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -216,23 +221,23 @@ func (m *Manager) sweepConnections() {
 	if totalConnections == 0 {
 		return
 	}
-	
+
 	var (
-		processed      int
+		processed        int
 		stateTransitions int
-		cleaned       int
+		cleaned          int
 	)
-	
+
 	m.connections.Iter(func(cookie Cookie, managedConn *ManagedConnection) bool {
 		processed++
-		
+
 		switch managedConn.State() {
 		case StateOpen:
 			if managedConn.IsIdle(m.idleTimeout) {
 				m.logger.Debug("connection idle timeout, initiating close",
 					zap.String("conn_id", managedConn.ID()),
 					zap.Duration("idle_time", managedConn.TimeSinceLastEvent()))
-				
+
 				// Trigger graceful closure by transitioning to closing
 				if managedConn.TransitionTo(StateClosing) {
 					stateTransitions++
@@ -243,7 +248,7 @@ func (m *Manager) sweepConnections() {
 					}
 				}
 			}
-			
+
 		case StateClosing:
 			if managedConn.HasBeenInStateFor(m.closedTimeout) {
 				if managedConn.CanFinalize() || managedConn.HasBeenInStateFor(2*m.closedTimeout) {
@@ -251,7 +256,7 @@ func (m *Manager) sweepConnections() {
 						zap.String("conn_id", managedConn.ID()),
 						zap.Duration("time_in_closing", managedConn.TimeSinceStateChange()),
 						zap.Bool("can_finalize", managedConn.CanFinalize()))
-					
+
 					if managedConn.TransitionTo(StateFinalizing) {
 						stateTransitions++
 						// Start the finalization process
@@ -261,28 +266,28 @@ func (m *Manager) sweepConnections() {
 					}
 				}
 			}
-			
+
 		case StateFinalizing:
 			if managedConn.HasBeenInStateFor(m.finalizationTimeout) {
 				m.logger.Debug("finalizing connection cleanup timeout",
 					zap.String("conn_id", managedConn.ID()),
 					zap.Duration("time_in_finalizing", managedConn.TimeSinceStateChange()))
-				
+
 				if managedConn.TransitionTo(StateFinalized) {
 					stateTransitions++
 				}
 			}
-			
+
 		case StateFinalized:
 			m.logger.Debug("removing finalized connection from manager",
 				zap.String("conn_id", managedConn.ID()))
 			m.connections.Delete(cookie)
 			cleaned++
 		}
-		
+
 		return true // Continue iteration
 	})
-	
+
 	if processed > 0 {
 		m.logger.Debug("connection sweep completed",
 			zap.Int("total_connections", totalConnections),

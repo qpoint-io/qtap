@@ -2,8 +2,10 @@ package http1
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/plugins"
@@ -63,6 +65,9 @@ type Session struct {
 	// logger
 	logger *zap.Logger
 
+	// completion signaling
+	done chan struct{}
+
 	// have we already closed the session
 	closed bool
 }
@@ -85,6 +90,7 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 		domain:        domain,
 		conn:          conn,
 		pluginManager: pluginManager,
+		done:          make(chan struct{}),
 	}
 
 	// create the request parser
@@ -101,6 +107,8 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 }
 
 func (s *Session) Run() {
+	defer close(s.done)
+
 	err := s.requestParser.parse()
 	if err != nil {
 		s.logger.Error("error parsing request", zap.Error(err))
@@ -109,7 +117,7 @@ func (s *Session) Run() {
 	if err != nil {
 		s.logger.Error("error parsing response", zap.Error(err))
 	}
-	s.Close()
+	s.Close("session/Run")
 }
 
 func (s *Session) CreateRequest(req *http.Request, noBody bool) {
@@ -247,7 +255,7 @@ func (s *Session) WriteResponseBody(data []byte, done bool) {
 	s.State = SessionStateDone
 }
 
-func (s *Session) Close() {
+func (s *Session) Close(caller string) {
 	span := trace.SpanFromContext(s.ctx)
 	defer span.End()
 
@@ -262,11 +270,11 @@ func (s *Session) Close() {
 	s.logger.Debug("closing session", zap.String("state", s.StateString()))
 
 	// close the parsers
-	err := s.requestParser.Close()
+	err := s.requestParser.Close("session/" + caller)
 	if err != nil {
 		s.logger.Error("closing request parser", zap.Error(err))
 	}
-	err = s.responseParser.Close()
+	err = s.responseParser.Close("session/" + caller)
 	if err != nil {
 		s.logger.Error("closing response parser", zap.Error(err))
 	}
@@ -311,6 +319,17 @@ func (s *Session) Close() {
 
 func (s *Session) IsClosed() bool {
 	return s.closed
+}
+
+func (s *Session) WaitForCompletion(timeout time.Duration) error {
+	select {
+	case <-s.done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("session did not complete within %v", timeout)
+	case <-s.ctx.Done():
+		return s.ctx.Err()
+	}
 }
 
 func (s *Session) IsParsingResponse() bool {

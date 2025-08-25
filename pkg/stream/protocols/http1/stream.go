@@ -19,6 +19,16 @@ const (
 	PhaseResponse
 )
 
+func (p Phase) String() string {
+	switch p {
+	case PhaseRequest:
+		return "request"
+	case PhaseResponse:
+		return "response"
+	}
+	return "unknown"
+}
+
 // HTTPStream manages the read/write & open/close events
 // for an http req/res connection stream based on socket events.
 type HTTPStream struct {
@@ -34,8 +44,9 @@ type HTTPStream struct {
 	// plugin manager
 	pluginManager *plugins.Manager
 
-	// the current req/res session
-	session *Session
+	// req/res session
+	session     *Session
+	lastSession *Session
 
 	// socket connection
 	conn *connection.Connection
@@ -97,7 +108,27 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 
 	// if we're processing a response and we get a request, we need to close
 	if phase == PhaseRequest && t.session != nil && t.session.IsParsingResponse() {
-		t.session.Close()
+		t.logger.Info("❌ relieving session; request received after response", zap.Stack("stack"), zap.String("session_id", t.session.id))
+
+		// if we already have a lastSession, force close it since it should be done
+		if t.lastSession != nil {
+			t.logger.Warn("forcing close of previous lastSession", zap.String("session_id", t.lastSession.id))
+			t.lastSession.Close("stream/Process/force")
+		}
+
+		// move current session to lastSession and start graceful completion
+		t.lastSession = t.session
+		t.session = nil
+
+		// start goroutine to wait for lastSession completion
+		go func(session *Session) {
+			if err := session.WaitForCompletion(5 * time.Second); err != nil {
+				t.logger.Warn("last session didn't complete gracefully",
+					zap.String("session_id", session.id),
+					zap.Error(err))
+				session.Close("stream/Process/timeout")
+			}
+		}(t.lastSession)
 	}
 
 	// if we don't have a session and we get a response, we need to ignore
@@ -108,13 +139,26 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 	// create a session if we don't have one
 	if t.session == nil || t.session.IsClosed() || t.session.State == SessionStateDone {
 		t.session = NewSession(t.ctx, t.logger, t.domain, t.conn, t.pluginManager)
+
 	}
+
+	t.logger.Info("⭕ http1 stream event", zap.String("phase", phase.String()), zap.String("direction", event.Direction.String()), zap.String("source", t.conn.OpenEvent.Source.String()), zap.String("session_id", t.session.id))
 
 	// process the data
 	switch phase {
 	case PhaseRequest:
+		span := trace.SpanFromContext(t.ctx)
+		span.SetAttributes(
+			attribute.String("http.request.data", string(event.Data)),
+			attribute.Int("http.request.length", len(event.Data)),
+		)
 		t.writeRequest(event.Data)
 	case PhaseResponse:
+		span := trace.SpanFromContext(t.ctx)
+		span.SetAttributes(
+			attribute.String("http.response.data", string(event.Data)),
+			attribute.Int("http.response.length", len(event.Data)),
+		)
 		t.writeResponse(event.Data)
 	}
 
@@ -157,33 +201,27 @@ func (t *HTTPStream) Close() {
 
 	t.logger.Debug("closing http/1 stream")
 
-	ctx, cancel := context.WithTimeout(t.ctx, 5*time.Second)
-	defer cancel()
-
-	for {
-		t.mu.Lock()
-		if t.session == nil || t.session.State == SessionStateDone {
-			t.mu.Unlock()
-			t.logger.Debug("closing session")
-			goto close
-		}
-		t.mu.Unlock()
-
-		select {
-		case <-ctx.Done():
-			t.logger.Debug("closing session; context done", zap.Error(ctx.Err()))
-			goto close
-		default:
-			time.Sleep(10 * time.Millisecond) // Small delay to avoid busy-waiting
-		}
-	}
-
-close:
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// wait for current session to complete gracefully
 	if t.session != nil {
-		t.session.Close()
+		if err := t.session.WaitForCompletion(10 * time.Second); err != nil {
+			t.logger.Warn("current session didn't complete gracefully",
+				zap.String("session_id", t.session.id),
+				zap.Error(err))
+		}
+		t.session.Close("stream/Close")
+	}
+
+	// wait for last session to complete (should already be mostly done)
+	if t.lastSession != nil {
+		if err := t.lastSession.WaitForCompletion(2 * time.Second); err != nil {
+			t.logger.Warn("last session didn't complete gracefully",
+				zap.String("session_id", t.lastSession.id),
+				zap.Error(err))
+		}
+		t.lastSession.Close("stream/Close")
 	}
 
 	t.closed = true

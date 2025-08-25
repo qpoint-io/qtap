@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
+	"time"
 
 	"github.com/andybalholm/brotli"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -61,6 +63,9 @@ type StreamParser[T any] struct {
 
 // NewStreamParser creates a new StreamParser with the specified handlers
 func NewStreamParser[T any](ctx context.Context, logger *zap.Logger, messageHandler HeaderHandler[T], chunkHandler BodyHandler) *StreamParser[T] {
+	ctx, span := tracer.Start(ctx, "http1.NewStreamParser")
+	span.SetAttributes(attribute.String("type", fmt.Sprintf("%T", *(new(T)))))
+
 	sp := &StreamParser[T]{
 		ctx:           ctx,
 		logger:        logger.With(zap.String("type", fmt.Sprintf("%T", *(new(T))))),
@@ -73,6 +78,11 @@ func NewStreamParser[T any](ctx context.Context, logger *zap.Logger, messageHand
 }
 
 func (sp *StreamParser[T]) parse() error {
+	var span trace.Span
+	sp.ctx, span = tracer.Start(sp.ctx, "http1.parse")
+	span.SetAttributes(attribute.String("type", fmt.Sprintf("%T", *(new(T)))))
+	defer span.End()
+
 	reader := bufio.NewReader(sp.reader)
 
 	var (
@@ -80,6 +90,12 @@ func (sp *StreamParser[T]) parse() error {
 		err           error
 		contentLength int64
 	)
+
+	sp.logger.Info("🐲 parser started")
+	parseStart := time.Now()
+	defer func() {
+		sp.logger.Info("⏱️ parser completed", zap.String("duration", time.Since(parseStart).String()))
+	}()
 
 	switch any(*(new(T))).(type) {
 	case *http.Request:
@@ -90,7 +106,13 @@ func (sp *StreamParser[T]) parse() error {
 		}
 		if req != nil {
 			contentLength = req.ContentLength
+			dmp, err := httputil.DumpRequest(req, true)
+			if err == nil {
+				sp.logger.Info("💩 request", zap.String("dmp", string(dmp)), zap.Error(err))
+			}
+			span.SetAttributes(attribute.String("dmp", string(dmp)))
 		}
+
 		msg = req
 	case *http.Response:
 		var resp *http.Response
@@ -100,14 +122,20 @@ func (sp *StreamParser[T]) parse() error {
 		}
 		if resp != nil {
 			contentLength = resp.ContentLength
+			dmp, err := httputil.DumpResponse(resp, true)
+			if err == nil {
+				sp.logger.Info("💩 response", zap.String("dmp", string(dmp)), zap.Error(err))
+			}
+			span.SetAttributes(attribute.String("dmp", string(dmp)))
 		}
+
 		msg = resp
 	default:
 		err = fmt.Errorf("unsupported type: %T", *(new(T)))
 	}
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			sp.logger.Warn("connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err))
+			sp.logger.Warn("🍓🍓🍓 connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err), zap.String("type", fmt.Sprintf("%T", *(new(T)))), zap.Stack("stack"), zap.Int64("content_length", contentLength))
 		} else {
 			sp.logger.Debug("malformed HTTP message", zap.Error(err))
 			return ErrMalformedRequest
@@ -143,7 +171,6 @@ func (sp *StreamParser[T]) parse() error {
 	if contentEncoding != "" {
 		eventAttrs = append(eventAttrs, attribute.String("http.content_encoding", contentEncoding))
 	}
-	span := trace.SpanFromContext(sp.ctx)
 	span.AddEvent("http1.message", trace.WithAttributes(eventAttrs...))
 
 	if sp.headerHandler != nil {
@@ -198,7 +225,7 @@ func (sp *StreamParser[T]) handleBody(body io.Reader, encoding []string, handler
 					// or terminating the connection prematurely. For example, reading the header of a http/1.1 request
 					// that contains a chunked transfer-encoding and closing the connection before reading the body.
 					// This is a normal (albeit unexpected) event and we can warn on it and continue.
-					sp.logger.Warn("connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err))
+					sp.logger.Warn("🍓🍓🍓🍓🍓🍓  connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err), zap.Stack("stack"))
 				}
 				break
 			}
@@ -219,8 +246,15 @@ func (sp *StreamParser[T]) Write(data []byte) (int, error) {
 	return sp.reader.Write(data)
 }
 
-func (sp *StreamParser[T]) Close() error {
+func (sp *StreamParser[T]) Close(closer string) error {
+	span := trace.SpanFromContext(sp.ctx)
+	defer span.End()
+
+	sp.logger = sp.logger.With(zap.String("closer", closer))
 	sp.logger.Debug("closing stream parser")
+
+	span.SetAttributes(attribute.String("closer", closer))
+
 	return sp.reader.Close()
 }
 

@@ -72,7 +72,8 @@ type Connection struct {
 	dnsRecord       *dns.Record
 
 	// connection properties
-	id string
+	id       string
+	openTime time.Time
 
 	// held indicates that another claimant is holding the close condition for the connection
 	held bool
@@ -193,6 +194,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		HandlerType: handlerType,
 		tags:        t,
 		labels:      labels.New(),
+		openTime:    time.Now(),
 	}
 
 	// apply options
@@ -342,10 +344,12 @@ func (c *Connection) watch() {
 func (c *Connection) Close() {
 	defer c.cancel()
 
+	c.logger = c.logger.With(zap.Time("close_time", time.Now()))
+
 	span := trace.SpanFromContext(c.ctx)
 	defer span.End()
 
-	c.logger.Debug("closing connection")
+	c.logger.Info("🇮🇩 closing connection", zap.String("duration", time.Since(c.openTime).String()))
 
 	// removes itself from the pool of connections
 	c.services.finalizeConnection(c)

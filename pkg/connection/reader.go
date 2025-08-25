@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -54,7 +56,7 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 	managedConn := NewManagedConnection(conn)
 	m.connections.Store(event.Key(), managedConn)
 
-	m.logger.Debug("socket open event",
+	m.logger.Info("🍏 socket open event",
 		zap.String("conn_id", conn.ID()),
 		zap.Uint64("timestamp", event.TimestampNS),
 		zap.Stringer("source", event.Source),
@@ -133,7 +135,16 @@ func (c *Connection) processHostnameEvent(event HostnameEvent) {
 
 func (c *Connection) processDataEvent(event DataEvent) {
 	// note: this is very noisey
-	// c.logger.Debug("processing data event", zap.Uint64("cookie", event.Cookie), zap.Int("event_byte_count", len(event.Data)))
+	c.logger.Debug("processing data event", zap.Int("event_byte_count", len(event.Data)), zap.ByteString("data", event.Data))
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("processing_data_event",
+		trace.WithAttributes(
+			attribute.Int("position", event.Position),
+			attribute.String("direction", event.Direction.String()),
+			attribute.Int("byte_count", len(event.Data)),
+			// attribute.String("contents", string(event.Data)),
+		),
+	)
 
 	// process the data event
 	if c.streamProcessor != nil && !c.streamProcessor.Closed() && !c.skipStreamProcessing {

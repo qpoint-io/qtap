@@ -45,6 +45,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
@@ -155,6 +156,10 @@ func init() {
 // but will need to be fleshed out with actual implementation
 func runTapCmd(logger *zap.Logger) {
 	ctx := context.Background()
+
+	// Initialize metrics registries
+	_ = metrics.ProductHandler() // Product metrics for users
+	_ = metrics.SystemHandler()  // System metrics for internal monitoring
 
 	shutdownTelemetry, err := setupTelemetry(ctx, "tap")
 	if err != nil {
@@ -413,8 +418,8 @@ func runTapCmd(logger *zap.Logger) {
 		}
 	}()
 
-	// Initialize status server
-	s := status.NewBaseStatusServer(statusListen, logger, telemetry.Handler(), func() bool {
+	// Initialize status server with product metrics endpoint
+	s := status.NewBaseStatusServer(statusListen, logger, func() bool {
 		return true
 	})
 	if err := s.Start(); err != nil {

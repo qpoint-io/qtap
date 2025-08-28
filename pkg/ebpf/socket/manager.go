@@ -9,7 +9,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -105,12 +105,10 @@ func (m *SocketEventManager) readEvents() {
 }
 
 func (m *SocketEventManager) startTelemetry() error {
-	telemetry.ObservableGauge(
-		"tap_socket_probes",
+	metrics.NewSystemGaugeFunc("probes_active", "The number of probes currently being tracked",
 		func() float64 {
 			return float64(len(m.probes))
 		},
-		telemetry.WithDescription("The number of probes currently being tracked"),
 	)
 
 	return nil

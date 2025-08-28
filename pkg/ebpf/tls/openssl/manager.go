@@ -11,7 +11,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -77,19 +77,15 @@ func NewOpenSSLManager(logger *zap.Logger, probeFn func() []*common.Uprobe) *Ope
 }
 
 func (m *OpenSSLManager) Start() error {
-	telemetry.ObservableGauge(
-		"tap_tls_openssl_containers",
+	metrics.NewSystemGaugeFunc("containers_tracked", "The number of containers currently being tracked",
 		func() float64 {
 			return float64(m.containers.Len())
 		},
-		telemetry.WithDescription("The number of containers currently being tracked"),
 	)
-	telemetry.ObservableGauge(
-		"tap_tls_openssl_targets",
+	metrics.NewSystemGaugeFunc("targets_tracked", "The number of targets currently being tracked",
 		func() float64 {
 			return float64(m.targets.Len())
 		},
-		telemetry.WithDescription("The number of targets currently being tracked"),
 	)
 
 	return nil

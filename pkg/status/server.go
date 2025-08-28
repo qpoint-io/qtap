@@ -6,6 +6,7 @@ import (
 	_ "net/http/pprof"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -16,19 +17,17 @@ type StatusServer interface {
 }
 
 type BaseStatusServer struct {
-	listen         string
-	logger         *zap.Logger
-	metricsHandler http.Handler
-	server         *http.Server
-	readyCheck     func() bool
+	listen     string
+	logger     *zap.Logger
+	server     *http.Server
+	readyCheck func() bool
 }
 
-func NewBaseStatusServer(listen string, logger *zap.Logger, metricsHandler http.Handler, readyCheck func() bool) *BaseStatusServer {
+func NewBaseStatusServer(listen string, logger *zap.Logger, readyCheck func() bool) *BaseStatusServer {
 	return &BaseStatusServer{
-		listen:         listen,
-		logger:         logger,
-		metricsHandler: metricsHandler,
-		readyCheck:     readyCheck,
+		listen:     listen,
+		logger:     logger,
+		readyCheck: readyCheck,
 	}
 }
 
@@ -82,7 +81,11 @@ func (s *BaseStatusServer) setupRoutes(mux *http.ServeMux) {
 		}
 	})
 
-	if s.metricsHandler != nil {
-		mux.Handle("GET /metrics", s.metricsHandler)
+	if m := metrics.ProductHandler(); m != nil {
+		mux.Handle("GET /metrics", m)
+	}
+
+	if m := metrics.SystemHandler(); m != nil {
+		mux.Handle("GET /system/metrics", m)
 	}
 }

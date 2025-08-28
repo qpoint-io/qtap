@@ -1,29 +1,23 @@
 package axiom
 
-import "github.com/qpoint-io/qtap/pkg/telemetry"
+import "github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 
 var (
-	submittedRecords = telemetry.Counter(
-		"tap_axiom_records_submitted",
-		telemetry.WithDescription("The number of records submitted to Axiom"))
+	submittedRecords = metrics.NewCounter("records_submitted", "The number of records submitted to Axiom")
 
-	ingestedRecords = telemetry.Counter(
-		"tap_axiom_records_ingested",
-		telemetry.WithDescription("The number of records successfully ingested by Axiom"))
+	ingestedRecords = metrics.NewCounter("records_ingested", "The number of records successfully ingested by Axiom")
 
-	failedRecords = telemetry.Counter(
-		"tap_axiom_records_failed",
-		telemetry.WithDescription("The number of records that failed to be ingested by Axiom"))
+	failedRecords = metrics.NewCounter("records_failed", "The number of records that failed to be ingested by Axiom")
 )
 
 func incrementSubmittedRecords() {
-	submittedRecords(1)
+	submittedRecords.Inc()
 }
 
 func incrementIngestedRecords(count float64) {
-	ingestedRecords(count)
+	ingestedRecords.Add(count)
 }
 
 func incrementFailedRecords(count float64) {
-	failedRecords(count)
+	failedRecords.Add(count)
 }

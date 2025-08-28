@@ -8,7 +8,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"github.com/sourcegraph/conc"
 	"go.uber.org/zap"
 )
@@ -67,18 +67,10 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 		procEventer.Register(pm)
 	}
 
-	telemetry.ObservableGauge("tap_process_observers",
+	metrics.NewSystemGaugeFunc("observers_active", "The number of observers currently being tracked",
 		func() float64 {
 			return float64(len(pm.Observers))
 		},
-		telemetry.WithDescription("The number of observers currently being tracked"),
-	)
-
-	telemetry.ObservableGauge("tap_process_procs",
-		func() float64 {
-			return float64(pm.procs.Len())
-		},
-		telemetry.WithDescription("The number of processes currently being tracked"),
 	)
 
 	return pm

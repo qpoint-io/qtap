@@ -8,7 +8,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -39,12 +39,10 @@ func NewDNSManager(logger *zap.Logger, processManager *process.Manager) *DNSMana
 }
 
 func (m *DNSManager) Start() error {
-	telemetry.ObservableGauge(
-		"tap_dns_records_len",
+	metrics.NewGaugeFunc("records_cached", "The number of DNS records currently held in the cache",
 		func() float64 {
 			return float64(m.records.Len())
 		},
-		telemetry.WithDescription("The number of DNS records currently held in the Tap cache"),
 	)
 
 	return nil

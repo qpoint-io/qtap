@@ -13,6 +13,11 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	eventsDropped = metrics.NewSystemCounter("events_dropped_total", "The number of socket events dropped due to read failures")
+	ringbufLost   = metrics.NewSystemCounter("ringbuf_lost_total", "The number of socket events lost from ringbuffer")
+)
+
 type ConnectionEventHandler interface {
 	HandleEvent(event connection.Keyer)
 }
@@ -90,6 +95,7 @@ func (m *SocketEventManager) readEvents() {
 			if errors.Is(err, os.ErrClosed) {
 				break
 			}
+			ringbufLost.Inc()
 			m.logger.Error("failed to read from buffer", zap.Error(err))
 		}
 
@@ -97,6 +103,7 @@ func (m *SocketEventManager) readEvents() {
 		if err != nil {
 			recordPool.Put(record)
 
+			eventsDropped.Inc()
 			m.logger.Error("failed to read event", zap.Error(err))
 		}
 

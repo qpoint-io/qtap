@@ -17,6 +17,10 @@ type key struct {
 	Container string
 }
 
+var (
+	lookupFailures = metrics.NewCounter("lookup_failures_total", "The number of DNS lookup failures")
+)
+
 type DNSManager struct {
 	// zap logger
 	logger *zap.Logger
@@ -85,6 +89,7 @@ func (m *DNSManager) Lookup(addr [16]byte, containerID string) (*Record, error) 
 
 	// bubble error if exists
 	if err != nil {
+		lookupFailures.Inc()
 		return nil, fmt.Errorf("resolving domain from ip: %w", err)
 	}
 

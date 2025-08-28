@@ -222,7 +222,7 @@ func (m *Manager) addProc(p *Process) error {
 		if !slices.Equal(p.Args, proc.Args) {
 			procChanged = true
 		}
-		incrementProcessRenamed()
+		processRenamedTotal.Inc()
 
 		// replace the process
 		p = proc
@@ -230,7 +230,7 @@ func (m *Manager) addProc(p *Process) error {
 
 	if !procChanged {
 		// if a process existed but changed name we already have an add count increment for it
-		incrementProcessAdd()
+		processAddTotal.Inc()
 	}
 
 	// discover the process
@@ -313,7 +313,7 @@ func (m *Manager) initProcObservers(p *Process, replace bool) {
 
 func (m *Manager) removeProc(p *Process) error {
 	// increment the process stopped counter
-	incrementProcessRemove()
+	processRemoveTotal.Inc()
 
 	// acquire a lock
 	m.mu.Lock()

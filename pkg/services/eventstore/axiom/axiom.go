@@ -11,8 +11,15 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+)
+
+var (
+	submittedRecords = metrics.NewCounter("records_submitted_total", "The number of records submitted to Axiom")
+	ingestedRecords  = metrics.NewCounter("records_ingested_total", "The number of records successfully ingested by Axiom")
+	failedRecords    = metrics.NewCounter("records_failed_total", "The number of records that failed to be ingested by Axiom")
 )
 
 type EventStore struct {
@@ -51,7 +58,7 @@ func (s *EventStore) Save(_ context.Context, item any) {
 
 	switch i := item.(type) {
 	case *eventstore.Request, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord, *eventstore.Connection:
-		incrementSubmittedRecords()
+		submittedRecords.Inc()
 
 		// Submit directly to Axiom without batching for simplicity
 		if err := s.submitToAxiom(ctx, i); err != nil {
@@ -104,8 +111,8 @@ func (s *EventStore) submitToAxiom(ctx context.Context, item any) error {
 		zap.Uint64("failed", res.Failed),
 		zap.String("dataset", s.dataset))
 
-	incrementIngestedRecords(float64(res.Ingested))
-	incrementFailedRecords(float64(res.Failed))
+	ingestedRecords.Add(float64(res.Ingested))
+	failedRecords.Add(float64(res.Failed))
 
 	return nil
 }

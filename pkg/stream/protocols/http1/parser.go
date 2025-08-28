@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/andybalholm/brotli"
+	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -107,7 +108,7 @@ func (sp *StreamParser[T]) parse() error {
 	}
 	if err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			sp.logger.Warn("connection closed before complete payload transfer or stream blocked due to unread data", zap.Error(err))
+			sp.logger.Warn("connection closed before complete payload transfer", zap.Error(err), zap.String("version", buildinfo.Version()))
 		} else {
 			sp.logger.Debug("malformed HTTP message", zap.Error(err))
 			return ErrMalformedRequest

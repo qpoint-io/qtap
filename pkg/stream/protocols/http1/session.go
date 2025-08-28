@@ -3,6 +3,7 @@ package http1
 import (
 	"context"
 	"net/http"
+	"net/http/httputil"
 	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -108,6 +109,14 @@ func (s *Session) Run() {
 	err = s.responseParser.parse()
 	if err != nil {
 		s.logger.Error("error parsing response", zap.Error(err))
+		if s.req != nil {
+			dump, err := httputil.DumpRequest(s.req, false)
+			if err != nil {
+				s.logger.Error("error dumping request", zap.Error(err))
+			}
+
+			s.logger.Warn("dumped request", zap.String("request", string(dump)))
+		}
 	}
 	s.Close()
 }

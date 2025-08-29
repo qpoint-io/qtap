@@ -26,6 +26,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
+	httpmetrics "github.com/qpoint-io/qtap/pkg/plugins/http"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/plugins/logger"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
@@ -86,6 +87,7 @@ var (
 		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),
 		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
 		wrapper.Catch(&httpcapture.Factory{}),
+		wrapper.Catch(&httpmetrics.Factory{}),
 
 		// Add more plugins here...
 	}

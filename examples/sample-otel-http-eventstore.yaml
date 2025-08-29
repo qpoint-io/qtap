@@ -6,8 +6,8 @@ version: 2
 services:
   event_stores:
     - type: otel
-      endpoint: "host.docker.internal:4318"    # http endpoint
-      protocol: http                 # "grpc", "http", or "stdout"
+      endpoint: "host.docker.internal:4318" # http endpoint
+      protocol: http # "grpc", "http", or "stdout"
       service_name: "qtap"
       environment: "production"
       # headers:
@@ -21,6 +21,7 @@ services:
 stacks:
   basic_reporting:
     plugins:
+      - type: http_metrics
       - type: http_capture
         config:
           level: summary # (none|summary|details|full)

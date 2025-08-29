@@ -12,6 +12,83 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestStreamParser_InterimResponses(t *testing.T) {
+	t.Run("100 Continue response", func(t *testing.T) {
+		input := "HTTP/1.1 100 Continue\r\n" +
+			"\r\n" +
+			"HTTP/1.1 200 OK\r\n" +
+			"Content-Type: text/plain\r\n" +
+			"Content-Length: 5\r\n" +
+			"\r\n" +
+			"hello"
+
+		var gotResponses []*http.Response
+		var gotBodies [][]byte
+
+		headerHandler := func(msg *http.Response, noBody bool) {
+			gotResponses = append(gotResponses, msg)
+		}
+
+		bodyHandler := func(chunk []byte, done bool) {
+			if chunk != nil {
+				gotBodies = append(gotBodies, chunk)
+			}
+		}
+
+		ctx := context.Background()
+		logger := zap.NewNop()
+		parser := NewStreamParser(ctx, logger, headerHandler, bodyHandler)
+
+		_, err := parser.Write([]byte(input))
+		require.NoError(t, err)
+
+		err = parser.parse()
+		require.NoError(t, err)
+
+		// Should have both interim and final responses
+		require.Len(t, gotResponses, 2)
+
+		// First response should be 100 Continue
+		require.Equal(t, 100, gotResponses[0].StatusCode)
+		require.Equal(t, "100 Continue", gotResponses[0].Status)
+
+		// Second response should be 200 OK
+		require.Equal(t, 200, gotResponses[1].StatusCode)
+		require.Equal(t, "200 OK", gotResponses[1].Status)
+
+		// Should have body data from final response
+		require.Len(t, gotBodies, 1)
+		require.Equal(t, "hello", string(gotBodies[0]))
+	})
+
+	t.Run("101 Switching Protocols", func(t *testing.T) {
+		input := "HTTP/1.1 101 Switching Protocols\r\n" +
+			"Upgrade: websocket\r\n" +
+			"Connection: Upgrade\r\n" +
+			"\r\n"
+
+		var gotResponse *http.Response
+
+		headerHandler := func(msg *http.Response, noBody bool) {
+			gotResponse = msg
+		}
+
+		ctx := context.Background()
+		logger := zap.NewNop()
+		parser := NewStreamParser(ctx, logger, headerHandler, nil)
+
+		_, err := parser.Write([]byte(input))
+		require.NoError(t, err)
+
+		err = parser.parse()
+		require.NoError(t, err)
+
+		require.NotNil(t, gotResponse)
+		require.Equal(t, 101, gotResponse.StatusCode)
+		require.Equal(t, "websocket", gotResponse.Header.Get("Upgrade"))
+	})
+}
+
 func TestStreamParser_ProcessBytes(t *testing.T) {
 	t.Run("http requests", func(t *testing.T) {
 		tests := []struct {
@@ -81,6 +158,27 @@ Connection: close
 						"User-Agent": []string{"kube-probe/1.30"},
 						"Accept":     []string{"*/*"},
 						"Connection": []string{"close"},
+					},
+				},
+			},
+			{
+				name: "PUT request with Expect: 100-continue",
+				input: "PUT /upload HTTP/1.1\r\n" +
+					"Host: example.com\r\n" +
+					"Content-Length: 1024\r\n" +
+					"Expect: 100-continue\r\n" +
+					"\r\n",
+				wantReq: &http.Request{
+					Method: http.MethodPut,
+					URL: &url.URL{
+						Path: "/upload",
+					},
+					Proto:      "HTTP/1.1",
+					ProtoMajor: 1,
+					ProtoMinor: 1,
+					Header: http.Header{
+						"Content-Length": []string{"1024"},
+						"Expect":         []string{"100-continue"},
 					},
 				},
 			},

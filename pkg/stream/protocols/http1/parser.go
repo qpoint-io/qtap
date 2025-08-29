@@ -93,15 +93,8 @@ func (sp *StreamParser[T]) parse() error {
 		}
 		msg = req
 	case *http.Response:
-		var resp *http.Response
-		resp, err = http.ReadResponse(reader, nil)
-		if err == nil {
-			defer resp.Body.Close() // Close immediately after successful read
-		}
-		if resp != nil {
-			contentLength = resp.ContentLength
-		}
-		msg = resp
+		// For responses, we need to handle multiple responses (interim + final)
+		msg, contentLength, err = sp.parseResponseChain(reader)
 	default:
 		err = fmt.Errorf("unsupported type: %T", *(new(T)))
 	}
@@ -217,6 +210,58 @@ func (sp *StreamParser[T]) handleBody(body io.Reader, encoding []string, handler
 
 func (sp *StreamParser[T]) Write(data []byte) (int, error) {
 	return sp.reader.Write(data)
+}
+
+// parseResponseChain handles parsing multiple responses (interim + final)
+func (sp *StreamParser[T]) parseResponseChain(reader *bufio.Reader) (any, int64, error) {
+	var finalResponse *http.Response
+	var contentLength int64
+
+	// Keep reading responses until we get a non-1xx response
+	for {
+		resp, err := http.ReadResponse(reader, nil)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		sp.logger.Debug("parsed response", zap.Int("status", resp.StatusCode))
+
+		// If this is an interim response (1xx), handle it and continue
+		if resp.StatusCode >= 100 && resp.StatusCode < 200 {
+			sp.logger.Debug("detected interim response", zap.Int("status", resp.StatusCode))
+
+			// Close the response body for interim responses (they shouldn't have bodies)
+			if resp.Body != nil {
+				resp.Body.Close()
+			}
+
+			// Call the header handler for interim response
+			if sp.headerHandler != nil {
+				sp.headerHandler(any(resp).(T), true) // interim responses have no body
+			}
+
+			// For protocol switching (101), this is the final response
+			if resp.StatusCode == http.StatusSwitchingProtocols {
+				finalResponse = resp
+				contentLength = resp.ContentLength
+				break
+			}
+
+			// For other interim responses (like 100 Continue), continue parsing for final response
+			sp.logger.Debug("continuing to parse for final response after interim", zap.Int("interim_status", resp.StatusCode))
+			continue
+		}
+
+		// This is a final response (non-1xx)
+		// Don't close the body here - let the main parse() method handle it
+		finalResponse = resp
+		if finalResponse != nil {
+			contentLength = finalResponse.ContentLength
+		}
+		break
+	}
+
+	return finalResponse, contentLength, nil
 }
 
 func (sp *StreamParser[T]) Close() error {

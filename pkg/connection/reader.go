@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
@@ -120,6 +121,9 @@ func (c *Connection) processProtocolEvent(event ProtocolEvent) {
 		c.tags.Add("protocol", c.Protocol.String())
 	}
 
+	// report metrics
+	connProtocolTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), c.Protocol.String()).Inc()
+
 	// use the protocol event to create a stream processor
 	c.streamProcessor = c.services.createStreamer(c)
 }
@@ -234,6 +238,9 @@ func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {
 	if event.Msg.SNI != "" {
 		c.SetDomain(event.Msg.SNI)
 	}
+
+	// report metrics
+	connTLSHandshakeTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), event.Msg.SNI, event.Msg.Version.String()).Inc()
 
 	c.TLSClientHello = event.Msg
 }

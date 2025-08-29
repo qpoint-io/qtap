@@ -96,8 +96,6 @@ func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 		opt(m)
 	}
 
-	registerConnectionMetrics(m)
-
 	return m
 }
 

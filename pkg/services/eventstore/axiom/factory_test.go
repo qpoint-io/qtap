@@ -1,7 +1,6 @@
 package axiom
 
 import (
-	"context"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -31,7 +30,7 @@ func TestFactory_Init_ValidConfig(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "test-dataset", f.dataset)
 	assert.NotNil(t, f.axiomClient)
@@ -52,7 +51,7 @@ func TestFactory_Init_DefaultDataset(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "qtap-events", f.dataset)
 }
@@ -76,7 +75,7 @@ func TestFactory_Create(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory
@@ -86,7 +85,7 @@ func TestFactory_Create(t *testing.T) {
 	f.SetRegistry(mockRegistry)
 
 	// Now test Create
-	svc, err := f.Create(context.Background())
+	svc, err := f.Create(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 

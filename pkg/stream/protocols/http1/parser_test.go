@@ -1,7 +1,6 @@
 package http1
 
 import (
-	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -105,7 +104,7 @@ Connection: close
 					}
 				}
 
-				parser := NewStreamParser(context.Background(), zap.NewNop(), headerHandler, bodyHandler)
+				parser := NewStreamParser(t.Context(), zap.NewNop(), headerHandler, bodyHandler)
 				go func() {
 					_ = parser.parse()
 				}()
@@ -242,7 +241,7 @@ OK
 					}
 				}
 
-				parser := NewStreamParser(context.Background(), zap.NewNop(), headerHandler, bodyHandler)
+				parser := NewStreamParser(t.Context(), zap.NewNop(), headerHandler, bodyHandler)
 				go func() {
 					_ = parser.parse()
 				}()

@@ -1,7 +1,6 @@
 package connection
 
 import (
-	"context"
 	"net"
 	"sort"
 	"strings"
@@ -303,7 +302,7 @@ func TestConnection_ControlValues(t *testing.T) {
 	proc.Pod = resolvable.Static(pod).WithBackgroundContext()
 
 	conn := NewConnection(
-		context.Background(),
+		t.Context(),
 		zaptest.NewLogger(t),
 		&OpenEvent{
 			Source:     Client,

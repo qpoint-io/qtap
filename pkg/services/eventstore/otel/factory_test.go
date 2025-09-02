@@ -1,7 +1,6 @@
 package otel
 
 import (
-	"context"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -37,7 +36,7 @@ func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "test-qtap", f.serviceName)
 	assert.Equal(t, "test", f.environment)
@@ -68,7 +67,7 @@ func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "test-qtap-http", f.serviceName)
 	assert.Equal(t, "test", f.environment)
@@ -86,7 +85,7 @@ func TestFactory_Init_DefaultValues_GRPC(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "qtap", f.serviceName)
 	assert.Equal(t, "production", f.environment)
@@ -103,7 +102,7 @@ func TestFactory_Init_DefaultValues_HTTP(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "qtap", f.serviceName)
 	assert.Equal(t, "production", f.environment)
@@ -122,7 +121,7 @@ func TestFactory_Init_ValidConfig_Stdout(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "test-qtap-stdout", f.serviceName)
 	assert.Equal(t, "test", f.environment)
@@ -141,7 +140,7 @@ func TestFactory_Init_DefaultValues_Stdout(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, "qtap", f.serviceName)
 	assert.Equal(t, "production", f.environment)
@@ -149,7 +148,7 @@ func TestFactory_Init_DefaultValues_Stdout(t *testing.T) {
 
 func TestFactory_Init_InvalidConfig(t *testing.T) {
 	f := &Factory{}
-	err := f.Init(context.Background(), "invalid config")
+	err := f.Init(t.Context(), "invalid config")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid config type")
 }
@@ -169,7 +168,7 @@ func TestFactory_Create(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory
@@ -179,7 +178,7 @@ func TestFactory_Create(t *testing.T) {
 	f.SetRegistry(mockRegistry)
 
 	// Now test Create
-	svc, err := f.Create(context.Background())
+	svc, err := f.Create(t.Context())
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 
@@ -212,7 +211,7 @@ func TestFactory_Close(t *testing.T) {
 			EventStoreOTelConfig: config.EventStoreOTelConfig{},
 		},
 	}
-	err = f.Init(context.Background(), cfg)
+	err = f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 
 	err = f.Close()
@@ -229,7 +228,7 @@ func TestFactory_Init_UnsupportedProtocol(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unsupported protocol: websocket")
 	require.Contains(t, err.Error(), "supported protocols are 'grpc', 'http', and 'stdout'")
@@ -292,7 +291,7 @@ func TestFactory_ProtocolDefaults(t *testing.T) {
 					},
 				},
 			}
-			err := f.Init(context.Background(), cfg)
+			err := f.Init(t.Context(), cfg)
 			require.NoError(t, err)
 			// We can't easily test the internal endpoint selection without exposing it
 			// but we can verify the factory initializes successfully

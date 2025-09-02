@@ -1,7 +1,6 @@
 package otel
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -46,7 +45,7 @@ func TestEventStore_Save_Request(t *testing.T) {
 
 	// Should not panic or error
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), req)
+		es.Save(t.Context(), req)
 	})
 }
 
@@ -75,7 +74,7 @@ func TestEventStore_Save_Issue(t *testing.T) {
 	issue.Tags = []string{"security", "error"}
 
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), issue)
+		es.Save(t.Context(), issue)
 	})
 }
 
@@ -99,7 +98,7 @@ func TestEventStore_Save_PIIEntity(t *testing.T) {
 	pii.Tags = []string{"pii", "sensitive"}
 
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), pii)
+		es.Save(t.Context(), pii)
 	})
 }
 
@@ -124,7 +123,7 @@ func TestEventStore_Save_ArtifactRecord(t *testing.T) {
 	ar.ConnectionID = "conn-123"
 
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), ar)
+		es.Save(t.Context(), ar)
 	})
 }
 
@@ -159,7 +158,7 @@ func TestEventStore_Save_Connection(t *testing.T) {
 	conn.ConnectionID = "conn-123"
 
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), conn)
+		es.Save(t.Context(), conn)
 	})
 }
 
@@ -183,7 +182,7 @@ func TestEventStore_Save_Artifact(t *testing.T) {
 
 	// Should not panic - artifact saving is async via goroutine
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), artifact)
+		es.Save(t.Context(), artifact)
 	})
 
 	// Give goroutine time to complete
@@ -205,7 +204,7 @@ func TestEventStore_Save_UnsupportedType(t *testing.T) {
 
 	// Should not panic, just log warning
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), unsupported)
+		es.Save(t.Context(), unsupported)
 	})
 }
 
@@ -231,7 +230,7 @@ func TestEventStore_SetConnection(t *testing.T) {
 
 	// Save should work without connection
 	assert.NotPanics(t, func() {
-		es.Save(context.Background(), req)
+		es.Save(t.Context(), req)
 	})
 }
 

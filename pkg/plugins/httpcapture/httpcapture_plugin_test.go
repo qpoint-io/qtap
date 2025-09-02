@@ -1,7 +1,6 @@
 package httpcapture
 
 import (
-	"context"
 	"encoding/json"
 	"math"
 	"testing"
@@ -163,7 +162,7 @@ func TestOutputFormatConstants(t *testing.T) {
 
 func TestHttpCapturePlugin(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	ctx := context.Background()
+	ctx := t.Context()
 	conn := connection.NewConnection(ctx, logger, &connection.OpenEvent{})
 
 	// factory

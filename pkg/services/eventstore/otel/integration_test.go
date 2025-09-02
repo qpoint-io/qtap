@@ -1,7 +1,6 @@
 package otel
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -32,7 +31,7 @@ func TestOTelEventStore_Integration(t *testing.T) {
 	assert.Equal(t, services.ServiceType("eventstore"), es.ServiceType())
 
 	// Test saving various event types
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Test Request event
 	req := &eventstore.Request{
@@ -233,7 +232,7 @@ func TestOTelEventStore_ConfigTypes(t *testing.T) {
 				EventStoreConfig: config.EventStoreConfig{EventStoreOTelConfig: tc.config},
 			}
 
-			err := factory.Init(context.Background(), cfg)
+			err := factory.Init(t.Context(), cfg)
 			require.NoError(t, err)
 
 			// Verify factory state

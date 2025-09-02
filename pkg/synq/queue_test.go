@@ -57,7 +57,7 @@ func TestQueue_PushPop(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			q := NewQueue(ctx)
 
 			// Perform push operations
@@ -176,7 +176,7 @@ func TestQueue_Next(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			q := NewQueue(ctx)
 			var wg sync.WaitGroup
 			ch := make(chan any, len(tt.want))
@@ -309,7 +309,7 @@ func TestPrioritizedQueue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
+			ctx := t.Context()
 			q := NewQueue(ctx)
 
 			// Push all items
@@ -356,7 +356,7 @@ func TestPrioritizedQueue(t *testing.T) {
 
 func TestQueue_Drain(t *testing.T) {
 	t.Run("Drain empty queue", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 		q := NewQueue(ctx)
 
 		err := q.Drain(100 * time.Millisecond)
@@ -366,7 +366,7 @@ func TestQueue_Drain(t *testing.T) {
 	})
 
 	t.Run("Drain non-empty queue", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 		q := NewQueue(ctx)
 		err := q.Push(1, 2, 3)
 		if err != nil {
@@ -407,7 +407,7 @@ func TestQueue_Drain(t *testing.T) {
 	})
 
 	t.Run("Drain with timeout", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := t.Context()
 		q := NewQueue(ctx)
 		err := q.Push(1, 2, 3)
 		if err != nil {
@@ -435,7 +435,7 @@ func TestQueue_Drain(t *testing.T) {
 	})
 
 	t.Run("Drain with cancelled context", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		q := NewQueue(ctx)
 		err := q.Push(1, 2, 3)
 		if err != nil {
@@ -506,7 +506,7 @@ func TestQueue_PopN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			q := NewQueue(context.Background())
+			q := NewQueue(t.Context())
 
 			// Push initial items
 			err := q.Push(tt.items...)

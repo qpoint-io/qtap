@@ -1,7 +1,6 @@
 package axiom
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -21,7 +20,7 @@ func TestFactory_FactoryType(t *testing.T) {
 
 func TestFactory_Init_InvalidConfig(t *testing.T) {
 	f := &Factory{}
-	err := f.Init(context.Background(), "invalid config")
+	err := f.Init(t.Context(), "invalid config")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid config type")
 }
@@ -40,7 +39,7 @@ func TestFactory_Init_MissingToken(t *testing.T) {
 			},
 		},
 	}
-	err := f.Init(context.Background(), cfg)
+	err := f.Init(t.Context(), cfg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "Axiom API token is required")
 }
@@ -49,7 +48,7 @@ func TestEventStore_Save_UnsupportedType(t *testing.T) {
 	es := &EventStore{}
 
 	// This should not panic and should log a warning
-	es.Save(context.Background(), "unsupported type")
+	es.Save(t.Context(), "unsupported type")
 	// Since we can't easily test the log output, we just ensure it doesn't panic
 }
 
@@ -105,7 +104,7 @@ func TestEventStore_Save_SupportedTypes(t *testing.T) {
 			// This should not panic even without a real Axiom client
 			// The actual submission will fail, but the structure should be sound
 			require.NotPanics(t, func() {
-				es.Save(context.Background(), testCase)
+				es.Save(t.Context(), testCase)
 			})
 		})
 	}

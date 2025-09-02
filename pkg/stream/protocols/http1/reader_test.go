@@ -1,7 +1,6 @@
 package http1
 
 import (
-	"context"
 	"errors"
 	"io"
 	"testing"
@@ -50,7 +49,7 @@ func TestBufferedReader_Read(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := NewBufferedReader(context.Background())
+			r := NewBufferedReader(t.Context())
 			require.NotNil(t, r)
 
 			// Write test data
@@ -113,7 +112,7 @@ func TestBufferedReader_Write(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := NewBufferedReader(context.Background())
+			r := NewBufferedReader(t.Context())
 			require.NotNil(t, r)
 
 			if tt.closed {
@@ -134,7 +133,7 @@ func TestBufferedReader_Write(t *testing.T) {
 }
 
 func TestBufferedReader_BlockingRead(t *testing.T) {
-	r := NewBufferedReader(context.Background())
+	r := NewBufferedReader(t.Context())
 	require.NotNil(t, r)
 
 	done := make(chan struct{})

@@ -25,8 +25,12 @@ const (
 type Action string
 
 const (
-	ActionCreate Action = "create"
-	ActionStart  Action = "start"
+	ActionCreate  Action = "create"
+	ActionStart   Action = "start"
+	ActionRestart Action = "restart"
+	ActionStop    Action = "stop"
+	ActionDie     Action = "die"
+	ActionDestroy Action = "destroy"
 
 	ActionExecCreate Action = "exec_create"
 	ActionExecStart  Action = "exec_start"
@@ -113,7 +117,36 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.cache[humanContainerID(cr.ID)] = cr
+	humanID := humanContainerID(cr.ID)
+	existing := d.cache[humanID]
+
+	// If this is a new container, set start time and report metrics
+	if existing == nil {
+		cr.SetStartTime(time.Now())
+		reportContainerStarted(cr, "docker")
+	}
+
+	d.cache[humanID] = cr
+}
+
+func (d *docker) handleContainerStop(_ context.Context, containerID string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	humanID := humanContainerID(containerID)
+	if cr := d.cache[humanID]; cr != nil {
+		reportContainerStopped(cr, "docker")
+		delete(d.cache, humanID)
+	}
+}
+
+func (d *docker) handleContainerRestart(_ context.Context, containerID string) {
+	d.mu.RLock()
+	humanID := humanContainerID(containerID)
+	if cr := d.cache[humanID]; cr != nil {
+		reportContainerRestarted(cr, "docker")
+	}
+	d.mu.RUnlock()
 }
 
 func (d *docker) inspectContainer(ctx context.Context, containerID string) (*Container, error) {
@@ -185,8 +218,17 @@ func (d *docker) watchContainerEvents(ctx context.Context) {
 		if msg.Type != events.ContainerEventType {
 			continue
 		}
-		if string(msg.Action) == string(ActionStart) ||
-			strings.HasPrefix(string(msg.Action), string(ActionExecCreate)+": ") ||
+		switch Action(msg.Action) {
+		case ActionStart:
+			d.handleContainerEvent(ctx, msg.Actor.ID)
+		case ActionRestart:
+			d.handleContainerRestart(ctx, msg.Actor.ID)
+			d.handleContainerEvent(ctx, msg.Actor.ID)
+		case ActionStop, ActionDie, ActionDestroy:
+			d.handleContainerStop(ctx, msg.Actor.ID)
+		}
+
+		if strings.HasPrefix(string(msg.Action), string(ActionExecCreate)+": ") ||
 			strings.HasPrefix(string(msg.Action), string(ActionExecStart)+": ") {
 			d.handleContainerEvent(ctx, msg.Actor.ID)
 		}

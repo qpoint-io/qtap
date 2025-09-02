@@ -149,7 +149,12 @@ func (c *Containerd) processContainerCreateEvent(ctx context.Context, id string)
 func (c *Containerd) processContainerDelete(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.cache, id)
+
+	humanID := humanContainerID(id)
+	if cr := c.cache[humanID]; cr != nil {
+		reportContainerStopped(cr, "containerd")
+	}
+	delete(c.cache, humanID)
 }
 
 // addContainer takes a qpoint container and updates the cache record to match using the human
@@ -164,7 +169,16 @@ func (c *Containerd) addContainer(cr *Container) {
 		return
 	}
 
-	c.cache[humanContainerID(cr.ID)] = cr
+	humanID := humanContainerID(cr.ID)
+	existing := c.cache[humanID]
+
+	// If this is a new container, set start time and report metrics
+	if existing == nil {
+		cr.SetStartTime(time.Now())
+		reportContainerStarted(cr, "containerd")
+	}
+
+	c.cache[humanID] = cr
 }
 
 // buildContainerRecord builds a qpoint container record from a containerd container.

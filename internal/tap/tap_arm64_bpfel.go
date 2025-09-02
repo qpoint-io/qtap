@@ -150,7 +150,7 @@ type TapSocketTlsClientHelloEvent struct {
 		Size   uint32
 		_      [4]byte
 	}
-	Data [16384]uint8
+	Data [30720]uint8
 }
 
 // LoadTap returns the embedded CollectionSpec for Tap.

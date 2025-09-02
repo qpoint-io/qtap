@@ -32,6 +32,8 @@
 
 #define MINIMUM_TLS_HANDSHAKE_SIZE 52
 
+#define BUF_CHUNK_LIMIT 4
+
 #define HTTP2_PREFACE_LEN 24
 const unsigned char HTTP2_PREFACE[HTTP2_PREFACE_LEN] = {
 	'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n', 'S', 'M', '\r', '\n', '\r', '\n'};
@@ -57,7 +59,7 @@ static size_t buf_read_iovec(char *dst, uint32_t size, struct buf_info *buf_info
 	size_t bytes_to_read = size;
 
 	// loop through all the buffers in the list
-	for (int i = 0; (i < LOOP_LIMIT_SM) && (i < buf_info->iovcnt) && (bytes_read < bytes_to_read); ++i) {
+	for (int i = 0; (i < BUF_CHUNK_LIMIT) && (i < buf_info->iovcnt) && (bytes_read < bytes_to_read); ++i) {
 		struct iovec iov_cpy;
 		// Safely attempt to read the iovec struct
 		if (bpf_probe_read_user(&iov_cpy, sizeof(struct iovec), &iov[i]) != 0) {
@@ -130,17 +132,17 @@ static bool capture_tls_client_hello(struct socket_tls_client_hello_event *hands
 		uint32_t total_size = TLS_RECORD_HEADER_SIZE + handshake_body_size;
 
 		// Ensure we have enough data and don't exceed our buffer
-		if (total_size > count || total_size > MAX_TLS_HANDSHAKE_SIZE) {
+		if (total_size > count || total_size > MAX_MSG_SIZE) {
 			// bpf_printk("capture_tls_client_hello: TLS handshake size too large, count: %u, total_size: %u", count, total_size);
 			return false;
 		}
 
-		total_size &= (MAX_TLS_HANDSHAKE_SIZE - 1);
+		total_size &= (MAX_MSG_SIZE - 1);
 
 		// bpf_printk("capture_tls_client_hello: count: %u, total_size: %u, handshake_body_size: %u", count, total_size, handshake_body_size);
 
 		// Read the entire handshake into our buffer
-		if (buf_read_simple((char *)handshake->data, total_size, buf_info->buf, 0) == 0) {
+		if (buf_read((char *)handshake->data, total_size, buf_info, 0) == 0) {
 			// bpf_printk("capture_tls_client_hello: Failed to read TLS handshake");
 			return false;
 		}

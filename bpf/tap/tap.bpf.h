@@ -31,8 +31,6 @@
 
 #define MAX_HOSTNAME_LENGTH 255
 
-#define MAX_TLS_HANDSHAKE_SIZE 16384 // 16KB should cover most real-world cases
-
 enum SOCKET_EVENT {
 	S_OPEN             = 1ULL,
 	S_CLOSE            = 2ULL,
@@ -238,5 +236,5 @@ struct socket_tls_client_hello_event {
 		uint32_t size;
 	} attr;
 	// TLS handshake data
-	unsigned char data[MAX_TLS_HANDSHAKE_SIZE];
+	unsigned char data[MAX_MSG_SIZE];
 };

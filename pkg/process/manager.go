@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
@@ -60,8 +61,6 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 		envMask:        synq.NewMap[string, bool](),
 		processWaiters: make(map[int][]chan *Process),
 	}
-
-	trackActiveProcessCount(pm.procs.Len)
 
 	if procEventer != nil {
 		procEventer.Register(pm)
@@ -222,15 +221,10 @@ func (m *Manager) addProc(p *Process) error {
 		if !slices.Equal(p.Args, proc.Args) {
 			procChanged = true
 		}
-		processRenamedTotal.Inc()
+		processRenamedTotal.WithLabelValues(getProcessLabels(p)...).Inc()
 
 		// replace the process
 		p = proc
-	}
-
-	if !procChanged {
-		// if a process existed but changed name we already have an add count increment for it
-		processAddTotal.Inc()
 	}
 
 	// discover the process
@@ -241,6 +235,13 @@ func (m *Manager) addProc(p *Process) error {
 		}
 		m.Logger.Debug("failed to discover process", zap.Int("pid", p.Pid), zap.Error(err))
 		return nil
+	}
+
+	if !procChanged {
+		// report metrics
+		labels := getProcessLabels(p)
+		processOpenTotal.WithLabelValues(labels...).Inc()
+		processActiveTotal.WithLabelValues(labels...).Inc()
 	}
 
 	// lock the registry
@@ -312,8 +313,11 @@ func (m *Manager) initProcObservers(p *Process, replace bool) {
 }
 
 func (m *Manager) removeProc(p *Process) error {
-	// increment the process stopped counter
-	processRemoveTotal.Inc()
+	// report metrics
+	labels := getProcessLabels(p)
+	processCloseTotal.WithLabelValues(labels...).Inc()
+	processActiveTotal.WithLabelValues(labels...).Dec()
+	processDuration.WithLabelValues(labels...).Observe(time.Since(p.startTime).Seconds())
 
 	// acquire a lock
 	m.mu.Lock()

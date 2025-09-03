@@ -211,6 +211,7 @@ type TapProgramSpecs struct {
 	SyscallProbeEntryConnect     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_connect"`
 	SyscallProbeEntryExecve      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execve"`
 	SyscallProbeEntryExecveat    *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execveat"`
+	SyscallProbeEntryExitGroup   *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_exit_group"`
 	SyscallProbeEntryRead        *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_readv"`
 	SyscallProbeEntryRecvfrom    *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvfrom"`
@@ -265,6 +266,7 @@ type TapMapSpecs struct {
 	ActiveWriteArgsMap            *ebpf.MapSpec `ebpf:"active_write_args_map"`
 	AddrPortToPidMap              *ebpf.MapSpec `ebpf:"addr_port_to_pid_map"`
 	ConnInfoMap                   *ebpf.MapSpec `ebpf:"conn_info_map"`
+	ExitCodeMap                   *ebpf.MapSpec `ebpf:"exit_code_map"`
 	MgmtAddrs                     *ebpf.MapSpec `ebpf:"mgmt_addrs"`
 	PidFdToSockMap                *ebpf.MapSpec `ebpf:"pid_fd_to_sock_map"`
 	ProcEvents                    *ebpf.MapSpec `ebpf:"proc_events"`
@@ -313,6 +315,7 @@ type TapMaps struct {
 	ActiveWriteArgsMap            *ebpf.Map `ebpf:"active_write_args_map"`
 	AddrPortToPidMap              *ebpf.Map `ebpf:"addr_port_to_pid_map"`
 	ConnInfoMap                   *ebpf.Map `ebpf:"conn_info_map"`
+	ExitCodeMap                   *ebpf.Map `ebpf:"exit_code_map"`
 	MgmtAddrs                     *ebpf.Map `ebpf:"mgmt_addrs"`
 	PidFdToSockMap                *ebpf.Map `ebpf:"pid_fd_to_sock_map"`
 	ProcEvents                    *ebpf.Map `ebpf:"proc_events"`
@@ -344,6 +347,7 @@ func (m *TapMaps) Close() error {
 		m.ActiveWriteArgsMap,
 		m.AddrPortToPidMap,
 		m.ConnInfoMap,
+		m.ExitCodeMap,
 		m.MgmtAddrs,
 		m.PidFdToSockMap,
 		m.ProcEvents,
@@ -380,6 +384,7 @@ type TapPrograms struct {
 	SyscallProbeEntryConnect     *ebpf.Program `ebpf:"syscall__probe_entry_connect"`
 	SyscallProbeEntryExecve      *ebpf.Program `ebpf:"syscall__probe_entry_execve"`
 	SyscallProbeEntryExecveat    *ebpf.Program `ebpf:"syscall__probe_entry_execveat"`
+	SyscallProbeEntryExitGroup   *ebpf.Program `ebpf:"syscall__probe_entry_exit_group"`
 	SyscallProbeEntryRead        *ebpf.Program `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv       *ebpf.Program `ebpf:"syscall__probe_entry_readv"`
 	SyscallProbeEntryRecvfrom    *ebpf.Program `ebpf:"syscall__probe_entry_recvfrom"`
@@ -434,6 +439,7 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeEntryConnect,
 		p.SyscallProbeEntryExecve,
 		p.SyscallProbeEntryExecveat,
+		p.SyscallProbeEntryExitGroup,
 		p.SyscallProbeEntryRead,
 		p.SyscallProbeEntryReadv,
 		p.SyscallProbeEntryRecvfrom,

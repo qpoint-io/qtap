@@ -67,6 +67,7 @@ type Process struct {
 	PredatesQpoint bool
 	User           resolvable.V[*ProcessUser]
 	UserShell      resolvable.V[bool]
+	ExitCode       int
 
 	// TLSProbeTypesDetected are the the probes that have scanned the process binary and found matching hooks.
 	TLSProbeTypesDetected []string

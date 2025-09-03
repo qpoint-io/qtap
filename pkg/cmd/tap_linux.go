@@ -453,6 +453,7 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 		common.NewTracepoint("syscalls", "sys_exit_execve", objs.TapPrograms.SyscallProbeRetExecve),
 		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.TapPrograms.SyscallProbeEntryExecveat),
 		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.TapPrograms.SyscallProbeRetExecveat),
+		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.TapPrograms.SyscallProbeEntryExitGroup),
 		common.NewTracepoint("sched", "sched_process_exit", objs.TapPrograms.TracepointSchedProcessExit),
 	}
 

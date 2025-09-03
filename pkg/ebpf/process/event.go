@@ -37,5 +37,6 @@ type execEndEvent struct {
 
 // exitEvent corresponds to exit_info_event
 type exitEvent struct {
-	Pid int32
+	Pid      int32
+	ExitCode int32
 }

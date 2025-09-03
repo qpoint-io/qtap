@@ -83,12 +83,26 @@ static inline __u64 _strlen(const char *s, __u64 max) {
 	return len;
 }
 
-static __always_inline __u32 bpf_get_current_pid() {
+// Get the current PID in kernelspace
+static __always_inline __u32 bpf_get_current_kernel_pid() {
 	// Lower 32 bits = PID (thread ID in userspace)
 	return (__u32)bpf_get_current_pid_tgid();
 }
 
-static __always_inline __u32 bpf_get_current_tgid() {
+// Get the current TGID in kernelspace
+static __always_inline __u32 bpf_get_current_kernel_tgid() {
 	// Upper 32 bits = TGID (process ID in userspace)
 	return bpf_get_current_pid_tgid() >> 32;
+}
+
+// Get the current PID in userspace
+static __always_inline __u32 bpf_get_current_userspace_pid() {
+	// Kernel TGIS is the same as userspace PID
+	return bpf_get_current_kernel_tgid();
+}
+
+// Get the current TGID in userspace
+static __always_inline __u32 bpf_get_current_userspace_tgid() {
+	// Kernel PID is the same as userspace TGID
+	return bpf_get_current_kernel_pid();
 }

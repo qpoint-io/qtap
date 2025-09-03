@@ -156,7 +156,7 @@ func (m *Manager) handleExitEvent(r *bytes.Reader) error {
 	}
 
 	if m.reciever != nil {
-		if err := m.reciever.UnregisterProcess(int(e.Pid)); err != nil {
+		if err := m.reciever.UnregisterProcess(int(e.Pid), int(e.ExitCode)); err != nil {
 			m.logger.Error("failed to end process", zap.Error(err))
 		}
 	}

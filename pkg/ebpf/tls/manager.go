@@ -6,7 +6,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -41,11 +41,10 @@ func (m *TlsManager) Start() error {
 		}
 	}
 
-	telemetry.ObservableGauge("tap_tls_manager_probes",
+	metrics.NewSystemGaugeFunc("probes_started", "The number of probes that have started",
 		func() float64 {
 			return float64(len(m.probes))
 		},
-		telemetry.WithDescription("The number of probes that have started"),
 	)
 
 	return nil

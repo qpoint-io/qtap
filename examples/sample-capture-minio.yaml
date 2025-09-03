@@ -37,6 +37,7 @@ services:
 stacks:
   basic_reporting:
     plugins:
+      - type: http_metrics
       - type: http_capture
         config:
           level: summary # (none|summary|details|full)

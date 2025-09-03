@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"github.com/sourcegraph/conc"
 	"go.uber.org/zap"
 )
@@ -61,24 +63,14 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 		processWaiters: make(map[int][]chan *Process),
 	}
 
-	trackActiveProcessCount(pm.procs.Len)
-
 	if procEventer != nil {
 		procEventer.Register(pm)
 	}
 
-	telemetry.ObservableGauge("tap_process_observers",
+	metrics.NewSystemGaugeFunc("observers_active", "The number of observers currently being tracked",
 		func() float64 {
 			return float64(len(pm.Observers))
 		},
-		telemetry.WithDescription("The number of observers currently being tracked"),
-	)
-
-	telemetry.ObservableGauge("tap_process_procs",
-		func() float64 {
-			return float64(pm.procs.Len())
-		},
-		telemetry.WithDescription("The number of processes currently being tracked"),
 	)
 
 	return pm
@@ -230,15 +222,10 @@ func (m *Manager) addProc(p *Process) error {
 		if !slices.Equal(p.Args, proc.Args) {
 			procChanged = true
 		}
-		incrementProcessRenamed()
+		processRenamedTotal.WithLabelValues(getProcessLabels(p)...).Inc()
 
 		// replace the process
 		p = proc
-	}
-
-	if !procChanged {
-		// if a process existed but changed name we already have an add count increment for it
-		incrementProcessAdd()
 	}
 
 	// discover the process
@@ -249,6 +236,13 @@ func (m *Manager) addProc(p *Process) error {
 		}
 		m.Logger.Debug("failed to discover process", zap.Int("pid", p.Pid), zap.Error(err))
 		return nil
+	}
+
+	if !procChanged {
+		// report metrics
+		labels := getProcessLabels(p)
+		processOpenTotal.WithLabelValues(labels...).Inc()
+		processActiveTotal.WithLabelValues(labels...).Inc()
 	}
 
 	// lock the registry
@@ -320,8 +314,11 @@ func (m *Manager) initProcObservers(p *Process, replace bool) {
 }
 
 func (m *Manager) removeProc(p *Process) error {
-	// increment the process stopped counter
-	incrementProcessRemove()
+	// report metrics
+	labels := getProcessLabels(p)
+	processCloseTotal.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Inc()
+	processActiveTotal.WithLabelValues(labels...).Dec()
+	processDuration.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Observe(time.Since(p.startTime).Seconds())
 
 	// acquire a lock
 	m.mu.Lock()

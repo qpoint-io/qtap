@@ -9,8 +9,13 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
+)
+
+var (
+	eventsDropped = metrics.NewSystemCounter("events_dropped_total", "The number of socket events dropped due to read failures")
+	ringbufLost   = metrics.NewSystemCounter("ringbuf_lost_total", "The number of socket events lost from ringbuffer")
 )
 
 type ConnectionEventHandler interface {
@@ -90,6 +95,7 @@ func (m *SocketEventManager) readEvents() {
 			if errors.Is(err, os.ErrClosed) {
 				break
 			}
+			ringbufLost.Inc()
 			m.logger.Error("failed to read from buffer", zap.Error(err))
 		}
 
@@ -97,6 +103,7 @@ func (m *SocketEventManager) readEvents() {
 		if err != nil {
 			recordPool.Put(record)
 
+			eventsDropped.Inc()
 			m.logger.Error("failed to read event", zap.Error(err))
 		}
 
@@ -105,12 +112,10 @@ func (m *SocketEventManager) readEvents() {
 }
 
 func (m *SocketEventManager) startTelemetry() error {
-	telemetry.ObservableGauge(
-		"tap_socket_probes",
+	metrics.NewSystemGaugeFunc("probes_active", "The number of probes currently being tracked",
 		func() float64 {
 			return float64(len(m.probes))
 		},
-		telemetry.WithDescription("The number of probes currently being tracked"),
 	)
 
 	return nil

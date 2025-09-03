@@ -2,6 +2,7 @@ package container
 
 import (
 	"strings"
+	"time"
 )
 
 type Container struct {
@@ -14,7 +15,8 @@ type Container struct {
 	ImageDigest string `json:"imageDigest"`
 	RootFS      string `json:"-"`
 
-	p *Pod
+	startTime time.Time
+	p         *Pod
 }
 
 func (c Container) TidyName() string {
@@ -51,6 +53,16 @@ func (c *Container) setPod(p *Pod) {
 	c.p = p
 }
 
+// SetStartTime sets the container start time
+func (c *Container) SetStartTime(t time.Time) {
+	c.startTime = t
+}
+
+// GetStartTime returns the container start time
+func (c Container) GetStartTime() time.Time {
+	return c.startTime
+}
+
 const (
 	ContainerLabelKeyPodName      = "io.kubernetes.pod.name"
 	ContainerLabelKeyPodNamespace = "io.kubernetes.pod.namespace"
@@ -63,6 +75,7 @@ type Pod struct {
 	UID         string
 	Labels      map[string]string
 	Annotations map[string]string
+	startTime   time.Time
 }
 
 func (p *Pod) loadFromContainer(c *Container) {
@@ -73,4 +86,14 @@ func (p *Pod) loadFromContainer(c *Container) {
 	p.Name = labels[ContainerLabelKeyPodName]
 	p.Namespace = labels[ContainerLabelKeyPodNamespace]
 	p.UID = labels[ContainerLabelKeyPodUID]
+}
+
+// SetStartTime sets the pod start time
+func (p *Pod) SetStartTime(t time.Time) {
+	p.startTime = t
+}
+
+// GetStartTime returns the pod start time
+func (p Pod) GetStartTime() time.Time {
+	return p.startTime
 }

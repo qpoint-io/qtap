@@ -7,6 +7,7 @@ services:
 stacks:
   basic_reporting:
     plugins:
+      - type: http_metrics
       - type: access_logs
         config:
           mode: full

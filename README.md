@@ -46,8 +46,6 @@ Qtap can augment your existing observability piplines or can be used as a founda
 
 ![Qtap Demo](./.github/assets/qtap_demo.gif)
 
-
-
 For more information [see the "How It Works" section of our website](https://docs.qpoint.io/readme/how-it-works).
 
 ## Quick Start
@@ -120,6 +118,23 @@ These are the most commonly used targets by Qpoint devs:
 - `generate` - generates the eBPF binaries
 - `run` - runs a debug instance of the Qtap
 - `ci` - runs all of the ci checks (nice to use before pushing code)
+
+## Telemetry
+
+### Traces
+
+Tracing can be enabled by setting the `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL` env vars per the OpenTelemetry docs [[1]](https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/) [[2]](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#exporter-selection).
+
+### Metrics
+
+We have two metrics endpoints on `localhost:10001`:
+
+- `/metrics` contains metrics that can be used to create dashboards for monitoring the activity on your system
+- `/system/metrics` contains metrics related to the health of the qtap agent
+
+We have a sample Grafana dashboard: [examples/dashboards/qtap-http-overview.json](./examples/dashboards/qtap-http-overview.json).
+
+![sample http overview dashboard](./examples/dashboards/qtap-http-overview.png)
 
 ## Project Status
 

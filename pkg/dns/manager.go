@@ -8,7 +8,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
@@ -16,6 +16,10 @@ type key struct {
 	Addr      [16]byte
 	Container string
 }
+
+var (
+	lookupFailures = metrics.NewCounter("lookup_failures_total", "The number of DNS lookup failures")
+)
 
 type DNSManager struct {
 	// zap logger
@@ -39,12 +43,10 @@ func NewDNSManager(logger *zap.Logger, processManager *process.Manager) *DNSMana
 }
 
 func (m *DNSManager) Start() error {
-	telemetry.ObservableGauge(
-		"tap_dns_records_len",
+	metrics.NewGaugeFunc("records_cached", "The number of DNS records currently held in the cache",
 		func() float64 {
 			return float64(m.records.Len())
 		},
-		telemetry.WithDescription("The number of DNS records currently held in the Tap cache"),
 	)
 
 	return nil
@@ -87,6 +89,7 @@ func (m *DNSManager) Lookup(addr [16]byte, containerID string) (*Record, error) 
 
 	// bubble error if exists
 	if err != nil {
+		lookupFailures.Inc()
 		return nil, fmt.Errorf("resolving domain from ip: %w", err)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
@@ -108,21 +109,17 @@ func NewPluginManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 
 func (m *Manager) Start() error {
 	// stacks
-	telemetry.ObservableGauge(
-		"tap_plugin_stacks",
+	metrics.NewSystemGaugeFunc("stacks_active", "The number of active plugin stacks",
 		func() float64 {
 			return float64(m.stacks.Len())
 		},
-		telemetry.WithDescription("A count of active plugin stacks"),
 	)
 
 	// domain stacks
-	telemetry.ObservableGauge(
-		"tap_plugin_domain_stacks",
+	metrics.NewSystemGaugeFunc("domain_mappings", "The number of domain to stack mappings",
 		func() float64 {
 			return float64(m.domainStacks.Len())
 		},
-		telemetry.WithDescription("Count of plugin domain to stack mappings"),
 	)
 
 	return nil

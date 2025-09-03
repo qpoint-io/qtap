@@ -1,42 +1,36 @@
 package process
 
-import "github.com/qpoint-io/qtap/pkg/telemetry"
+import (
+	"strconv"
 
-var (
-	// processAddTotal tracks the number of processes added
-	processAddTotal = telemetry.Counter("processes_added",
-		telemetry.WithDescription("Total number of processes added"))
-
-	// processRemoveTotal tracks the number of processes removed
-	processRemoveTotal = telemetry.Counter("processes_removed",
-		telemetry.WithDescription("Total number of processes removed"))
-
-	// processRenamedTotal tracks the number of processes renamed
-	processRenamedTotal = telemetry.Counter("processes_renamed",
-		telemetry.WithDescription("Total number of processes renamed"))
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 )
 
-// trackActiveProcessCount tracks the number of active processes as an observable gauge
-func trackActiveProcessCount(fn func() int) {
-	telemetry.ObservableGauge("processes_active",
-		func() float64 {
-			return float64(fn())
-		},
-		telemetry.WithDescription("Total number of active monitored processes"),
+var (
+	processOpenTotal    = metrics.NewCounterVec("open_total", "Total processes opened", []string{"binary", "user"})
+	processCloseTotal   = metrics.NewCounterVec("close_total", "Total processes closed", []string{"binary", "user", "exit_code"})
+	processActiveTotal  = metrics.NewGaugeVec("active_total", "Currently active processes", []string{"binary", "user"})
+	processRenamedTotal = metrics.NewCounterVec("renamed_total", "Total processes renamed", []string{"binary", "user"})
+	processDuration     = metrics.NewHistogramVec("duration_seconds", "Process lifetime duration in seconds",
+		[]string{"binary", "user", "exit_code"},
+		1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600, 10800, 21600, 43200, 86400,
 	)
-}
+)
 
-// IncrementProcessAdd increments the process add counter
-func incrementProcessAdd() {
-	processAddTotal(1)
-}
+// getProcessLabels returns the label values for the process metrics
+func getProcessLabels(p *Process) []string {
+	binary := p.Binary
+	if binary == "" {
+		binary = "unknown"
+	}
 
-// IncrementProcessRemove increments the process remove counter
-func incrementProcessRemove() {
-	processRemoveTotal(1)
-}
+	user := "unknown"
+	if u, err := p.User(); err == nil && u != nil {
+		user = u.Username
+		if user == "" {
+			user = strconv.FormatUint(uint64(u.UID), 10)
+		}
+	}
 
-// IncrementProcessRenamed increments the process renamed counter
-func incrementProcessRenamed() {
-	processRenamedTotal(1)
+	return []string{binary, user}
 }

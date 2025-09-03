@@ -278,6 +278,10 @@ func (c *Connection) Open() {
 	c.startOnce.Do(func() {
 		c.logger.Debug("opening connection")
 
+		// report metrics
+		connOpenTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+		connActiveTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+
 		// Check that the process was redirected if this processes connections
 		// are intended to be forwarded/proxied.
 		if c.process != nil {
@@ -335,6 +339,13 @@ func (c *Connection) watch() {
 
 func (c *Connection) Close() {
 	defer c.cancel()
+
+	// report metrics
+	connCloseTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+	connActiveTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Dec()
+	connDuration.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port))).Observe(float64(c.report.closeTime.Sub(c.report.openTime).Milliseconds()))
+	connBytesSentTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.WrBytes))
+	connBytesRecvTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
 
 	span := trace.SpanFromContext(c.ctx)
 	defer span.End()

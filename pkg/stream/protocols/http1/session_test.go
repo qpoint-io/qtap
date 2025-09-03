@@ -1,7 +1,6 @@
 package http1
 
 import (
-	"context"
 	"net/http"
 	"net/url"
 	"testing"
@@ -13,7 +12,7 @@ import (
 )
 
 func TestSession_HandleInterimResponse(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	// Create session
@@ -37,7 +36,7 @@ func TestSession_HandleInterimResponse(t *testing.T) {
 
 // TestSession_SimpleGETRequest tests a basic GET request with no body
 func TestSession_SimpleGETRequest(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -83,7 +82,7 @@ func TestSession_SimpleGETRequest(t *testing.T) {
 
 // TestSession_POSTWithBody tests a POST request with body data
 func TestSession_POSTWithBody(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -139,7 +138,7 @@ func TestSession_POSTWithBody(t *testing.T) {
 
 // TestSession_ExpectContinue_Success tests successful Expect: 100-Continue flow
 func TestSession_ExpectContinue_Success(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -207,7 +206,7 @@ func TestSession_ExpectContinue_Success(t *testing.T) {
 
 // TestSession_ExpectContinue_Rejection tests server rejecting Expect: 100-Continue
 func TestSession_ExpectContinue_Rejection(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -257,7 +256,7 @@ func TestSession_ExpectContinue_Rejection(t *testing.T) {
 
 // TestSession_MultipleInterimResponses tests handling multiple 1xx responses
 func TestSession_MultipleInterimResponses(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -324,7 +323,7 @@ func TestSession_MultipleInterimResponses(t *testing.T) {
 
 // TestSession_WebSocketUpgrade tests 101 Switching Protocols for WebSocket
 func TestSession_WebSocketUpgrade(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -384,7 +383,7 @@ func TestSession_WebSocketUpgrade(t *testing.T) {
 
 // TestSession_HTTP2Upgrade tests 101 Switching Protocols for HTTP/2
 func TestSession_HTTP2Upgrade(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -431,7 +430,7 @@ func TestSession_HTTP2Upgrade(t *testing.T) {
 
 // TestSession_PrematureClose tests connection closed before completion
 func TestSession_PrematureClose(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -468,7 +467,7 @@ func TestSession_PrematureClose(t *testing.T) {
 
 // TestSession_499ClientCanceled tests client disconnection scenario
 func TestSession_499ClientCanceled(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -498,7 +497,7 @@ func TestSession_499ClientCanceled(t *testing.T) {
 
 // TestSession_HEADRequest tests HEAD request (no response body expected)
 func TestSession_HEADRequest(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -538,7 +537,7 @@ func TestSession_HEADRequest(t *testing.T) {
 
 // TestSession_StateTransitions tests all valid state transitions
 func TestSession_StateTransitions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -594,7 +593,7 @@ func TestSession_StateTransitions(t *testing.T) {
 
 // TestSession_RequestBodyWhileAwaitingInterim tests protocol violation handling
 func TestSession_RequestBodyWhileAwaitingInterim(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -644,7 +643,7 @@ func TestSession_RequestBodyWhileAwaitingInterim(t *testing.T) {
 
 // TestSession_HostHeaderLogic tests host header logic without triggering SetDomain
 func TestSession_HostHeaderLogic(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -671,7 +670,7 @@ func TestSession_HostHeaderLogic(t *testing.T) {
 
 // TestSession_GetMethods tests various getter methods
 func TestSession_GetMethods(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{
@@ -742,7 +741,7 @@ func TestSession_GetMethods(t *testing.T) {
 // TestSession_PluginManagerIntegration tests that plugin manager is properly called
 // Note: This test verifies the session works with nil plugin manager (common case)
 func TestSession_PluginManagerIntegration(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	logger := zap.NewNop()
 
 	conn := &connection.Connection{

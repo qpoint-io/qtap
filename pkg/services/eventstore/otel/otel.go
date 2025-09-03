@@ -12,9 +12,12 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 )
+
+var submittedRecords = metrics.NewCounter("records_submitted_total", "The number of records submitted to OpenTelemetry")
 
 type EventStore struct {
 	services.LogHelper
@@ -121,7 +124,7 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 	record.AddAttributes(logAttrs...)
 
 	s.logger.Emit(ctx, record)
-	incrementSubmittedRecords()
+	submittedRecords.Inc()
 }
 
 // structToAttributes converts any struct to OTEL log attributes using JSON marshaling

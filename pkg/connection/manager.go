@@ -7,7 +7,6 @@ import (
 	servicespkg "github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.uber.org/zap"
 )
 
@@ -96,8 +95,6 @@ func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 	for _, opt := range opts {
 		opt(m)
 	}
-
-	telemetry.RegisterCollector(newManagerMetrics(m))
 
 	return m
 }

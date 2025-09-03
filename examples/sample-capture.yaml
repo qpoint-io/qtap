@@ -11,6 +11,7 @@ services:
 stacks:
   basic_reporting:
     plugins:
+      - type: http_metrics
       - type: report_usage
       - type: http_capture
         config:
@@ -38,7 +39,7 @@ rulekit:
   macros:
     - name: is_4xx
       expr: http.res.status >= 400 && http.res.status < 500
-  
+
 # tap config
 tap:
   direction: egress # (egress|egress-external|egress-internal)

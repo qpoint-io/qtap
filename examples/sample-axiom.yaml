@@ -4,15 +4,16 @@ services:
     - type: axiom
       dataset:
         type: text
-        value: qpoint-events  # The name of the Axiom dataset to send events to
+        value: qpoint-events # The name of the Axiom dataset to send events to
       token:
-        type: env  # or "text" for direct value
-        value: AXIOM_TOKEN  # Environment variable name or direct token value
+        type: env # or "text" for direct value
+        value: AXIOM_TOKEN # Environment variable name or direct token value
   object_stores:
     - type: stdout
 stacks:
   report_to_axiom:
     plugins:
+      - type: http_metrics
       - type: access_logs
         config:
           mode: summary

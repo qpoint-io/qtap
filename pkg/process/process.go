@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/binutils"
@@ -76,16 +77,17 @@ type Process struct {
 	Pod       resolvable.V[*Pod]
 
 	// internal
-	hostname string
-	filter   uint8
-	elf      *binutils.Elf
-	exited   atomic.Bool
-	tlsOk    bool
-	mu       sync.Mutex
-	scanMu   sync.Mutex
-	tags     tags.List
-	envTags  []config.EnvTag
-	closers  []io.Closer
+	hostname  string
+	filter    uint8
+	elf       *binutils.Elf
+	exited    atomic.Bool
+	tlsOk     bool
+	startTime time.Time
+	mu        sync.Mutex
+	scanMu    sync.Mutex
+	tags      tags.List
+	envTags   []config.EnvTag
+	closers   []io.Closer
 
 	// notifier is called when parts of the process change
 	// that are required to be updated by the eventer for
@@ -101,6 +103,7 @@ func NewProcess(pid int, exeFilename string) *Process {
 		Pid:         pid,
 		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
 		ExeFilename: exeFilename,
+		startTime:   time.Now(),
 		tags:        tags.New(),
 		Container:   resolvable.Static[*Container](nil).WithBackgroundContext(),
 		Pod:         resolvable.Static[*Pod](nil).WithBackgroundContext(),

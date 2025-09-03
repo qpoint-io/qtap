@@ -2,8 +2,10 @@ package http1
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/plugins"
@@ -19,10 +21,34 @@ type SessionState int
 const (
 	SessionStateRequestHeaders SessionState = iota
 	SessionStateRequestBody
+	SessionStateAwaitingInterim // Waiting for 100-Continue or other interim response
+	SessionStateInterimResponse // Processing 1xx response
 	SessionStateResponseHeaders
 	SessionStateResponseBody
+	SessionStateProtocolSwitch // Handling 101 Switching Protocols
 	SessionStateDone
 )
+
+// InterimResponse represents a 1xx informational response
+type InterimResponse struct {
+	StatusCode int
+	Status     string
+	Header     http.Header
+	Timestamp  time.Time
+}
+
+// UpgradeInfo contains information about protocol upgrades
+type UpgradeInfo struct {
+	Protocol string // "websocket", "h2c", etc.
+	Headers  http.Header
+}
+
+// ResponseChain tracks all responses for a single request
+type ResponseChain struct {
+	InterimResponses []*InterimResponse // All 1xx responses
+	FinalResponse    *http.Response     // The final non-1xx response
+	ProtocolUpgrade  *UpgradeInfo       // Protocol switch info (if any)
+}
 
 type Session struct {
 	mu sync.RWMutex
@@ -46,6 +72,13 @@ type Session struct {
 	// request/response
 	req *http.Request
 	res *http.Response
+
+	// response chain for handling interim responses
+	responseChain *ResponseChain
+
+	// flags for special handling
+	expectContinue   bool // true if request has Expect: 100-Continue
+	protocolUpgraded bool // true if protocol was upgraded (101 response)
 
 	// parsers
 	requestParser  *StreamParser[*http.Request]
@@ -85,6 +118,9 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 		domain:        domain,
 		conn:          conn,
 		pluginManager: pluginManager,
+		responseChain: &ResponseChain{
+			InterimResponses: make([]*InterimResponse, 0),
+		},
 	}
 
 	// create the request parser
@@ -101,14 +137,31 @@ func NewSession(ctx context.Context, logger *zap.Logger, domain string, conn *co
 }
 
 func (s *Session) Run() {
-	err := s.requestParser.parse()
-	if err != nil {
-		s.logger.Error("error parsing request", zap.Error(err))
-	}
-	err = s.responseParser.parse()
-	if err != nil {
-		s.logger.Error("error parsing response", zap.Error(err))
-	}
+	// Run request and response parsers concurrently
+	// This allows for bidirectional communication like expect-continue
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Parse request
+	go func() {
+		defer wg.Done()
+		err := s.requestParser.parse()
+		if err != nil {
+			s.logger.Error("error parsing request", zap.Error(err))
+		}
+	}()
+
+	// Parse response
+	go func() {
+		defer wg.Done()
+		err := s.responseParser.parse()
+		if err != nil {
+			s.logger.Error("error parsing response", zap.Error(err))
+		}
+	}()
+
+	// Wait for both parsers to complete
+	wg.Wait()
 	s.Close()
 }
 
@@ -127,6 +180,8 @@ func (s *Session) CreateRequest(req *http.Request, noBody bool) {
 		return
 	}
 
+	s.logger.Debug("creating request", zap.String("method", s.req.Method), zap.String("url", s.req.URL.String()))
+
 	// set the Qpoint request ID
 	s.req.Header.Set("qpoint-request-id", s.id)
 
@@ -142,10 +197,19 @@ func (s *Session) CreateRequest(req *http.Request, noBody bool) {
 		s.conn.SetDomain(s.req.Host)
 	}
 
-	// set the state
-	if noBody {
+	// check for Expect: 100-Continue header
+	if s.req.Header.Get("Expect") == "100-continue" {
+		s.expectContinue = true
+		s.logger.Debug("detected Expect: 100-Continue header")
+	}
+
+	// set the state based on body and expect-continue
+	switch {
+	case noBody:
 		s.State = SessionStateResponseHeaders
-	} else {
+	case s.expectContinue:
+		s.State = SessionStateAwaitingInterim
+	default:
 		s.State = SessionStateRequestBody
 	}
 
@@ -172,18 +236,43 @@ func (s *Session) CreateRequest(req *http.Request, noBody bool) {
 func (s *Session) CreateResponse(res *http.Response, noBody bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.logger.Debug("creating response", zap.Int("status", res.StatusCode), zap.String("status", res.Status))
-
-	s.res = res
 
 	// if we don't have a response, create a 499 canceled response
 	// this typically happens when the connection is closed before the response is fully received
-	if s.res == nil {
-		s.res = &http.Response{
+	if res == nil {
+		res = &http.Response{
 			StatusCode: 499,
 			Status:     "Canceled",
 		}
 	}
+
+	s.logger.Debug("creating response", zap.Int("status", res.StatusCode), zap.String("status", res.Status))
+
+	// Handle interim responses (1xx) differently
+	if res.StatusCode >= 100 && res.StatusCode < 200 {
+		s.logger.Debug("detected interim response in CreateResponse", zap.Int("status", res.StatusCode))
+		// This is an interim response, handle it separately
+		if err := s.HandleInterimResponse(res); err != nil {
+			s.logger.Error("error handling interim response", zap.Error(err))
+		} else {
+			s.logger.Debug("successfully handled interim response", zap.Int("status", res.StatusCode))
+		}
+
+		// For protocol switches (101), this is the final response
+		if res.StatusCode == http.StatusSwitchingProtocols {
+			s.responseChain.FinalResponse = res
+			s.res = res
+			s.State = SessionStateProtocolSwitch
+		}
+
+		// For other interim responses, don't set as final response yet
+		s.logger.Debug("returning early after interim response", zap.Int("status", res.StatusCode))
+		return
+	}
+
+	// This is a final response (non-1xx)
+	s.res = res
+	s.responseChain.FinalResponse = res
 
 	// set the state
 	if noBody {
@@ -203,11 +292,95 @@ func (s *Session) CreateResponse(res *http.Response, noBody bool) {
 	}
 }
 
+// HandleInterimResponse processes 1xx informational responses
+func (s *Session) HandleInterimResponse(res *http.Response) error {
+	s.logger.Debug("HandleInterimResponse called", zap.Int("status", res.StatusCode))
+
+	// Note: Do not lock here as this is called from CreateResponse which already holds the lock
+
+	if res.StatusCode < 100 || res.StatusCode >= 200 {
+		s.logger.Error("invalid interim response status code", zap.Int("status", res.StatusCode))
+		return fmt.Errorf("not an interim response: %d", res.StatusCode)
+	}
+
+	s.logger.Debug("handling interim response", zap.Int("status", res.StatusCode), zap.String("status_text", res.Status), zap.String("current_state", s.StateString()))
+
+	// Create interim response record
+	interim := &InterimResponse{
+		StatusCode: res.StatusCode,
+		Status:     res.Status,
+		Header:     res.Header.Clone(),
+		Timestamp:  time.Now(),
+	}
+
+	// Add to response chain
+	s.responseChain.InterimResponses = append(s.responseChain.InterimResponses, interim)
+
+	// Handle specific interim response types
+	switch res.StatusCode {
+	case http.StatusContinue: // Continue
+		if s.expectContinue {
+			s.logger.Debug("received 100 Continue, ready for request body")
+			s.State = SessionStateRequestBody
+		} else {
+			s.logger.Warn("received unexpected 100 Continue response")
+		}
+
+	case http.StatusSwitchingProtocols: // Switching Protocols
+		s.logger.Debug("received 101 Switching Protocols")
+		s.protocolUpgraded = true
+		s.State = SessionStateProtocolSwitch
+
+		// Extract upgrade information
+		if upgrade := res.Header.Get("Upgrade"); upgrade != "" {
+			s.responseChain.ProtocolUpgrade = &UpgradeInfo{
+				Protocol: upgrade,
+				Headers:  res.Header.Clone(),
+			}
+		}
+
+	case http.StatusProcessing: // Processing (WebDAV)
+		s.logger.Debug("received 102 Processing")
+		// Stay in current state, continue waiting
+
+	case http.StatusEarlyHints: // Early Hints
+		s.logger.Debug("received 103 Early Hints")
+		// Stay in current state, continue waiting
+
+	default:
+		s.logger.Debug("received unknown 1xx response", zap.Int("status", res.StatusCode))
+	}
+
+	// Call plugin for interim response
+	if s.pluginConn != nil {
+		if err := s.pluginConn.OnHttpResponseHeaders(false); err != nil {
+			s.logger.Error("plugin interim response headers", zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
 func (s *Session) WriteRequestBody(data []byte, done bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.logger.Debug("writing request body", zap.Int("length", len(data)))
+	s.logger.Debug("writing request body", zap.Int("length", len(data)), zap.Bool("done", done), zap.String("state", s.StateString()))
 
+	// If we're awaiting an interim response and haven't received 100 Continue yet,
+	// this shouldn't normally happen since clients wait for 100-Continue before sending body
+	if s.State == SessionStateAwaitingInterim && s.expectContinue {
+		s.logger.Warn("received request body while still awaiting 100-Continue - protocol violation or timing issue",
+			zap.Int("length", len(data)), zap.Bool("done", done))
+		// Just ignore the data - the client should resend after 100-Continue
+		return
+	}
+
+	// Process the body data normally
+	s.processRequestBody(data, done)
+}
+
+// processRequestBody handles the actual request body processing and plugin callbacks
+func (s *Session) processRequestBody(data []byte, done bool) {
 	if s.pluginConn != nil {
 		// call the request body callback
 		if err := s.pluginConn.OnHttpRequestBody(data, done); err != nil {
@@ -220,7 +393,8 @@ func (s *Session) WriteRequestBody(data []byte, done bool) {
 		return
 	}
 
-	// set the state
+	// set the state based on current state - always transition to expecting response
+	s.logger.Debug("request body complete, transitioning to response headers state")
 	s.State = SessionStateResponseHeaders
 }
 
@@ -314,7 +488,35 @@ func (s *Session) IsClosed() bool {
 }
 
 func (s *Session) IsParsingResponse() bool {
-	return s.State == SessionStateResponseHeaders || s.State == SessionStateResponseBody
+	return s.State == SessionStateResponseHeaders || s.State == SessionStateResponseBody ||
+		s.State == SessionStateAwaitingInterim || s.State == SessionStateInterimResponse
+}
+
+// CanAcceptRequestBody returns true if the session can accept request body data
+func (s *Session) CanAcceptRequestBody() bool {
+	return s.State == SessionStateRequestBody ||
+		(s.State == SessionStateAwaitingInterim && s.expectContinue)
+}
+
+// IsProtocolUpgraded returns true if the connection has switched protocols
+func (s *Session) IsProtocolUpgraded() bool {
+	return s.protocolUpgraded
+}
+
+// GetUpgradeInfo returns information about the protocol upgrade, if any
+func (s *Session) GetUpgradeInfo() *UpgradeInfo {
+	if s.responseChain != nil {
+		return s.responseChain.ProtocolUpgrade
+	}
+	return nil
+}
+
+// GetInterimResponses returns all interim responses received
+func (s *Session) GetInterimResponses() []*InterimResponse {
+	if s.responseChain != nil {
+		return s.responseChain.InterimResponses
+	}
+	return nil
 }
 
 func (s *Session) StateString() string {
@@ -323,10 +525,16 @@ func (s *Session) StateString() string {
 		return "request_headers"
 	case SessionStateRequestBody:
 		return "request_body"
+	case SessionStateAwaitingInterim:
+		return "awaiting_interim"
+	case SessionStateInterimResponse:
+		return "interim_response"
 	case SessionStateResponseHeaders:
 		return "response_headers"
 	case SessionStateResponseBody:
 		return "response_body"
+	case SessionStateProtocolSwitch:
+		return "protocol_switch"
 	case SessionStateDone:
 		return "done"
 	default:

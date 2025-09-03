@@ -80,6 +80,15 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// Check if we need to handle protocol switch
+	if t.session != nil && t.session.IsProtocolUpgraded() {
+		t.logger.Debug("protocol has been upgraded, stopping HTTP/1.1 processing")
+		if upgrade := t.session.GetUpgradeInfo(); upgrade != nil {
+			t.logger.Debug("protocol switched", zap.String("protocol", upgrade.Protocol))
+		}
+		return nil // Stop processing as HTTP/1.1
+	}
+
 	// determine the phase
 	var phase Phase
 
@@ -96,13 +105,23 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 	}
 
 	// if we're processing a response and we get a request, we need to close
+	// unless we're awaiting an interim response like 100-Continue
 	if phase == PhaseRequest && t.session != nil && t.session.IsParsingResponse() {
-		t.session.Close()
+		// Allow new request if we're in protocol switch state (connection reuse)
+		if t.session.State != SessionStateProtocolSwitch && t.session.State != SessionStateAwaitingInterim {
+			t.session.Close()
+		}
 	}
 
 	// if we don't have a session and we get a response, we need to ignore
 	if phase == PhaseResponse && t.session == nil {
 		return nil
+	}
+
+	// Special case: if we're awaiting interim response and get response data, allow it
+	if phase == PhaseResponse && t.session != nil &&
+		(t.session.State == SessionStateAwaitingInterim || t.session.State == SessionStateRequestBody) {
+		t.logger.Debug("processing response while in request phase", zap.String("state", t.session.StateString()))
 	}
 
 	// create a session if we don't have one
@@ -129,6 +148,12 @@ func (t *HTTPStream) writeRequest(data []byte) {
 
 	// update the bytes
 	t.session.wrBytes += int64(len(data))
+
+	// Check if we can accept request body data in current state
+	if !t.session.CanAcceptRequestBody() && t.session.State != SessionStateRequestHeaders {
+		t.logger.Debug("cannot accept request body in current state", zap.String("state", t.session.StateString()))
+		return
+	}
 
 	_, err := t.session.requestParser.Write(data)
 	if err != nil {

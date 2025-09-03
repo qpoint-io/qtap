@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -315,9 +316,9 @@ func (m *Manager) initProcObservers(p *Process, replace bool) {
 func (m *Manager) removeProc(p *Process) error {
 	// report metrics
 	labels := getProcessLabels(p)
-	processCloseTotal.WithLabelValues(labels...).Inc()
+	processCloseTotal.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Inc()
 	processActiveTotal.WithLabelValues(labels...).Dec()
-	processDuration.WithLabelValues(labels...).Observe(time.Since(p.startTime).Seconds())
+	processDuration.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Observe(time.Since(p.startTime).Seconds())
 
 	// acquire a lock
 	m.mu.Lock()

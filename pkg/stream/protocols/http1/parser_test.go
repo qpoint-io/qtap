@@ -34,7 +34,7 @@ func TestStreamParser_InterimResponses(t *testing.T) {
 			}
 		}
 
-		ctx := context.Background()
+		ctx := t.Context()
 		logger := zap.NewNop()
 		parser := NewStreamParser(ctx, logger, headerHandler, bodyHandler)
 
@@ -72,7 +72,7 @@ func TestStreamParser_InterimResponses(t *testing.T) {
 			gotResponse = msg
 		}
 
-		ctx := context.Background()
+		ctx := t.Context()
 		logger := zap.NewNop()
 		parser := NewStreamParser(ctx, logger, headerHandler, nil)
 

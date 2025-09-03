@@ -105,7 +105,6 @@ func (h *filterInstance) recordRequestMetrics() {
 
 	requestsTotal.WithLabelValues(h.method, host, h.statusCode, protocol).Inc()
 	requestsDuration.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(h.responseStart.Sub(h.requestStart).Milliseconds()))
-	requestsSize.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(h.ctx.Meta().WriteBytes()))
 }
 
 func (h *filterInstance) recordResponseMetrics() {
@@ -118,14 +117,21 @@ func (h *filterInstance) recordResponseMetrics() {
 
 	responsesTotal.WithLabelValues(h.method, host, h.statusCode, protocol).Inc()
 	responsesDuration.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(time.Since(h.responseStart).Milliseconds()))
-	responsesSize.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(h.ctx.Meta().ReadBytes()))
 
 	// record the combined duration of the request and response
 	duration.Observe(float64(time.Since(h.requestStart).Milliseconds()))
 }
 
 func (h *filterInstance) Destroy() {
-	// No logging needed
+	protocol := h.ctx.Meta().Protocol()
+
+	host := h.host
+	if host == "" {
+		host = h.ctx.Meta().Endpoint()
+	}
+
+	requestsSize.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(h.ctx.Meta().WriteBytes()))
+	responsesSize.WithLabelValues(h.method, host, h.statusCode, protocol).Observe(float64(h.ctx.Meta().ReadBytes()))
 }
 
 func (f *Factory) PluginType() plugins.PluginType {

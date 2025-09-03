@@ -34,6 +34,13 @@ struct {
 	__uint(max_entries, 5000);
 } process_meta_map SEC(".maps");
 
+struct {
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
+	__uint(max_entries, 4096);
+	__type(key, int32_t); // pid
+	__type(value, int32_t); // exit code
+} exit_code_map SEC(".maps");
+
 static __always_inline struct process_meta *get_process_meta(__u32 pid) {
 	return bpf_map_lookup_elem(&process_meta_map, &pid);
 }
@@ -91,6 +98,8 @@ struct exit_info_event {
 	uint64_t type;
 	// Process PID
 	int32_t pid;
+	// Exit code
+	int32_t exit_code;
 };
 
 // ring buffer to broadcast process events
@@ -197,6 +206,23 @@ int syscall__probe_ret_execveat() {
 	return process_exec_ret();
 }
 
+// sys_enter_exit_group is called when the process is being removed from the system
+// bpftrace -e 'tracepoint:syscalls:sys_enter_exit_group { printf("Process exit: pid=%d comm=%s exit_code=%d\n", pid, comm, args->error_code);
+// @exit_codes[comm] = args->error_code; }'
+SEC("tracepoint/syscalls/sys_enter_exit_group")
+int syscall__probe_entry_exit_group(struct trace_event_raw_sys_enter *ctx) {
+	int pid           = bpf_get_current_userspace_pid();
+	int32_t exit_code = (int32_t)ctx->args[0];
+
+	// debug
+	// bpf_printk("syscall__probe_entry_exit_group = pid: %u, exit_code: %d\n", pid, exit_code);
+
+	bpf_map_update_elem(&exit_code_map, &pid, &exit_code, BPF_ANY);
+
+	return 0;
+}
+
+// sched_process_exit is called when the process is being removed from the scheduler
 // bpftrace -e 'tracepoint:sched:sched_process_exit { printf("pid: %d, comm: %s\n", args->pid, args->comm); }'
 SEC("tracepoint/sched/sched_process_exit")
 int tracepoint__sched__process_exit(struct trace_event_raw_sched_process_template *ctx) {
@@ -206,11 +232,20 @@ int tracepoint__sched__process_exit(struct trace_event_raw_sched_process_templat
 	if (!exit_event)
 		return 0;
 
-	exit_event->type = PROC_EXIT;
-	exit_event->pid  = ctx->pid;
+	int32_t exit_code      = 0;
+	int32_t pid            = ctx->pid;
+	int32_t *exit_code_ptr = bpf_map_lookup_elem(&exit_code_map, &pid);
+	if (exit_code_ptr != NULL) {
+		exit_code = *exit_code_ptr;
+		bpf_map_delete_elem(&exit_code_map, &pid);
+	}
+
+	exit_event->type      = PROC_EXIT;
+	exit_event->pid       = pid;
+	exit_event->exit_code = exit_code;
 
 	// debug
-	// bpf_printk("tracepoint__sched__process_exit = pid: %u\n", exit_event->pid);
+	// bpf_printk("tracepoint__sched__process_exit = pid: %u, exit_code: %d\n", exit_event->pid, exit_code);
 
 	bpf_ringbuf_submit(exit_event, 0);
 

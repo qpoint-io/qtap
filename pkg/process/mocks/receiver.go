@@ -55,15 +55,15 @@ func (mr *MockReceiverMockRecorder) RegisterProcess(p any) *gomock.Call {
 }
 
 // UnregisterProcess mocks base method.
-func (m *MockReceiver) UnregisterProcess(pid int) error {
+func (m *MockReceiver) UnregisterProcess(pid, exitCode int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnregisterProcess", pid)
+	ret := m.ctrl.Call(m, "UnregisterProcess", pid, exitCode)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnregisterProcess indicates an expected call of UnregisterProcess.
-func (mr *MockReceiverMockRecorder) UnregisterProcess(pid any) *gomock.Call {
+func (mr *MockReceiverMockRecorder) UnregisterProcess(pid, exitCode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterProcess", reflect.TypeOf((*MockReceiver)(nil).UnregisterProcess), pid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterProcess", reflect.TypeOf((*MockReceiver)(nil).UnregisterProcess), pid, exitCode)
 }

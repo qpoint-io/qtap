@@ -18,7 +18,7 @@ import (
 //go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/receiver.go -package mocks . Receiver
 type Receiver interface {
 	RegisterProcess(p *Process) error
-	UnregisterProcess(pid int) error
+	UnregisterProcess(pid, exitCode int) error
 }
 
 // Eventer is the interface for the process eventer
@@ -88,11 +88,13 @@ func (m *Manager) RegisterProcess(p *Process) error {
 	return m.addProc(p)
 }
 
-func (m *Manager) UnregisterProcess(pid int) error {
+func (m *Manager) UnregisterProcess(pid, exitCode int) error {
 	proc, exists := m.procs.Load(pid)
 	if !exists {
 		return nil
 	}
+
+	proc.ExitCode = exitCode
 
 	return m.removeProc(proc)
 }

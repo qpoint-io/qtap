@@ -268,7 +268,7 @@ func TestHandleExitEvent(t *testing.T) {
 
 			// Create mock receiver
 			mockRcv := mocks.NewMockReceiver(ctrl)
-			mockRcv.EXPECT().UnregisterProcess(int(tt.pid)).Return(tt.endProcErr)
+			mockRcv.EXPECT().UnregisterProcess(int(tt.pid), 0).Return(tt.endProcErr)
 
 			// Create manager
 			m := &Manager{

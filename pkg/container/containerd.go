@@ -217,6 +217,9 @@ func (c *Containerd) buildContainerRecord(ctx context.Context, container contain
 }
 
 func (c *Containerd) watchContainerEventsWithRetry(ctx context.Context) {
+	backoff := time.Second
+	maxBackoff := time.Minute
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -224,13 +227,26 @@ func (c *Containerd) watchContainerEventsWithRetry(ctx context.Context) {
 		default:
 		}
 
-		c.watchContainerEvents(ctx)
-
-		time.Sleep(DefaultWatchInterval)
+		if c.watchContainerEvents(ctx) {
+			backoff = time.Second
+		} else {
+			c.logger.Error("container event subscription failed", zap.Duration("backoff", backoff))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+				if backoff < maxBackoff {
+					backoff *= 2
+					if backoff > maxBackoff {
+						backoff = maxBackoff
+					}
+				}
+			}
+		}
 	}
 }
 
-func (c *Containerd) watchContainerEvents(ctx context.Context) {
+func (c *Containerd) watchContainerEvents(ctx context.Context) bool {
 	cl := c.client
 
 	var chMsg <-chan *events.Envelope
@@ -242,13 +258,13 @@ func (c *Containerd) watchContainerEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return true
 		case err := <-chErr:
 			if errors.Is(err, context.Canceled) {
-				return
+				return true
 			}
 			c.logger.Error("container event subscription error", zap.Error(err))
-			return
+			return false
 		case msg = <-chMsg:
 		}
 

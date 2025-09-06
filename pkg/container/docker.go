@@ -181,6 +181,9 @@ func (d *docker) inspectContainer(ctx context.Context, containerID string) (*Con
 }
 
 func (d *docker) watchContainerEventsWithRetry(ctx context.Context) {
+	backoff := time.Second
+	maxBackoff := time.Minute
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -188,13 +191,26 @@ func (d *docker) watchContainerEventsWithRetry(ctx context.Context) {
 		default:
 		}
 
-		d.watchContainerEvents(ctx)
-
-		time.Sleep(DefaultWatchInterval)
+		if d.watchContainerEvents(ctx) {
+			backoff = time.Second
+		} else {
+			d.logger.Error("docker event subscription failed", zap.Duration("backoff", backoff))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+				if backoff < maxBackoff {
+					backoff *= 2
+					if backoff > maxBackoff {
+						backoff = maxBackoff
+					}
+				}
+			}
+		}
 	}
 }
 
-func (d *docker) watchContainerEvents(ctx context.Context) {
+func (d *docker) watchContainerEvents(ctx context.Context) bool {
 	c := d.client
 
 	var chMsg <-chan events.Message
@@ -206,12 +222,13 @@ func (d *docker) watchContainerEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return true
 		case err := <-chErr:
 			if errors.Is(err, context.Canceled) {
-				return
+				return true
 			}
-			return
+			d.logger.Error("docker event subscription error", zap.Error(err))
+			return false
 		case msg = <-chMsg:
 		}
 

@@ -11,7 +11,6 @@ import (
 const (
 	DefaultRuntimeTimeout  = time.Second * 2
 	DefaultStartupTimeout  = time.Second * 5
-	DefaultWatchInterval   = time.Second * 15
 	HumanContainerIDLength = 12
 )
 

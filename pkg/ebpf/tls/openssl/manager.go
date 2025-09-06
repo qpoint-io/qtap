@@ -92,6 +92,9 @@ func (m *OpenSSLManager) Start() error {
 }
 
 func (m *OpenSSLManager) Stop() (err error) {
+	// stop the TTL cache cleanup goroutine
+	m.cache.Stop()
+
 	// iterate through all of the containers and cleanup
 	m.containers.Iter(func(_ string, c *Container) bool {
 		if err = c.Cleanup(); err != nil {

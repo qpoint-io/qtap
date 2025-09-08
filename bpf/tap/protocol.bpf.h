@@ -23,12 +23,7 @@
 
 #include "vmlinux.h"
 #include "tap.bpf.h"
-
-// buffer info struct for protocol detection
-struct buf_info {
-	const void *buf;
-	size_t iovcnt;
-};
+#include "buffers.bpf.h"
 
 // given a buffer and connection information, dynamically detect the protocol
 static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_info, size_t count);

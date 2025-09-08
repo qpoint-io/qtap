@@ -24,6 +24,7 @@
 #include "common.bpf.h"
 #include "protocol.bpf.h"
 #include "bpf_endian.h"
+#include "buffers.bpf.h"
 
 #define TLS_RECORD_HEADER_SIZE         5
 #define TLS_HANDSHAKE_HEADER_SIZE      4
@@ -37,75 +38,6 @@
 #define HTTP2_PREFACE_LEN 24
 const unsigned char HTTP2_PREFACE[HTTP2_PREFACE_LEN] = {
 	'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n', 'S', 'M', '\r', '\n', '\r', '\n'};
-
-static size_t buf_read_simple(char *dst, uint32_t size, const void *buf, size_t offset) {
-	if (bpf_probe_read_user(dst, size, buf + offset) != 0)
-		return 0;
-
-	if (size > 1)
-		return size - 1;
-
-	return size;
-}
-
-static size_t buf_read_iovec(char *dst, uint32_t size, struct buf_info *buf_info, size_t offset) {
-	// read from a vector of buffers
-	const struct iovec *iov = (const struct iovec *)buf_info->buf;
-	size_t bytes_read       = 0;
-	size_t bytes_skipped    = 0;
-
-	// don't let the compiler confuse the verifier
-	asm volatile("" : "+r"(bytes_read) :);
-	size_t bytes_to_read = size;
-
-	// loop through all the buffers in the list
-	for (int i = 0; (i < BUF_CHUNK_LIMIT) && (i < buf_info->iovcnt) && (bytes_read < bytes_to_read); ++i) {
-		struct iovec iov_cpy;
-		// Safely attempt to read the iovec struct
-		if (bpf_probe_read_user(&iov_cpy, sizeof(struct iovec), &iov[i]) != 0) {
-			break; // Stop on failure
-		}
-
-		size_t bytes_to_skip = 0;
-		// if bytes_skipped is less than offset, we need to skip the first offset bytes
-		if (bytes_read == 0 && bytes_skipped < offset) {
-			// if the remaining bytes to skip is greater than the iov_len, skip the entire iov
-			bytes_to_skip = offset - bytes_skipped;
-
-			if (bytes_to_skip >= iov_cpy.iov_len) {
-				bytes_skipped += iov_cpy.iov_len;
-				continue;
-			}
-		}
-
-		// now we can safely read from the iovec buffer
-		if (bytes_to_read - bytes_read > 0) {
-			if (bpf_probe_read_user(&dst[bytes_read], bytes_to_read - bytes_read, iov_cpy.iov_base + bytes_to_skip) != 0) {
-				break; // Stop on failure
-			}
-
-			// update bytes_read
-			bytes_read += bytes_to_read - bytes_read;
-		}
-	}
-
-	return bytes_read;
-}
-
-static size_t buf_read(char *dst, uint32_t size, struct buf_info *buf_info, size_t offset) {
-	bool is_iovec = buf_info->iovcnt > 0;
-
-	if (size == 0) {
-		return 0;
-	}
-
-	// Simple read if not iovoc
-	if (!is_iovec) {
-		return buf_read_simple(dst, size, buf_info->buf, offset);
-	}
-
-	return buf_read_iovec(dst, size, buf_info, offset);
-}
 
 static bool capture_tls_client_hello(struct socket_tls_client_hello_event *handshake, struct buf_info *buf_info, size_t count) {
 	if (!handshake || count < MINIMUM_TLS_HANDSHAKE_SIZE || !buf_info->buf) {

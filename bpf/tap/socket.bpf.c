@@ -34,6 +34,7 @@
 #include "sock_utils.bpf.h"
 #include "net.bpf.h"
 #include "process.bpf.h"
+#include "buffers.bpf.h"
 
 // This defines how many chunks a perf_submit can support.
 // This applies to messages that are over MAX_MSG_SIZE,

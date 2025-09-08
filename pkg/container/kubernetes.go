@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"go.uber.org/zap"
 	cri "k8s.io/cri-api/pkg/apis"
 	remote "k8s.io/cri-client/pkg"
@@ -19,9 +21,20 @@ var DefaultRuntimeEndpoints = []string{
 	"unix:///run/containerd/containerd.sock",
 }
 
+const (
+	podCacheTTL  = 30 * time.Second
+	podCacheSize = 500
+)
+
+type podCacheEntry struct {
+	pod   Pod
+	found bool
+}
+
 type KubernetesAccessor struct {
-	logger *zap.Logger
-	rs     cri.RuntimeService
+	logger   *zap.Logger
+	rs       cri.RuntimeService
+	podCache *expirable.LRU[string, *podCacheEntry]
 }
 
 func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*KubernetesAccessor, string, []error) {
@@ -30,7 +43,9 @@ func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*Kube
 		return nil, "", errs
 	}
 
-	return &KubernetesAccessor{logger: logger, rs: rs}, endpoint, nil
+	podCache := expirable.NewLRU[string, *podCacheEntry](podCacheSize, nil, podCacheTTL)
+
+	return &KubernetesAccessor{logger: logger, rs: rs, podCache: podCache}, endpoint, nil
 }
 
 func (m *KubernetesAccessor) addPodToContainer(c *Container) *Container {
@@ -51,24 +66,41 @@ func (m *KubernetesAccessor) addPodToContainer(c *Container) *Container {
 
 func (m *KubernetesAccessor) getPodByName(ctx context.Context, name, namespace string) (p Pod) {
 	if m.rs == nil {
-		return
+		return p
 	}
 
+	// Check cache first
+	cacheKey := fmt.Sprintf("%s/%s", namespace, name)
+	if entry, found := m.podCache.Get(cacheKey); found {
+		if entry.found {
+			return entry.pod
+		}
+		// Cache hit for not found pod
+		return p
+	}
+
+	// Cache miss - fetch from API
 	sandboxes, err := m.rs.ListPodSandbox(ctx, nil)
 	if err != nil {
 		m.logger.Warn("list pod sandbox failed", zap.Error(err))
 
-		return
+		m.podCache.Add(cacheKey, &podCacheEntry{pod: p, found: false})
+		return p
 	}
 
+	found := false
 	for _, sandbox := range sandboxes {
 		if sandbox.Metadata.Name != name || sandbox.Metadata.Namespace != namespace {
 			continue
 		}
 		p.Labels = tidyLabels(sandbox.Labels)
 		p.Annotations = sandbox.Annotations
+		found = true
 		break
 	}
+
+	// Cache the result (both found and not found)
+	m.podCache.Add(cacheKey, &podCacheEntry{pod: p, found: found})
 
 	return p
 }

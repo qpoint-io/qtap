@@ -1,6 +1,6 @@
 module github.com/qpoint-io/qtap
 
-go 1.24.6
+go 1.25.1
 
 require (
 	github.com/andybalholm/brotli v1.1.1
@@ -9,7 +9,7 @@ require (
 	github.com/containerd/containerd/api v1.9.0
 	github.com/containerd/containerd/v2 v2.1.1
 	github.com/containerd/typeurl/v2 v2.2.3
-	github.com/docker/docker v28.0.4+incompatible
+	github.com/docker/docker v28.4.0+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/gopacket/gopacket v1.3.1
@@ -217,6 +217,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/locker v1.0.1 // indirect
+	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/signal v0.7.1 // indirect

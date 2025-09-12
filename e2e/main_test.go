@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"syscall"
 	"testing"
@@ -53,8 +54,12 @@ func mainSetup() error {
 		c := e2e.DefaultTestConfig(func(c *config.Config) {
 			// ignore connections related to GitHub Actions tooling
 			c.Tap.Filters.Custom = append(c.Tap.Filters.Custom, []config.TapFilter{
+				// {
+				// 	Exe:      "/usr/bin/python",
+				// 	Strategy: config.MatchStrategy_PREFIX,
+				// },
 				{
-					Exe:      "/usr/bin/python",
+					Exe:      "/usr/bin/docker-proxy",
 					Strategy: config.MatchStrategy_PREFIX,
 				},
 				{
@@ -70,6 +75,18 @@ func mainSetup() error {
 	}
 	e2ectx.ConfProvider = e2e.NewConfigProvider(e2ectx.TestConfig(nil))
 	e2ectx.L = logger
+
+	{
+		// hit the google DNS to get the machines local IP
+		conn, err := net.Dial("udp", "8.8.8.8:80")
+		if err != nil {
+			logger.Info("⚠️ failed to get machine IP", zap.Error(err))
+		}
+		conn.Close()
+
+		// set on context for use in tests that require hairpinning
+		e2ectx.SetMachineIP(conn.LocalAddr().(*net.UDPAddr).IP)
+	}
 
 	serviceFactories = []services.FactoryFactory{
 		// Eventstore services

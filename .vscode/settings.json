@@ -1,0 +1,11 @@
+{
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": [
+        "--fast",
+        "--config=.golangci.yaml"
+    ],
+    "go.buildTags": "e2e",
+    "files.associations": {
+        "bpf_helpers.h": "c"
+    }
+}

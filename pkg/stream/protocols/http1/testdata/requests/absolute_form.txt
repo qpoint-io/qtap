@@ -1,0 +1,4 @@
+GET http://www.example.com/resource HTTP/1.1
+Host: www.example.com
+User-Agent: ProxyClient/1.0
+

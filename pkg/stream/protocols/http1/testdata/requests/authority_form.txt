@@ -1,0 +1,4 @@
+CONNECT www.example.com:443 HTTP/1.1
+Host: www.example.com
+User-Agent: TunnelClient/1.0
+

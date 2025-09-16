@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Length: 10
+Content-Length: 20
+Server: TestServer/1.0
+
+Some data.

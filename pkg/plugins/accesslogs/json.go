@@ -58,7 +58,7 @@ func (j *JSONPrinter) PrintSummary() {
 		zap.String("method", method),
 		zap.String("url", url),
 		zap.Int("status", status),
-		zap.String("qpoint_request_id", requestID))
+		zap.String("request_id", requestID))
 }
 
 // PrintDetails implements Printer.PrintDetails
@@ -74,7 +74,7 @@ func (j *JSONPrinter) PrintFull() error {
 func (j *JSONPrinter) printJSONDetails(includeBody bool) error {
 	meta := j.ctx.Meta()
 	reqHeaders := tools.NewHeaderMap(j.reqheaders)
-	qpointRequestID, _ := reqHeaders.QpointRequestID()
+	requestID := meta.RequestID()
 	url, _ := reqHeaders.URL()
 	method, _ := reqHeaders.Method()
 	protocol := meta.Protocol()
@@ -85,11 +85,11 @@ func (j *JSONPrinter) printJSONDetails(includeBody bool) error {
 	status, _ := resHeaders.Status()
 
 	req := map[string]any{
-		"url":               url,
-		"method":            method,
-		"proto":             protocol,
-		"qpoint_request_id": qpointRequestID,
-		"headers":           j.reqheaders.All(),
+		"url":        url,
+		"method":     method,
+		"proto":      protocol,
+		"request_id": requestID,
+		"headers":    j.reqheaders.All(),
 	}
 	if includeBody {
 		if reqHeaders.BinaryContentType() {

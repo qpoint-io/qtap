@@ -93,10 +93,6 @@ func (h HeaderMap) ContentType() (string, bool) {
 	return h.Get("Content-Type")
 }
 
-func (h HeaderMap) QpointRequestID() (string, bool) {
-	return h.Get("qpoint-request-id")
-}
-
 func (h HeaderMap) MimeCategory() (string, bool) {
 	ct, ok := h.ContentType()
 	if !ok {

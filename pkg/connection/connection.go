@@ -386,6 +386,10 @@ func (c *Connection) Close() {
 }
 
 func (c *Connection) SetDomain(input string) {
+	if input == "" {
+		return
+	}
+
 	if !c.domainIsIP && len(c.domain) > 0 {
 		return
 	}
@@ -400,6 +404,11 @@ func (c *Connection) SetDomain(input string) {
 
 	// don't allow an IP to replace a domain
 	if domainIsIP && !c.domainIsIP {
+		return
+	}
+
+	// don't allow the same domain to be set twice
+	if strings.EqualFold(domain, c.domain) {
 		return
 	}
 

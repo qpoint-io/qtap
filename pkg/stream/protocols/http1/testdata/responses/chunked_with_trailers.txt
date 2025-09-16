@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+Server: TestServer/1.0
+
+7
+Mozilla
+0
+Expires: Wed, 21 Oct 2015 07:28:00 GMT
+Custom-Trailer: trailer-value
+

@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 91
+Server: nginx/1.18.0
+Date: Wed, 13 Sep 2023 14:30:00 GMT
+Connection: keep-alive
+
+[{"id": 1, "name": "John Doe", "email": "john@example.com"}, {"id": 2, "name": "Jane Doe"}]

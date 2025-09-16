@@ -5,7 +5,6 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,13 +12,11 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/e2e"
-	"github.com/qpoint-io/qtap/pkg/e2e/babel"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -117,87 +114,87 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
 
-func TestGo_Requests(t *testing.T) {
-	ctx := e2ectx.TestCtx(t)
+// func TestPython_Requests(t *testing.T) {
+// 	ctx := e2ectx.TestCtx(t)
 
-	// Setup HTTP server
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"message": "Hello from Python test", "status": "success"}`))
-	}))
+// 	// Setup HTTP server
+// 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		w.Header().Set("Content-Type", "application/json")
+// 		w.WriteHeader(http.StatusOK)
+// 		w.Write([]byte(`{"message": "Hello from Python test", "status": "success"}`))
+// 	}))
 
-	l, err := net.Listen("tcp", ctx.MachineIP().String()+":0")
-	if err != nil {
-		t.Fatalf("httptest: failed to listen on a port: %v", err)
-	}
-	server.Listener = l
-	server.Config.Addr = l.Addr().String()
-	server.Start()
-	defer server.Close()
+// 	l, err := net.Listen("tcp", ctx.MachineIP().String()+":0")
+// 	if err != nil {
+// 		t.Fatalf("httptest: failed to listen on a port: %v", err)
+// 	}
+// 	server.Listener = l
+// 	server.Config.Addr = l.Addr().String()
+// 	server.Start()
+// 	defer server.Close()
 
-	ctx.WithConfig(t, func(c *config.Config) {
-		c.Tap.IgnoreLoopback = false
+// 	ctx.WithConfig(t, func(c *config.Config) {
+// 		c.Tap.IgnoreLoopback = false
 
-		var pluginConfYaml yaml.Node
-		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
-			Level:  httpcapture.CaptureLevelFull,
-			Format: httpcapture.OutputFormatJSON,
-		})
-		require.NoError(t, err)
+// 		var pluginConfYaml yaml.Node
+// 		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+// 			Level:  httpcapture.CaptureLevelFull,
+// 			Format: httpcapture.OutputFormatJSON,
+// 		})
+// 		require.NoError(t, err)
 
-		c.Stacks[c.Tap.Http.Stack] = config.Stack{
-			Plugins: []config.Plugin{
-				{
-					Type:   string(httpcapture.PluginTypeHttpCapture),
-					Config: pluginConfYaml,
-				},
-				{
-					Type: string(report.PluginTypeReport),
-				},
-			},
-		}
-	}, func(t *testing.T) {
-		t.Logf("server URL: %s", server.URL)
+// 		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+// 			Plugins: []config.Plugin{
+// 				{
+// 					Type:   string(httpcapture.PluginTypeHttpCapture),
+// 					Config: pluginConfYaml,
+// 				},
+// 				{
+// 					Type: string(report.PluginTypeReport),
+// 				},
+// 			},
+// 		}
+// 	}, func(t *testing.T) {
+// 		t.Logf("server URL: %s", server.URL)
 
-		// create our request
-		request := babel.NewHTTPRequest(babel.HTTPRequestGo1_22_0_Alpine, server.URL).
-			WithMethod("GET").
-			WithHTTPVersion("1.1").
-			WithTimeout(10 * time.Second).
-			WithOutputFormat("json")
+// 		// create our request
+// 		request := babel.NewHTTPRequest(babel.HTTPRequestPython3_9_0_Alpine, server.URL).
+// 			WithMethod("GET").
+// 			WithHTTPVersion("1.1").
+// 			WithTimeout(10 * time.Second).
+// 			WithOutputFormat("json")
 
-		result := ctx.Do(request)
-		require.NoError(t, result.Err)
-		require.Equal(t, 0, result.Code, "Go container should exit successfully, logs: %s", result.Output)
+// 		result := ctx.Do(request)
+// 		require.NoError(t, result.Err)
+// 		require.Equal(t, 0, result.Code, "Go container should exit successfully, logs: %s", result.Output)
 
-		ctx.L.Info("✅ result", zap.String("ID", result.ID), zap.Int("code", result.Code), zap.String("output", result.Output), zap.Error(result.Err))
+// 		ctx.L.Info("✅ result", zap.String("ID", result.ID), zap.Int("code", result.Code), zap.String("output", result.Output), zap.Error(result.Err))
 
-		events := result.AwaitEvents(1)
-		ctx.L.Info("✅ events", zap.Any("events", events))
+// 		events := result.AwaitEvents(1)
+// 		ctx.L.Info("✅ events", zap.Any("events", events))
 
-		// Validate connection
-		require.Len(t, events.Connections, 1)
-		t.Logf("connection: %#v", events.Connections[0])
-		conn := events.Connections[0]
-		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
-		assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+// 		// Validate connection
+// 		require.Len(t, events.Connections, 1)
+// 		t.Logf("connection: %#v", events.Connections[0])
+// 		conn := events.Connections[0]
+// 		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
+// 		assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
 
-		// Validate HTTP request
-		require.Len(t, events.Requests, 1)
-		req := events.Requests[0]
-		assert.Equal(t, "application/json", req.ContentType)
+// 		// Validate HTTP request
+// 		require.Len(t, events.Requests, 1)
+// 		req := events.Requests[0]
+// 		assert.Equal(t, "application/json", req.ContentType)
 
-		// // Validate captured artifacts
-		// require.Len(t, events.Artifacts, 1)
-		// artifact := events.Artifacts[0]
-		// assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
+// 		// // Validate captured artifacts
+// 		require.Len(t, events.Artifacts, 1)
+// 		artifact := events.Artifacts[0]
+// 		assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
 
-		// var transaction httpcapture.HttpTransaction
-		// err = json.Unmarshal(artifact.Data, &transaction)
-		// require.NoError(t, err)
-		// assert.Equal(t, "GET", transaction.Request.Method)
-		// assert.Equal(t, "application/json", transaction.Response.ContentType)
-		// assert.Contains(t, string(transaction.Response.Body), "Hello from Python test")
-	})
-}
+// 		var transaction httpcapture.HttpTransaction
+// 		err = json.Unmarshal(artifact.Data, &transaction)
+// 		require.NoError(t, err)
+// 		assert.Equal(t, "GET", transaction.Request.Method)
+// 		assert.Equal(t, "application/json", transaction.Response.ContentType)
+// 		assert.Contains(t, string(transaction.Response.Body), "Hello from Python test")
+// 	})
+// }

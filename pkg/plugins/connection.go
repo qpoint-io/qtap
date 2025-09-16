@@ -200,6 +200,7 @@ func (c *Connection) SetRequest(req *http.Request) {
 	span.AddEvent("set_request")
 
 	// extract URL pieces and set them as headers
+	// TODO(Jon): we should not be setting these
 	req.Header.Set(":authority", req.Host)
 	req.Header.Set(":method", req.Method)
 	req.Header.Set(":path", req.URL.Path)

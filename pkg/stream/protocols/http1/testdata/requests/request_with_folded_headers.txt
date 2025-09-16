@@ -1,0 +1,6 @@
+GET /resource HTTP/1.1
+Host: example.com
+X-Long-Header: some value
+ more value
+User-Agent: FoldedClient/1.0
+

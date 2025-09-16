@@ -1,4 +1,4 @@
-package http1
+package http1_old
 
 import (
 	"bytes"

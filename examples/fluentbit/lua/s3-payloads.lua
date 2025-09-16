@@ -17,7 +17,7 @@ function process_payloads(tag, timestamp, record)
     }
     
     -- Get the request ID from the original record
-    local request_id = record.request and record.request.qpoint_request_id
+    local request_id = record.request and record.request.request_id
     
     -- Get S3 configuration from environment variables
     local s3_bucket = os.getenv("S3_BUCKET")
@@ -71,7 +71,7 @@ function process_payloads(tag, timestamp, record)
             local new_record = {
                 msg = "HTTP payload",
                 payload = field.payload,
-                qpoint_request_id = request_id,
+                request_id = request_id,
                 data = current,
                 s3_key = s3_key
             }

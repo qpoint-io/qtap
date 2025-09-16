@@ -1,0 +1,6 @@
+
+
+GET /resource HTTP/1.1
+Host: example.com
+User-Agent: LeadingCRLFClient/1.0
+

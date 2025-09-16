@@ -116,7 +116,6 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 
 	// set the Qpoint request ID
 	id := xid.New().String()
-	s.req.Header.Set("qpoint-request-id", id)
 	span := trace.SpanFromContext(s.ctx)
 	span.SetAttributes(attribute.String("request.id", id))
 

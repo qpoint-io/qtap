@@ -1,367 +1,227 @@
 package http1
 
 import (
-	"net/http"
-	"net/url"
-	"strings"
+	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 )
 
-func TestStreamParser_InterimResponses(t *testing.T) {
-	t.Run("100 Continue response", func(t *testing.T) {
-		input := "HTTP/1.1 100 Continue\r\n" +
-			"\r\n" +
-			"HTTP/1.1 200 OK\r\n" +
-			"Content-Type: text/plain\r\n" +
-			"Content-Length: 5\r\n" +
-			"\r\n" +
-			"hello"
-
-		var gotResponses []*http.Response
-		var gotBodies [][]byte
-
-		headerHandler := func(msg *http.Response, noBody bool) {
-			gotResponses = append(gotResponses, msg)
-		}
-
-		bodyHandler := func(chunk []byte, done bool) {
-			if chunk != nil {
-				gotBodies = append(gotBodies, chunk)
-			}
-		}
-
-		ctx := t.Context()
-		logger := zap.NewNop()
-		parser := NewStreamParser(ctx, logger, headerHandler, bodyHandler)
-
-		_, err := parser.Write([]byte(input))
-		require.NoError(t, err)
-
-		err = parser.parse()
-		require.NoError(t, err)
-
-		// Should have both interim and final responses
-		require.Len(t, gotResponses, 2)
-
-		// First response should be 100 Continue
-		require.Equal(t, 100, gotResponses[0].StatusCode)
-		require.Equal(t, "100 Continue", gotResponses[0].Status)
-
-		// Second response should be 200 OK
-		require.Equal(t, 200, gotResponses[1].StatusCode)
-		require.Equal(t, "200 OK", gotResponses[1].Status)
-
-		// Should have body data from final response
-		require.Len(t, gotBodies, 1)
-		require.Equal(t, "hello", string(gotBodies[0]))
-	})
-
-	t.Run("101 Switching Protocols", func(t *testing.T) {
-		input := "HTTP/1.1 101 Switching Protocols\r\n" +
-			"Upgrade: websocket\r\n" +
-			"Connection: Upgrade\r\n" +
-			"\r\n"
-
-		var gotResponse *http.Response
-
-		headerHandler := func(msg *http.Response, noBody bool) {
-			gotResponse = msg
-		}
-
-		ctx := t.Context()
-		logger := zap.NewNop()
-		parser := NewStreamParser(ctx, logger, headerHandler, nil)
-
-		_, err := parser.Write([]byte(input))
-		require.NoError(t, err)
-
-		err = parser.parse()
-		require.NoError(t, err)
-
-		require.NotNil(t, gotResponse)
-		require.Equal(t, 101, gotResponse.StatusCode)
-		require.Equal(t, "websocket", gotResponse.Header.Get("Upgrade"))
-	})
+// loadTestData loads test data from the testdata directory
+func loadTestData(t *testing.T, filename string) []byte {
+	t.Helper()
+	path := filepath.Join("testdata", filename)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err, "failed to load test data: %s", filename)
+	return data
 }
 
-func TestStreamParser_ProcessBytes(t *testing.T) {
-	t.Run("http requests", func(t *testing.T) {
-		tests := []struct {
-			name    string
-			input   string
-			wantReq *http.Request
-			wantErr bool
-		}{
-			{
-				name: "simple GET request",
-				input: "GET /path HTTP/1.1\r\n" +
-					"Host: example.com\r\n" +
-					"x-custom-header: custom-header-value\r\n" +
-					"\r\n",
-				wantReq: &http.Request{
-					Method: http.MethodGet,
-					URL: &url.URL{
-						Path: "/path",
-					},
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"X-Custom-Header": []string{"custom-header-value"},
-					},
-				},
-			},
-			{
-				name: "POST request with body",
-				input: "POST /submit HTTP/1.1\r\n" +
-					"Host: example.com\r\n" +
-					"Content-Length: 11\r\n" +
-					"\r\n" +
-					"hello world",
-				wantReq: &http.Request{
-					Method: http.MethodPost,
-					URL: &url.URL{
-						Path: "/submit",
-					},
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Content-Length": []string{"11"},
-					},
-				},
-			},
-			{
-				name: "kubelet request",
-				input: `GET /health HTTP/1.1
-Host: 10.44.0.13:8080
-User-Agent: kube-probe/1.30
-Accept: */*
-Connection: close
+// Example of using the new test harness for a simple singular test
+func TestSimpleHTTPTransactionWithChannels(t *testing.T) {
+	// Load test data
+	requestData := loadTestData(t, "requests/get_simple.txt")
+	responseData := loadTestData(t, "responses/get_200_with_body.txt")
 
+	// Create test recorder
+	recorder := NewTestCallbackRecorder(
+		WithTimeout(2 * time.Second), // Shorter timeout for faster tests
+	)
 
-`,
-				wantReq: &http.Request{
-					Method: http.MethodGet,
-					URL: &url.URL{
-						Path: "/health",
-					},
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"User-Agent": []string{"kube-probe/1.30"},
-						"Accept":     []string{"*/*"},
-						"Connection": []string{"close"},
-					},
-				},
+	// Create parser with test context
+	ctx := t.Context()
+	if deadline, ok := t.Deadline(); ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+		defer cancel()
+	}
+	parser := NewParser(ctx, recorder)
+	defer parser.Close()
+
+	// Send request data
+	err := parser.ProcessEvent(PhaseRequest, requestData)
+	require.NoError(t, err)
+
+	// Wait for request event
+	event, err := recorder.WaitForEvent(EventRequest)
+	require.NoError(t, err)
+	require.NotNil(t, event.Request)
+	require.Equal(t, "GET", event.Request.Method)
+	require.Equal(t, "/api/users", event.Request.RequestURI)
+
+	// Send response data
+	err = parser.ProcessEvent(PhaseResponse, responseData)
+	require.NoError(t, err)
+
+	// Wait for response and body events
+	events, err := recorder.WaitForEvents(EventResponse, EventResponseBody)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+
+	// Verify response
+	respEvent := events[0]
+	require.Equal(t, 200, respEvent.Response.StatusCode)
+	require.Equal(t, "application/json", respEvent.Response.Headers.Get("Content-Type"))
+
+	// Get final state to verify accumulated data
+	state := recorder.GetState()
+	expectedBody := `[{"id": 1, "name": "John Doe", "email": "john@example.com"}, {"id": 2, "name": "Jane Doe"}]`
+	require.Equal(t, expectedBody, string(state.ResponseBody))
+}
+
+// Example of table-driven tests using the new harness
+func TestHTTPTransactionTableDriven(t *testing.T) {
+	cases := []ParserTestCase{
+		{
+			Name:           "Simple GET with JSON response",
+			RequestData:    loadTestData(t, "requests/get_simple.txt"),
+			ResponseData:   loadTestData(t, "responses/get_200_with_body.txt"),
+			ExpectedEvents: []EventType{EventRequest, EventResponse, EventResponseBody},
+			Validate: func(t *testing.T, state TestState) {
+				// Validate request
+				require.NotNil(t, state.Request)
+				require.Equal(t, "GET", state.Request.Method)
+				require.Equal(t, "/api/users", state.Request.RequestURI)
+				require.Equal(t, "example.com", state.Request.Headers.Get("Host"))
+
+				// Validate response
+				require.NotNil(t, state.Response)
+				require.Equal(t, 200, state.Response.StatusCode)
+				require.Equal(t, "application/json", state.Response.Headers.Get("Content-Type"))
+
+				// Validate body
+				expectedBody := `[{"id": 1, "name": "John Doe", "email": "john@example.com"}, {"id": 2, "name": "Jane Doe"}]`
+				require.Equal(t, expectedBody, string(state.ResponseBody))
 			},
-			{
-				name: "PUT request with Expect: 100-continue",
-				input: "PUT /upload HTTP/1.1\r\n" +
-					"Host: example.com\r\n" +
-					"Content-Length: 1024\r\n" +
-					"Expect: 100-continue\r\n" +
-					"\r\n",
-				wantReq: &http.Request{
-					Method: http.MethodPut,
-					URL: &url.URL{
-						Path: "/upload",
-					},
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Content-Length": []string{"1024"},
-						"Expect":         []string{"100-continue"},
-					},
-				},
+		},
+		{
+			Name:           "GET with auth and 401 response",
+			RequestData:    loadTestData(t, "requests/api_get_with_auth.txt"),
+			ResponseData:   loadTestData(t, "responses/401_with_connection_close.txt"),
+			CloseAfterData: true, // Close to simulate connection close
+			ExpectedEvents: []EventType{EventRequest, EventResponse, EventResponseBody},
+			Validate: func(t *testing.T, state TestState) {
+				// Validate request with auth header
+				require.NotNil(t, state.Request)
+				require.Equal(t, "GET", state.Request.Method)
+				require.Equal(t, "/repos/company/hello-world", state.Request.RequestURI)
+				require.Equal(t, "Bearer token123", state.Request.Headers.Get("Authorization"))
+
+				// Validate 401 response
+				require.NotNil(t, state.Response)
+				require.Equal(t, 401, state.Response.StatusCode)
+				require.Equal(t, "Unauthorized", state.Response.Status)
+				require.Equal(t, "close", state.Response.Headers.Get("Connection"))
+
+				// Validate error body
+				require.Contains(t, string(state.ResponseBody), "Bad credentials")
+
+				// Note: DoneCalled may or may not be true depending on timing
+				// The connection:close handling is asynchronous
 			},
+		},
+	}
+
+	RunParserTestTable(t, cases)
+}
+
+// Example of testing chunked data processing
+func TestChunkedDataProcessing(t *testing.T) {
+	requestData := loadTestData(t, "requests/get_simple.txt")
+	responseData := loadTestData(t, "responses/get_200_with_body.txt")
+
+	// Create recorder with small timeout for fast tests
+	recorder := NewTestCallbackRecorder(WithTimeout(1 * time.Second))
+
+	ctx := t.Context()
+	parser := NewParser(ctx, recorder)
+	defer parser.Close()
+
+	// Send request in chunks to test partial processing
+	mid := len(requestData) / 2
+	err := parser.ProcessEvent(PhaseRequest, requestData[:mid])
+	require.NoError(t, err)
+	err = parser.ProcessEvent(PhaseRequest, requestData[mid:])
+	require.NoError(t, err)
+
+	// Wait for request to be parsed
+	reqEvent, err := recorder.WaitForEvent(EventRequest)
+	require.NoError(t, err)
+	require.Equal(t, "GET", reqEvent.Request.Method)
+
+	// Send response data
+	err = parser.ProcessEvent(PhaseResponse, responseData)
+	require.NoError(t, err)
+
+	// Collect all events for analysis
+	events := recorder.CollectEvents(false)
+
+	// Count event types
+	var responseCount, bodyCount int
+	for _, e := range events {
+		switch e.Type {
+		case EventResponse:
+			responseCount++
+		case EventResponseBody:
+			bodyCount++
 		}
+	}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var gotReq *http.Request
-				var gotBody []byte
-				var bodyDone bool
+	require.Equal(t, 1, responseCount, "Should have exactly one response event")
+	require.GreaterOrEqual(t, bodyCount, 1, "Should have at least one body event")
 
-				headerHandler := func(msg *http.Request, noBody bool) {
-					gotReq = msg
-				}
+	// Verify final state
+	state := recorder.GetState()
+	require.NotNil(t, state.Response)
+	require.Equal(t, 200, state.Response.StatusCode)
+}
 
-				bodyHandler := func(chunk []byte, done bool) {
-					if chunk != nil {
-						gotBody = append(gotBody, chunk...)
-					}
-					if done {
-						bodyDone = true
-					}
-				}
+// Example using the advanced test helpers
+func TestAdvancedChunkedTransmission(t *testing.T) {
+	requestData := loadTestData(t, "requests/get_simple.txt")
+	responseData := loadTestData(t, "responses/get_200_with_body.txt")
 
-				parser := NewStreamParser(t.Context(), zap.NewNop(), headerHandler, bodyHandler)
-				go func() {
-					_ = parser.parse()
-				}()
+	// Create recorder and parser
+	recorder := NewTestCallbackRecorder(WithTimeout(2 * time.Second))
+	ctx := t.Context()
+	parser := NewParser(ctx, recorder)
+	defer parser.Close()
 
-				_, err := parser.Write([]byte(tt.input))
-				require.NoError(t, err)
+	// Use ChunkedDataSender to simulate slow network
+	sender := NewChunkedDataSender(t, parser)
 
-				// Give the parser goroutine time to process
-				time.Sleep(100 * time.Millisecond)
+	// Send request data in 10-byte chunks with 1ms delay
+	err := sender.SendInChunks(PhaseRequest, requestData, 10, 1*time.Millisecond)
+	require.NoError(t, err)
 
-				require.Equal(t, tt.wantReq.Method, gotReq.Method)
-				require.Equal(t, tt.wantReq.URL.Path, gotReq.URL.Path)
-				require.Equal(t, tt.wantReq.Header, gotReq.Header)
+	// Create event collector
+	collector := NewEventCollector(t, recorder)
 
-				if strings.HasPrefix(tt.wantReq.Method, "POST") {
-					require.True(t, bodyDone)
-					require.Equal(t, "hello world", string(gotBody))
-				}
-			})
-		}
-	})
+	// Wait for request event and collect any other events
+	events, found := collector.WaitForEventType(EventRequest, 500*time.Millisecond)
+	require.True(t, found, "Should receive request event")
+	require.GreaterOrEqual(t, len(events), 1, "Should have at least one event")
 
-	t.Run("http responses", func(t *testing.T) {
-		tests := []struct {
-			name     string
-			input    string
-			wantResp *http.Response
-			wantErr  bool
-			wantBody string
-		}{
-			{
-				name: "simple 200 response (no body)",
-				input: "HTTP/1.1 200 OK\r\n" +
-					"Content-Type: text/plain\r\n" +
-					"\r\n",
-				wantResp: &http.Response{
-					Status:     "200 " + http.StatusText(http.StatusOK),
-					StatusCode: http.StatusOK,
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Content-Type": []string{"text/plain"},
-					},
-				},
-			},
-			{
-				name: "404 response with body",
-				input: "HTTP/1.1 404 Not Found\r\n" +
-					"Content-Type: text/plain\r\n" +
-					"Content-Length: 9\r\n" +
-					"\r\n" +
-					"not found",
-				wantResp: &http.Response{
-					Status:     "404 " + http.StatusText(http.StatusNotFound),
-					StatusCode: http.StatusNotFound,
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Content-Type":   []string{"text/plain"},
-						"Content-Length": []string{"9"},
-					},
-				},
-			},
-			{
-				name: "200 response with chunked encoding",
-				input: "HTTP/1.1 200 OK\r\n" +
-					"Content-Type: text/plain\r\n" +
-					"Transfer-Encoding: chunked\r\n" +
-					"\r\n" +
-					"7\r\n" +
-					"Mozilla\r\n" +
-					"9\r\n" +
-					"Developer\r\n" +
-					"7\r\n" +
-					"Network\r\n" +
-					"0\r\n" +
-					"\r\n",
-				wantResp: &http.Response{
-					Status:     "200 " + http.StatusText(http.StatusOK),
-					StatusCode: http.StatusOK,
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Content-Type": []string{"text/plain"},
-					},
-				},
-				wantBody: "MozillaDeveloperNetwork",
-			},
-			{
-				name: "kubelet response",
-				input: `HTTP/1.1 200 OK
-Date: Fri, 03 Jan 2025 01:03:36 GMT
-Content-Length: 2
-Content-Type: text/plain; charset=utf-8
-Connection: close
+	// Send response line by line to simulate very slow connection
+	err = sender.SendByLines(PhaseResponse, responseData, 500*time.Microsecond)
+	require.NoError(t, err)
 
-OK
-`,
-				wantResp: &http.Response{
-					Status:     "200 " + http.StatusText(http.StatusOK),
-					StatusCode: http.StatusOK,
-					Proto:      "HTTP/1.1",
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header: http.Header{
-						"Date":           []string{"Fri, 03 Jan 2025 01:03:36 GMT"},
-						"Content-Length": []string{"2"},
-						"Content-Type":   []string{"text/plain; charset=utf-8"},
-					},
-				},
-				wantBody: "OK",
-			},
-		}
+	// Collect events for a bit
+	collector.CollectFor(100 * time.Millisecond)
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var gotResp *http.Response
-				var gotBody []byte
-				var bodyDone bool
+	// Verify we got response events
+	responseEvents := collector.GetEventsByType(EventResponse)
+	require.Len(t, responseEvents, 1, "Should have exactly one response event")
 
-				headerHandler := func(msg *http.Response, noBody bool) {
-					gotResp = msg
-				}
+	bodyEvents := collector.GetEventsByType(EventResponseBody)
+	require.GreaterOrEqual(t, len(bodyEvents), 1, "Should have at least one body event")
 
-				bodyHandler := func(chunk []byte, done bool) {
-					if chunk != nil {
-						gotBody = append(gotBody, chunk...)
-					}
-					if done {
-						bodyDone = true
-					}
-				}
-
-				parser := NewStreamParser(t.Context(), zap.NewNop(), headerHandler, bodyHandler)
-				go func() {
-					_ = parser.parse()
-				}()
-
-				_, err := parser.Write([]byte(tt.input))
-				require.NoError(t, err)
-
-				// Give the parser goroutine time to process
-				time.Sleep(100 * time.Millisecond)
-
-				require.Equal(t, tt.wantResp.StatusCode, gotResp.StatusCode)
-				require.Equal(t, tt.wantResp.Status, gotResp.Status)
-				require.Equal(t, tt.wantResp.Header, gotResp.Header)
-
-				if tt.wantResp.StatusCode == http.StatusNotFound {
-					require.True(t, bodyDone)
-					require.Equal(t, "not found", string(gotBody))
-				} else if tt.wantResp.StatusCode == http.StatusOK && tt.wantBody != "" {
-					require.True(t, bodyDone)
-					require.Equal(t, tt.wantBody, string(gotBody))
-				}
-			})
-		}
-	})
+	// Get final state
+	state := recorder.GetState()
+	require.NotNil(t, state.Request)
+	require.Equal(t, "GET", state.Request.Method)
+	require.NotNil(t, state.Response)
+	require.Equal(t, 200, state.Response.StatusCode)
 }

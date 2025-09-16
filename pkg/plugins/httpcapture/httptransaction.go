@@ -28,17 +28,17 @@ type HttpTransaction struct {
 
 // Metadata contains process and connection information
 type Metadata struct {
-	ProcessID       string `json:"process_id,omitempty"`
-	ProcessExe      string `json:"process_exe,omitempty"`
-	ContainerName   string `json:"container_name,omitempty"`
-	ContainerImage  string `json:"container_image,omitempty"`
-	PodName         string `json:"pod_name,omitempty"`
-	PodNamespace    string `json:"pod_namespace,omitempty"`
-	BytesSent       int64  `json:"bytes_sent,omitempty"`
-	BytesReceived   int64  `json:"bytes_received,omitempty"`
-	QpointRequestID string `json:"qpoint_request_id,omitempty"`
-	ConnectionID    string `json:"connection_id,omitempty"`
-	EndpointID      string `json:"endpoint_id,omitempty"`
+	ProcessID      string `json:"process_id,omitempty"`
+	ProcessExe     string `json:"process_exe,omitempty"`
+	ContainerName  string `json:"container_name,omitempty"`
+	ContainerImage string `json:"container_image,omitempty"`
+	PodName        string `json:"pod_name,omitempty"`
+	PodNamespace   string `json:"pod_namespace,omitempty"`
+	BytesSent      int64  `json:"bytes_sent,omitempty"`
+	BytesReceived  int64  `json:"bytes_received,omitempty"`
+	RequestID      string `json:"request_id,omitempty"`
+	ConnectionID   string `json:"connection_id,omitempty"`
+	EndpointID     string `json:"endpoint_id,omitempty"`
 }
 
 // Request contains HTTP request information
@@ -185,8 +185,8 @@ func (m Metadata) Summary() map[string]any {
 	if m.PodNamespace != "" {
 		summary["pod_namespace"] = m.PodNamespace
 	}
-	if m.QpointRequestID != "" {
-		summary["qpoint_request_id"] = m.QpointRequestID
+	if m.RequestID != "" {
+		summary["request_id"] = m.RequestID
 	}
 	if m.ConnectionID != "" {
 		summary["connection_id"] = m.ConnectionID
@@ -263,8 +263,8 @@ func (t *HttpTransaction) ToString() string {
 		text += "  Duration: " + strconv.FormatInt(t.DurationMs, 10) + "ms\n"
 	}
 	text += "  Direction: " + t.Direction + "\n"
-	if t.Metadata.QpointRequestID != "" {
-		text += "  Request ID: " + t.Metadata.QpointRequestID + "\n"
+	if t.Metadata.RequestID != "" {
+		text += "  Request ID: " + t.Metadata.RequestID + "\n"
 	}
 	if t.Metadata.ProcessID != "" {
 		text += "  Process ID: " + t.Metadata.ProcessID + "\n"

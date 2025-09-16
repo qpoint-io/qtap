@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Length: 5
+Server: TestServer/1.0
+
+HelloGET /next HTTP/1.1
+Host: example.com

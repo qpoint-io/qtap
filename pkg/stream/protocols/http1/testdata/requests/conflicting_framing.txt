@@ -1,0 +1,10 @@
+POST /api/conflicted HTTP/1.1
+Host: example.com
+Content-Length: 50
+Transfer-Encoding: chunked
+User-Agent: ConflictedClient/1.0
+
+4
+DATA
+0
+

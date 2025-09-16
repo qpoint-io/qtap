@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,17 +12,19 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/e2e/babel"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var AwaitEventsTimeout = 5 * time.Second
+var AwaitEventsTimeout = 10 * time.Second
 
 type Context struct {
 	ctx          context.Context
 	closers      []func() error
+	machineIP    net.IP
 	Start        time.Time
 	EventStore   *EventStoreFactory
 	ConfProvider *ConfigProvider
@@ -188,6 +191,28 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	}
 }
 
+func (c *TestContext) Do(request *babel.HTTPRequest) ExecResult {
+	id := NewID()
+	request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s,ctxid:%s", c.ID, id))
+	c.L.Info("🕹️ executing babel http request", zap.String("image", request.ImageURL))
+
+	result := request.Run(c.T.Context(), c.L)
+
+	c.L.Debug("✅ babel http request executed", zap.String("image", request.ImageURL), zap.String("result", result.Logs))
+
+	return ExecResult{
+		Output: result.Logs,
+		Err:    result.Error,
+		Code:   result.ExitCode,
+		ID:     id,
+		AwaitEvents: func(expectedConnections int) *Events {
+			events, err := c.e2ectx.EventStore.AwaitByCtxID(id, expectedConnections, AwaitEventsTimeout)
+			require.NoError(c.T, err)
+			return events
+		},
+	}
+}
+
 func (c *TestContext) Events(expectedConnections int) *Events {
 	events, err := c.e2ectx.EventStore.AwaitByCtxID(c.ID, expectedConnections, AwaitEventsTimeout)
 	require.NoError(c.T, err)
@@ -210,6 +235,18 @@ func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func
 	fn(t)
 }
 
+func (c *TestContext) MachineIP() net.IP {
+	return c.e2ectx.MachineIP()
+}
+
+func (c *Context) SetMachineIP(ip net.IP) {
+	c.machineIP = ip
+}
+
+func (c *Context) MachineIP() net.IP {
+	return c.machineIP
+}
+
 func NewLogger(start time.Time) *zap.Logger {
 	zapconf := zap.NewDevelopmentConfig()
 	level := zap.InfoLevel
@@ -217,8 +254,8 @@ func NewLogger(start time.Time) *zap.Logger {
 		level = l.Level()
 	}
 	zapconf.Level = zap.NewAtomicLevelAt(level)
-	zapconf.DisableStacktrace = true
-	zapconf.DisableCaller = true
+	zapconf.DisableStacktrace = level > zap.DebugLevel
+	zapconf.DisableCaller = level > zap.DebugLevel
 	zapconf.EncoderConfig.EncodeTime = TimeElapsedEncoder(start)
 	zapconf.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	ll, err := zapconf.Build()

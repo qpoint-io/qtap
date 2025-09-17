@@ -2,9 +2,11 @@ package plugins
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	serviceRegistrar "github.com/qpoint-io/qtap/pkg/services"
@@ -24,6 +26,16 @@ const (
 	ConnectionType_GRPC    ConnectionType = "grpc"
 )
 
+const (
+	commandQueueSize = 100
+)
+
+// Command represents a unit of work to be processed asynchronously
+type command struct {
+	name string       // for debugging
+	fn   func() error // the actual work
+}
+
 type Connection struct {
 	ctx    context.Context
 	logger *zap.Logger
@@ -41,6 +53,11 @@ type Connection struct {
 	stackInstance StackInstance
 	controlValues map[string]any
 	bufferSize    int
+
+	// async processing infra
+	commandQueue chan command
+	workerDone   chan struct{}
+	shutdownOnce sync.Once
 }
 
 func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bufferSize int, connectionType ConnectionType, stack *StackDeployment, svcs []services.Service) *Connection {
@@ -68,12 +85,66 @@ func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bu
 		reqBody:  synq.NewLinkedBuffer(bufferSize),
 		resBody:  synq.NewLinkedBuffer(bufferSize),
 		services: svcs,
+
+		commandQueue: make(chan command, commandQueueSize),
+		workerDone:   make(chan struct{}),
 	}
 
 	// set the deployment
 	c.stackInstance = stack.NewInstance(c)
 
+	// start the worker
+	go c.worker()
+
 	return c
+}
+
+// worker processes commands sequentially from the queue
+func (c *Connection) worker() {
+	defer close(c.workerDone)
+
+	for {
+		select {
+		case cmd, ok := <-c.commandQueue:
+			span := trace.SpanFromContext(c.ctx)
+
+			if !ok {
+				// Channel closed, worker should exit
+				span.AddEvent("worker command channel closed")
+				c.logger.Debug("worker shutting down")
+				return
+			}
+
+			// Process the command
+			// TODO(Jon): add a timeout for each step in the plugin stack
+			span.AddEvent("worker command processing", trace.WithAttributes(attribute.String("command", cmd.name)))
+			if err := cmd.fn(); err != nil {
+				c.logger.Error("command execution failed",
+					zap.String("command", cmd.name),
+					zap.Error(err))
+			}
+
+		case <-c.ctx.Done():
+			span := trace.SpanFromContext(c.ctx)
+			span.AddEvent("worker context cancelled")
+
+			// Context cancelled, drain remaining commands if needed
+			c.logger.Debug("worker context cancelled")
+			return
+		}
+	}
+}
+
+// enqueue adds a command to the processing queue
+// Returns error if the connection is shutting down
+func (c *Connection) enqueue(name string, fn func() error) error {
+	select {
+	case c.commandQueue <- command{name: name, fn: fn}:
+		return nil
+	default:
+		// Queue is full - return an error
+		return fmt.Errorf("command queue full, rejecting command: %s", name)
+	}
 }
 
 // teardown the connection
@@ -81,17 +152,29 @@ func (c *Connection) Teardown() {
 	span := trace.SpanFromContext(c.ctx)
 	defer span.End()
 
-	for _, i := range c.stackInstance {
-		i.Destroy()
-	}
+	// Ensure we only shutdown once
+	c.shutdownOnce.Do(func() {
+		// Stop accepting new commands
+		close(c.commandQueue)
 
-	// clear the buffers
-	c.reqBody.Replace(nil)
-	c.resBody.Replace(nil)
+		// Wait for worker to finish processing
+		<-c.workerDone
+
+		// Now safe to cleanup
+		for _, i := range c.stackInstance {
+			i.Destroy()
+		}
+
+		c.reqBody.Replace(nil)
+		c.resBody.Replace(nil)
+	})
 }
 
 // set the request and request body
 func (c *Connection) SetRequest(req *http.Request) {
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("set_request")
+
 	// extract URL pieces and set them as headers
 	req.Header.Set(":authority", req.Host)
 	req.Header.Set(":method", req.Method)
@@ -105,6 +188,9 @@ func (c *Connection) SetRequest(req *http.Request) {
 
 // set the response and response body
 func (c *Connection) SetResponse(res *http.Response) {
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("set_response")
+
 	// extract URL pieces and set them as headers
 	res.Header.Set(":status", strconv.Itoa(res.StatusCode))
 	if len(res.TransferEncoding) > 0 {
@@ -127,108 +213,125 @@ func (c *Connection) ProxyOnDone() error {
 
 // request headers are ready
 func (c *Connection) OnHttpRequestHeaders(endOfStream bool) error {
-	for _, i := range c.stackInstance {
-		status := i.RequestHeaders(c.reqHeaderMap, endOfStream)
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("on_request_headers")
 
-		switch status {
-		case HeadersStatusContinue:
-			// continue to the next plugin
-		case HeadersStatusStopIteration:
-			// stop plugin execution and buffer the response
-			return nil
+	return c.enqueue("request_headers", func() error {
+		for _, i := range c.stackInstance {
+			status := i.RequestHeaders(c.reqHeaderMap, endOfStream)
 
-		// [not implemented] case abi.RequestHeadersStatusStopAllIterationAndBuffer:
-
-		default:
-			c.logger.DPanic("unimplemented request headers status", zap.Any("status", status))
+			switch status {
+			case HeadersStatusContinue:
+				// continue to the next plugin
+			case HeadersStatusStopIteration:
+				// stop plugin execution
+				return nil
+			default:
+				c.logger.DPanic("unimplemented request headers status",
+					zap.Any("status", status))
+			}
 		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // response headers are ready
 func (c *Connection) OnHttpResponseHeaders(endOfStream bool) error {
-	for _, i := range c.stackInstance {
-		status := i.ResponseHeaders(c.resHeaderMap, endOfStream)
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("on_response_headers")
 
-		switch status {
-		case HeadersStatusContinue:
-			// continue to the next plugin
-		case HeadersStatusStopIteration:
-			// stop plugin execution and buffer the response
-			return nil
+	return c.enqueue("response_headers", func() error {
+		for _, i := range c.stackInstance {
+			status := i.ResponseHeaders(c.resHeaderMap, endOfStream)
 
-		default:
-			c.logger.DPanic("unimplemented response headers status", zap.Any("status", status))
+			switch status {
+			case HeadersStatusContinue:
+				// continue to the next plugin
+			case HeadersStatusStopIteration:
+				// stop plugin execution and buffer the response
+				return nil
+
+			default:
+				c.logger.DPanic("unimplemented response headers status", zap.Any("status", status))
+			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // request body is ready
 func (c *Connection) OnHttpRequestBody(frame []byte, endOfStream bool) error {
-	_, err := c.reqBody.Write(frame)
-	if err != nil {
-		c.logger.Error("error writing request body", zap.Error(err))
-	}
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("on_request_body")
 
-	shouldClearBuffer := !endOfStream
-	for _, i := range c.stackInstance {
-		status := i.RequestBody(c.reqBody, endOfStream)
-
-		switch status {
-		case BodyStatusContinue:
-			// continue to the next plugin
-		case BodyStatusContinueAndBuffer:
-			// buffer the response and continue
-			shouldClearBuffer = false
-		case BodyStatusStopIterationAndBuffer:
-			// stop plugin execution and buffer the response
-			return nil
-		default:
-			c.logger.DPanic("unimplemented request body status", zap.Any("status", status))
+	return c.enqueue("request_body", func() error {
+		_, err := c.reqBody.Write(frame)
+		if err != nil {
+			c.logger.Error("error writing request body", zap.Error(err))
 		}
-	}
 
-	// all plugins returned continue, clear the buffer and continue
-	if shouldClearBuffer {
-		c.reqBody.Replace(nil)
-	}
-	return nil
+		shouldClearBuffer := !endOfStream
+		for _, i := range c.stackInstance {
+			status := i.RequestBody(c.reqBody, endOfStream)
+
+			switch status {
+			case BodyStatusContinue:
+				// continue to the next plugin
+			case BodyStatusContinueAndBuffer:
+				// buffer the response and continue
+				shouldClearBuffer = false
+			case BodyStatusStopIterationAndBuffer:
+				// stop plugin execution and buffer the response
+				return nil
+			default:
+				c.logger.DPanic("unimplemented request body status", zap.Any("status", status))
+			}
+		}
+
+		// all plugins returned continue, clear the buffer and continue
+		if shouldClearBuffer {
+			c.reqBody.Replace(nil)
+		}
+		return nil
+	})
 }
 
 // response body is ready
 func (c *Connection) OnHttpResponseBody(frame []byte, endOfStream bool) error {
-	_, err := c.resBody.Write(frame)
-	if err != nil {
-		c.logger.Error("error writing response body", zap.Error(err))
-	}
+	span := trace.SpanFromContext(c.ctx)
+	span.AddEvent("on_response_body")
 
-	shouldClearBuffer := !endOfStream
-	for _, i := range c.stackInstance {
-		status := i.ResponseBody(c.resBody, endOfStream)
-
-		switch status {
-		case BodyStatusContinue:
-			// continue to the next plugin
-		case BodyStatusContinueAndBuffer:
-			// buffer the response and continue
-			shouldClearBuffer = false
-		case BodyStatusStopIterationAndBuffer:
-			// stop plugin execution and buffer the response
-			return nil
-		default:
-			c.logger.DPanic("unimplemented response body status", zap.Any("status", status))
+	return c.enqueue("response_body", func() error {
+		_, err := c.resBody.Write(frame)
+		if err != nil {
+			c.logger.Error("error writing response body", zap.Error(err))
 		}
-	}
 
-	// all plugins returned continue, clear the buffer and continue
-	if shouldClearBuffer {
-		c.resBody.Replace(nil)
-	}
-	return nil
+		shouldClearBuffer := !endOfStream
+		for _, i := range c.stackInstance {
+			status := i.ResponseBody(c.resBody, endOfStream)
+
+			switch status {
+			case BodyStatusContinue:
+				// continue to the next plugin
+			case BodyStatusContinueAndBuffer:
+				// buffer the response and continue
+				shouldClearBuffer = false
+			case BodyStatusStopIterationAndBuffer:
+				// stop plugin execution and buffer the response
+				return nil
+			default:
+				c.logger.DPanic("unimplemented response body status", zap.Any("status", status))
+			}
+		}
+
+		// all plugins returned continue, clear the buffer and continue
+		if shouldClearBuffer {
+			c.resBody.Replace(nil)
+		}
+		return nil
+	})
 }
 
 func (c *Connection) Context() *ConnectionContext {

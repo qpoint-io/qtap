@@ -2,6 +2,7 @@ package babel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -15,86 +16,104 @@ import (
 )
 
 // WithMethod sets the HTTP method (GET, POST, PUT, DELETE, etc.)
-func (m *HTTPRequest) WithMethod(method string) *HTTPRequest {
-	m.Method = method
+func (m *HTTPRequestBuilder) WithMethod(method string) *HTTPRequestBuilder {
+	m.req.Method = method
 	return m
 }
 
 // WithURL sets the target URL for the HTTP request
-func (m *HTTPRequest) WithURL(url string) *HTTPRequest {
-	m.URL = url
+func (m *HTTPRequestBuilder) WithURL(url string) *HTTPRequestBuilder {
+	m.req.URL = url
+	return m
+}
+
+// WithImageURL sets the image URL for the HTTP request
+func (m *HTTPRequestBuilder) WithImageURL(imageURL string) *HTTPRequestBuilder {
+	m.req.ImageURL = imageURL
 	return m
 }
 
 // WithHeaders sets the HTTP headers
-func (m *HTTPRequest) WithHeaders(headers map[string]string) *HTTPRequest {
-	m.Headers = headers
+func (m *HTTPRequestBuilder) WithHeaders(headers map[string]string) *HTTPRequestBuilder {
+	m.req.Headers = headers
 	return m
 }
 
 // WithHeader adds a single HTTP header
-func (m *HTTPRequest) WithHeader(key, value string) *HTTPRequest {
-	m.Headers[key] = value
+func (m *HTTPRequestBuilder) WithHeader(key, value string) *HTTPRequestBuilder {
+	m.req.Headers[key] = value
 	return m
 }
 
 // WithBody sets the request body content
-func (m *HTTPRequest) WithBody(body string) *HTTPRequest {
-	m.Body = body
+func (m *HTTPRequestBuilder) WithBody(body string) *HTTPRequestBuilder {
+	m.req.Body = body
 	return m
 }
 
 // WithBodyFile sets the path to file containing request body
-func (m *HTTPRequest) WithBodyFile(bodyFile string) *HTTPRequest {
-	m.BodyFile = bodyFile
+func (m *HTTPRequestBuilder) WithBodyFile(bodyFile string) *HTTPRequestBuilder {
+	m.req.BodyFile = bodyFile
 	return m
 }
 
 // WithHTTPVersion sets the HTTP version ("1.0", "1.1", "2")
-func (m *HTTPRequest) WithHTTPVersion(version string) *HTTPRequest {
-	m.HTTPVersion = version
+func (m *HTTPRequestBuilder) WithHTTPVersion(version string) *HTTPRequestBuilder {
+	m.req.HTTPVersion = version
 	return m
 }
 
 // WithKeepAlive sets the connection keep-alive setting
-func (m *HTTPRequest) WithKeepAlive(keepAlive bool) *HTTPRequest {
-	m.KeepAlive = keepAlive
+func (m *HTTPRequestBuilder) WithKeepAlive(keepAlive bool) *HTTPRequestBuilder {
+	m.req.KeepAlive = keepAlive
 	return m
 }
 
 // WithTimeout sets the request timeout
-func (m *HTTPRequest) WithTimeout(timeout time.Duration) *HTTPRequest {
-	m.Timeout = timeout
+func (m *HTTPRequestBuilder) WithTimeout(timeout time.Duration) *HTTPRequestBuilder {
+	m.req.Timeout = timeout
 	return m
 }
 
 // WithRequests sets the number of requests to make sequentially
-func (m *HTTPRequest) WithRequests(requests int) *HTTPRequest {
-	m.Requests = requests
+func (m *HTTPRequestBuilder) WithRequests(requests int) *HTTPRequestBuilder {
+	m.req.Requests = requests
 	return m
 }
 
 // WithConcurrentRequests sets the number of concurrent requests
-func (m *HTTPRequest) WithConcurrentRequests(concurrent int) *HTTPRequest {
-	m.ConcurrentRequests = concurrent
+func (m *HTTPRequestBuilder) WithConcurrentRequests(concurrent int) *HTTPRequestBuilder {
+	m.req.ConcurrentRequests = concurrent
 	return m
 }
 
 // WithDelayBetweenRequests sets the delay between requests
-func (m *HTTPRequest) WithDelayBetweenRequests(delay time.Duration) *HTTPRequest {
-	m.DelayBetweenRequests = delay
+func (m *HTTPRequestBuilder) WithDelayBetweenRequests(delay time.Duration) *HTTPRequestBuilder {
+	m.req.DelayBetweenRequests = delay
 	return m
 }
 
 // WithOutputFormat sets the output format ("json" or other for human-readable)
-func (m *HTTPRequest) WithOutputFormat(format string) *HTTPRequest {
-	m.OutputFormat = format
+func (m *HTTPRequestBuilder) WithOutputFormat(format string) *HTTPRequestBuilder {
+	m.req.OutputFormat = format
 	return m
 }
 
 // WithVerbose enables verbose logging
-func (m *HTTPRequest) WithVerbose(verbose bool) *HTTPRequest {
-	m.Verbose = verbose
+func (m *HTTPRequestBuilder) WithVerbose(verbose bool) *HTTPRequestBuilder {
+	m.req.Verbose = verbose
+	return m
+}
+
+// WithExtraEnvVars adds additional environment variables
+func (m *HTTPRequestBuilder) WithExtraEnvVars(vars map[string]string) *HTTPRequestBuilder {
+	m.req.WithExtraEnvVars(vars)
+	return m
+}
+
+// WithExtraEnvVar adds a single additional environment variable
+func (m *HTTPRequestBuilder) WithExtraEnvVar(key, value string) *HTTPRequestBuilder {
+	m.req.WithExtraEnvVar(key, value)
 	return m
 }
 
@@ -201,35 +220,48 @@ type HTTPRequest struct {
 	ImageURL string
 }
 
-// NewHTTPRequest creates a new HTTPClientModule with default values
-func NewHTTPRequest(image HTTPRequestImage, targetURL string) *HTTPRequest {
-	return &HTTPRequest{
-		// Default request configuration
-		Method:   "GET",
-		Headers:  make(map[string]string),
-		Body:     "",
-		BodyFile: "",
+type HTTPRequestBuilder struct {
+	req *HTTPRequest
+}
 
-		// Default protocol settings
-		HTTPVersion: "1.1",
-		KeepAlive:   false,
-		Timeout:     10 * time.Second,
+func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
+	if m.req.URL == "" {
+		return nil, errors.New("URL is required")
+	}
+	if m.req.ImageURL == "" {
+		return nil, errors.New("ImageURL is required")
+	}
 
-		// Default execution control
-		Requests:             1,
-		ConcurrentRequests:   1,
-		DelayBetweenRequests: 0,
+	return m.req, nil
+}
 
-		// Default output control
-		OutputFormat: "json",
-		Verbose:      false,
+// BuildHTTPRequest creates a new HTTPRequestBuilder with default values
+func BuildHTTPRequest() *HTTPRequestBuilder {
+	return &HTTPRequestBuilder{
+		req: &HTTPRequest{
+			// Default request configuration
+			Method:   "GET",
+			Headers:  make(map[string]string),
+			Body:     "",
+			BodyFile: "",
 
-		// Extension point
-		ExtraEnvVars: make(map[string]string),
+			// Default protocol settings
+			HTTPVersion: "1.1",
+			KeepAlive:   false,
+			Timeout:     10 * time.Second,
 
-		// Container configuration
-		ImageURL: image.String(),
-		URL:      targetURL,
+			// Default execution control
+			Requests:             1,
+			ConcurrentRequests:   1,
+			DelayBetweenRequests: 0,
+
+			// Default output control
+			OutputFormat: "json",
+			Verbose:      false,
+
+			// Extension point
+			ExtraEnvVars: make(map[string]string),
+		},
 	}
 }
 
@@ -256,6 +288,16 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *ContainerResult {
 		},
 		Started: true,
 	}
+
+	// TODO(Jon): test this
+	// if m.BodyFile != "" {
+	// 	req.Files = []testcontainers.ContainerFile{
+	// 		{
+	// 			HostFilePath:      m.BodyFile,
+	// 			ContainerFilePath: m.BodyFile,
+	// 		},
+	// 	}
+	// }
 
 	// Start the container
 	l.Info("🕹️ starting container", zap.String("image", m.ImageURL))

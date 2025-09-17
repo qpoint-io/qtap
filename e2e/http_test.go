@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,7 +119,7 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 }
 
 // testBabelHTTPRequest runs a test against a specific babel image
-func testBabelHTTPRequest(t *testing.T, image babel.HTTPRequestImage) {
+func testBabelHTTPRequest(t *testing.T, rb *babel.HTTPRequestBuilder) {
 	t.Helper()
 	ctx := e2ectx.TestCtx(t)
 
@@ -163,11 +164,8 @@ func testBabelHTTPRequest(t *testing.T, image babel.HTTPRequestImage) {
 		t.Logf("server URL: %s", server.URL)
 
 		// create our request
-		request := babel.NewHTTPRequest(image, server.URL).
-			WithMethod("GET").
-			WithHTTPVersion("1.1").
-			WithTimeout(10 * time.Second).
-			WithOutputFormat("json")
+		request, err := rb.WithURL(server.URL).Build()
+		require.NoError(t, err)
 
 		result := ctx.Do(request)
 		require.NoError(t, result.Err)
@@ -204,35 +202,22 @@ func testBabelHTTPRequest(t *testing.T, image babel.HTTPRequestImage) {
 	})
 }
 
-func TestPython_Requests(t *testing.T) {
-	images := babel.AllPythonImages()
+func TestBabel_Get(t *testing.T) {
+	images := babel.AllImages()
 
 	for _, image := range images {
-		image := image // capture loop variable
-		t.Run(string(image), func(t *testing.T) {
-			testBabelHTTPRequest(t, image)
-		})
+		for _, ver := range []string{"1.1", "2"} {
+			rb := babel.BuildHTTPRequest().
+				WithMethod("GET").
+				WithHTTPVersion(ver).
+				WithTimeout(10 * time.Second).
+				WithOutputFormat("json").
+				WithImageURL(image.String())
+
+			t.Run(strings.Join([]string{image.TestName(), "HTTP/" + ver}, "_"), func(t *testing.T) {
+				testBabelHTTPRequest(t, rb)
+			})
+		}
+
 	}
 }
-
-func TestRuby_Requests(t *testing.T) {
-	images := babel.AllRubyImages()
-
-	for _, image := range images {
-		image := image // capture loop variable
-		t.Run(string(image), func(t *testing.T) {
-			testBabelHTTPRequest(t, image)
-		})
-	}
-}
-
-// func TestBabel_AllImages(t *testing.T) {
-// 	images := babel.AllImages()
-
-// 	for _, image := range images {
-// 		image := image // capture loop variable
-// 		t.Run(string(image), func(t *testing.T) {
-// 			testBabelHTTPRequest(t, image)
-// 		})
-// 	}
-// }

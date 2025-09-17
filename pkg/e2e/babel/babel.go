@@ -2,6 +2,7 @@ package babel
 
 import (
 	"os"
+	"strings"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -34,6 +35,16 @@ func (i HTTPRequestImage) String() string {
 		return string(i)
 	}
 	return officialImagesRegistry + string(i)
+}
+
+// TestName returns a name for the image that can be used for consistent
+// Go test names and reporting. For example:
+// babel-python:3.9.0-alpine -> python_3.9.0_alpine
+func (i HTTPRequestImage) TestName() string {
+	name, _ := strings.CutPrefix(string(i), "babel-")
+	name = strings.Replace(name, ":", "_", 1)
+	name = strings.Replace(name, "-", "_", 1)
+	return name
 }
 
 // AllPythonImages returns all available Python images

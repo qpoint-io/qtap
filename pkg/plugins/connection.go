@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	serviceRegistrar "github.com/qpoint-io/qtap/pkg/services"
@@ -129,8 +130,31 @@ func (c *Connection) worker() {
 			span.AddEvent("worker context cancelled")
 
 			// Context cancelled, drain remaining commands if needed
-			c.logger.Debug("worker context cancelled")
-			return
+			c.logger.Debug("worker context cancelled, draining remaining commands")
+
+			// Drain remaining commands with a timeout
+			drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			for {
+				select {
+				case cmd, ok := <-c.commandQueue:
+					if !ok {
+						return
+					}
+
+					// Process command with timeout
+					if err := cmd.fn(); err != nil {
+						c.logger.Error("command execution failed (while draining)",
+							zap.String("command", cmd.name),
+							zap.Error(err))
+					}
+
+				case <-drainCtx.Done():
+					c.logger.Warn("drain timeout exceeded, stopping command processing")
+					return
+				}
+			}
 		}
 	}
 }

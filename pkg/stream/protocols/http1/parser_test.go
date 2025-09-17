@@ -181,7 +181,7 @@ func TestChunkedDataProcessing(t *testing.T) {
 // Example using the advanced test helpers
 func TestAdvancedChunkedTransmission(t *testing.T) {
 	requestData := loadTestData(t, "requests/get_simple.txt")
-	responseData := loadTestData(t, "responses/get_200_with_body.txt")
+	responseData := loadTestData(t, "responses/get_200_example_com.txt")
 
 	// Create recorder and parser
 	recorder := NewTestCallbackRecorder(WithTimeout(2 * time.Second))
@@ -216,7 +216,7 @@ func TestAdvancedChunkedTransmission(t *testing.T) {
 	require.Len(t, responseEvents, 1, "Should have exactly one response event")
 
 	bodyEvents := collector.GetEventsByType(EventResponseBody)
-	require.GreaterOrEqual(t, len(bodyEvents), 1, "Should have at least one body event")
+	require.GreaterOrEqual(t, len(bodyEvents), 44, "Should have at least one body event")
 
 	// Get final state
 	state := recorder.GetState()

@@ -270,6 +270,11 @@ func TestReadHeaders(t *testing.T) {
 			input:      "\r\n\r\n\r\nGET /path HTTP/1.1\r\nHost: example.com\r\n\r\n",
 			expectData: true,
 		},
+		{
+			name:        "Max Header Size",
+			input:       "GET /path HTTP/1.1\r\nHost: example.com\r\n" + strings.Repeat("A", 32<<10) + "\r\n\r\n",
+			expectedErr: true,
+		},
 	}
 
 	for _, tt := range tests {

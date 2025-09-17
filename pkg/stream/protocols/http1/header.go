@@ -11,6 +11,9 @@ import (
 	"strings"
 )
 
+// MaxHeaderSize is the maximum size of a header in bytes
+const MaxHeaderSize = 32 << 10 // 32 KiB
+
 var (
 	ErrIncompleteHeader = errors.New("incomplete header")
 )
@@ -58,6 +61,7 @@ func parseStatusLine(line string) *Response {
 
 // readHeaders reads headers from a reader until it finds the boundary
 // Supports both CRLF (\r\n\r\n) and LF (\n\n) boundaries
+// Limits the max header size to 32 KiB
 func readHeaders(r io.Reader) (*headerData, error) {
 	var headers bytes.Buffer
 	var lastFour [4]byte
@@ -65,9 +69,12 @@ func readHeaders(r io.Reader) (*headerData, error) {
 	var b [1]byte
 	var headerStarted bool
 
+	// Limit the reader to the maximum header size
+	lr := io.LimitReader(r, MaxHeaderSize)
+
 	// Read byte by byte until we see \r\n\r\n or \n\n
 	for {
-		n, err := r.Read(b[:])
+		n, err := lr.Read(b[:])
 		if err != nil {
 			// If we've received some data, but not a complete header,
 			// return a incomplete header error. If we've received no data,

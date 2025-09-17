@@ -265,17 +265,19 @@ func (s *Session) Close() error {
 		attribute.Int64("session.wr_bytes", s.reqBytes.Load()),
 	))
 
+	// Order is important here. When closing the parser, it will
+	// give let any queued events continue to be processed.
+	if err := s.parser.Close(); err != nil {
+		s.logger.Error("closing parser", zap.Error(err))
+		return err
+	}
+
 	if s.pluginConn != nil {
 		// Save metadata
 		s.pluginConn.Meta().SetReadBytes(s.resBytes.Load())
 		s.pluginConn.Meta().SetWriteBytes(s.reqBytes.Load())
 
 		s.pluginConn.Teardown()
-	}
-
-	if err := s.parser.Close(); err != nil {
-		s.logger.Error("closing parser", zap.Error(err))
-		return err
 	}
 
 	return nil

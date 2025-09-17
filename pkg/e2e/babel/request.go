@@ -93,6 +93,12 @@ func (m *HTTPRequestBuilder) WithDelayBetweenRequests(delay time.Duration) *HTTP
 	return m
 }
 
+// WithStartupDelay sets the startup delay
+func (m *HTTPRequestBuilder) WithStartupDelay(delay time.Duration) *HTTPRequestBuilder {
+	m.req.StartupDelay = delay
+	return m
+}
+
 // WithOutputFormat sets the output format ("json" or other for human-readable)
 func (m *HTTPRequestBuilder) WithOutputFormat(format string) *HTTPRequestBuilder {
 	m.req.OutputFormat = format
@@ -100,8 +106,8 @@ func (m *HTTPRequestBuilder) WithOutputFormat(format string) *HTTPRequestBuilder
 }
 
 // WithVerbose enables verbose logging
-func (m *HTTPRequestBuilder) WithVerbose(verbose bool) *HTTPRequestBuilder {
-	m.req.Verbose = verbose
+func (m *HTTPRequestBuilder) WithVerbose() *HTTPRequestBuilder {
+	m.req.Verbose = true
 	return m
 }
 
@@ -173,6 +179,9 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	if m.DelayBetweenRequests > 0 {
 		envVars["DELAY_BETWEEN_REQUESTS"] = fmt.Sprintf("%.3f", m.DelayBetweenRequests.Seconds())
 	}
+	if m.StartupDelay > 0 {
+		envVars["STARTUP_DELAY"] = strconv.FormatInt(m.StartupDelay.Milliseconds(), 10)
+	}
 
 	// Output control
 	envVars["OUTPUT_FORMAT"] = m.OutputFormat
@@ -208,6 +217,7 @@ type HTTPRequest struct {
 	Requests             int
 	ConcurrentRequests   int
 	DelayBetweenRequests time.Duration
+	StartupDelay         time.Duration // Milliseconds
 
 	// Output control
 	OutputFormat string // "json" or other for human-readable
@@ -232,7 +242,41 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		return nil, errors.New("ImageURL is required")
 	}
 
-	return m.req, nil
+	// Create a deep copy of the request to allow multiple builds
+	reqCopy := &HTTPRequest{
+		Method:   m.req.Method,
+		URL:      m.req.URL,
+		Headers:  make(map[string]string),
+		Body:     m.req.Body,
+		BodyFile: m.req.BodyFile,
+
+		HTTPVersion: m.req.HTTPVersion,
+		KeepAlive:   m.req.KeepAlive,
+		Timeout:     m.req.Timeout,
+
+		Requests:             m.req.Requests,
+		ConcurrentRequests:   m.req.ConcurrentRequests,
+		DelayBetweenRequests: m.req.DelayBetweenRequests,
+		StartupDelay:         m.req.StartupDelay,
+
+		OutputFormat: m.req.OutputFormat,
+		Verbose:      m.req.Verbose,
+
+		ExtraEnvVars: make(map[string]string),
+		ImageURL:     m.req.ImageURL,
+	}
+
+	// Deep copy the headers map
+	for k, v := range m.req.Headers {
+		reqCopy.Headers[k] = v
+	}
+
+	// Deep copy the extra env vars map
+	for k, v := range m.req.ExtraEnvVars {
+		reqCopy.ExtraEnvVars[k] = v
+	}
+
+	return reqCopy, nil
 }
 
 // BuildHTTPRequest creates a new HTTPRequestBuilder with default values

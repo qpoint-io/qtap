@@ -42,8 +42,9 @@ func (i HTTPRequestImage) String() string {
 // babel-python:3.9.0-alpine -> python_3.9.0_alpine
 func (i HTTPRequestImage) TestName() string {
 	name, _ := strings.CutPrefix(string(i), "babel-")
-	name = strings.Replace(name, ":", "_", 1)
-	name = strings.Replace(name, "-", "_", 1)
+	name = strings.ReplaceAll(name, ":", "/")
+	name = strings.ReplaceAll(name, "-", "/")
+	name = strings.ReplaceAll(name, ".", "_")
 	return name
 }
 

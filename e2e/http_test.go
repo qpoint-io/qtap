@@ -246,6 +246,70 @@ func TestPython_HTTP(t *testing.T) {
 
 			testBabelHTTPRequest(t, req)
 		})
+	}
+}
 
+func TestRuby_HTTP(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	images := babel.AllRubyImages()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
+		fmt.Println("⚙️ handling request", r.Proto, r.URL.String())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
+	})
+
+	http1plainserver, err := NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1plainserver.Close()
+
+	http1server, err := NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1server.Close()
+
+	http2server, err := NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http2server.Close()
+
+	rb := babel.BuildHTTPRequest().
+		WithMethod("GET").
+		WithTimeout(10 * time.Second).
+		WithOutputFormat("json").
+		WithVerbose().
+		WithStartupDelay(250 * time.Millisecond)
+
+	for _, image := range images {
+		rb.WithImageURL(image.String())
+
+		t.Run(image.TestName()+" HTTP/1.1 Plain", func(t *testing.T) {
+			rb.WithURL(http1plainserver.URL)
+			rb.WithHTTPVersion("1.1")
+
+			req, err := rb.Build()
+			require.NoError(t, err)
+
+			testBabelHTTPRequest(t, req)
+		})
+		t.Run(image.TestName()+" HTTP/1.1 TLS", func(t *testing.T) {
+			rb.WithURL(http1server.URL)
+			rb.WithHTTPVersion("1.1")
+
+			req, err := rb.Build()
+			require.NoError(t, err)
+
+			testBabelHTTPRequest(t, req)
+		})
+		// t.Run(image.TestName()+" HTTP/2 TLS", func(t *testing.T) {
+		// 	t.Skip("Skipping HTTP/2 TLS tests -- currently not supported by Babel containers")
+		// 	rb.WithURL(http2server.URL)
+		// 	rb.WithHTTPVersion("2")
+
+		// 	req, err := rb.Build()
+		// 	require.NoError(t, err)
+
+		// 	testBabelHTTPRequest(t, req)
+		// })
 	}
 }

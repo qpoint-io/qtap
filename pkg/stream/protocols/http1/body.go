@@ -10,9 +10,16 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/andybalholm/brotli"
 )
+
+const buf8kSize int = 8 << 10
+
+// buf8kPool is a pool of 8KiB buffers this is used to avoid allocating a new buffer
+// for each http body read/write.
+var buf8kPool = sync.Pool{New: func() any { return new([buf8kSize]byte) }}
 
 // expectsRequestBody determines if a request should have a body
 func expectsRequestBody(req *Request) bool {
@@ -131,10 +138,11 @@ func streamBody(bodyReader io.Reader, onBodyChunk BodyCallback, onError ErrorCal
 	}
 
 	// Read in chunks and stream to callback
-	buf := make([]byte, 8192) // 8KB chunks
+	buf := buf8kPool.Get().(*[buf8kSize]byte) // 8KiB chunks
+	defer buf8kPool.Put(buf)
 
 	for {
-		n, err := bodyReader.Read(buf)
+		n, err := bodyReader.Read(buf[:])
 
 		if n > 0 {
 			// We got data, send it

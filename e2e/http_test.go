@@ -117,14 +117,16 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
 
-func TestPython_Requests(t *testing.T) {
+// testBabelHTTPRequest runs a test against a specific babel image
+func testBabelHTTPRequest(t *testing.T, image babel.HTTPRequestImage) {
+	t.Helper()
 	ctx := e2ectx.TestCtx(t)
 
 	// Setup HTTP server
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"message": "Hello from Python test", "status": "success"}`))
+		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
 	}))
 
 	l, err := net.Listen("tcp", ctx.MachineIP().String()+":0")
@@ -161,7 +163,7 @@ func TestPython_Requests(t *testing.T) {
 		t.Logf("server URL: %s", server.URL)
 
 		// create our request
-		request := babel.NewHTTPRequest(babel.HTTPRequestPython3_9_0_Alpine, server.URL).
+		request := babel.NewHTTPRequest(image, server.URL).
 			WithMethod("GET").
 			WithHTTPVersion("1.1").
 			WithTimeout(10 * time.Second).
@@ -169,7 +171,7 @@ func TestPython_Requests(t *testing.T) {
 
 		result := ctx.Do(request)
 		require.NoError(t, result.Err)
-		require.Equal(t, 0, result.Code, "Go container should exit successfully, logs: %s", result.Output)
+		require.Equal(t, 0, result.Code, "Container should exit successfully, logs: %s", result.Output)
 
 		ctx.L.Info("✅ result", zap.String("ID", result.ID), zap.Int("code", result.Code), zap.String("output", result.Output), zap.Error(result.Err))
 
@@ -188,7 +190,7 @@ func TestPython_Requests(t *testing.T) {
 		req := events.Requests[0]
 		assert.Equal(t, "application/json", req.ContentType)
 
-		// // Validate captured artifacts
+		// Validate captured artifacts
 		require.Len(t, events.Artifacts, 1)
 		artifact := events.Artifacts[0]
 		assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
@@ -198,6 +200,39 @@ func TestPython_Requests(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "GET", transaction.Request.Method)
 		assert.Equal(t, "application/json", transaction.Response.ContentType)
-		assert.Contains(t, string(transaction.Response.Body), "Hello from Python test")
+		assert.Contains(t, string(transaction.Response.Body), "Hello from test")
 	})
 }
+
+func TestPython_Requests(t *testing.T) {
+	images := babel.AllPythonImages()
+
+	for _, image := range images {
+		image := image // capture loop variable
+		t.Run(string(image), func(t *testing.T) {
+			testBabelHTTPRequest(t, image)
+		})
+	}
+}
+
+func TestRuby_Requests(t *testing.T) {
+	images := babel.AllRubyImages()
+
+	for _, image := range images {
+		image := image // capture loop variable
+		t.Run(string(image), func(t *testing.T) {
+			testBabelHTTPRequest(t, image)
+		})
+	}
+}
+
+// func TestBabel_AllImages(t *testing.T) {
+// 	images := babel.AllImages()
+
+// 	for _, image := range images {
+// 		image := image // capture loop variable
+// 		t.Run(string(image), func(t *testing.T) {
+// 			testBabelHTTPRequest(t, image)
+// 		})
+// 	}
+// }

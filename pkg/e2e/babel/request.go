@@ -228,7 +228,7 @@ func NewHTTPRequest(image HTTPRequestImage, targetURL string) *HTTPRequest {
 		ExtraEnvVars: make(map[string]string),
 
 		// Container configuration
-		ImageURL: string(image),
+		ImageURL: image.String(),
 		URL:      targetURL,
 	}
 }

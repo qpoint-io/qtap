@@ -264,6 +264,7 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		HTTPVersion: m.req.HTTPVersion,
 		KeepAlive:   m.req.KeepAlive,
 		Timeout:     m.req.Timeout,
+		Client:      m.req.Client,
 
 		Requests:             m.req.Requests,
 		ConcurrentRequests:   m.req.ConcurrentRequests,

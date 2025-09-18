@@ -28,6 +28,13 @@ var (
 	HTTPRequestRuby3_3_9_Debian HTTPRequestImage = "babel-ruby:3.3.9-debian-bullseye"
 	HTTPRequestRuby3_4_5_Alpine HTTPRequestImage = "babel-ruby:3.4.5-alpine"
 	HTTPRequestRuby3_4_5_Debian HTTPRequestImage = "babel-ruby:3.4.5-debian-bullseye"
+	// PHP
+	HTTPRequestPHP8_1_0_Alpine HTTPRequestImage = "babel-php:8.1-alpine"
+	HTTPRequestPHP8_1_0_Debian HTTPRequestImage = "babel-php:8.1-debian-bullseye"
+	HTTPRequestPHP8_2_0_Alpine HTTPRequestImage = "babel-php:8.2-alpine"
+	HTTPRequestPHP8_2_0_Debian HTTPRequestImage = "babel-php:8.2-debian-bullseye"
+	HTTPRequestPHP8_3_0_Alpine HTTPRequestImage = "babel-php:8.3-alpine"
+	HTTPRequestPHP8_3_0_Debian HTTPRequestImage = "babel-php:8.3-debian-bullseye"
 )
 
 func (i HTTPRequestImage) String() string {
@@ -71,6 +78,18 @@ func AllRubyImages() []HTTPRequestImage {
 		HTTPRequestRuby3_3_9_Debian,
 		HTTPRequestRuby3_4_5_Alpine,
 		HTTPRequestRuby3_4_5_Debian,
+	}
+}
+
+// AllPHPImages returns all available PHP images
+func AllPHPImages() []HTTPRequestImage {
+	return []HTTPRequestImage{
+		HTTPRequestPHP8_1_0_Alpine,
+		HTTPRequestPHP8_1_0_Debian,
+		HTTPRequestPHP8_2_0_Alpine,
+		HTTPRequestPHP8_2_0_Debian,
+		HTTPRequestPHP8_3_0_Alpine,
+		HTTPRequestPHP8_3_0_Debian,
 	}
 }
 

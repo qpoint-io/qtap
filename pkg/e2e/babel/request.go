@@ -75,6 +75,12 @@ func (m *HTTPRequestBuilder) WithTimeout(timeout time.Duration) *HTTPRequestBuil
 	return m
 }
 
+// WithClient sets the HTTP client
+func (m *HTTPRequestBuilder) WithClient(client string) *HTTPRequestBuilder {
+	m.req.Client = client
+	return m
+}
+
 // WithRequests sets the number of requests to make sequentially
 func (m *HTTPRequestBuilder) WithRequests(requests int) *HTTPRequestBuilder {
 	m.req.Requests = requests
@@ -173,6 +179,10 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	}
 	envVars["HTTP_TIMEOUT"] = strconv.Itoa(int(m.Timeout.Seconds()))
 
+	if m.Client != "" {
+		envVars["HTTP_CLIENT"] = m.Client
+	}
+
 	// Execution control
 	envVars["REQUESTS"] = strconv.Itoa(m.Requests)
 	envVars["CONCURRENT_REQUESTS"] = strconv.Itoa(m.ConcurrentRequests)
@@ -212,6 +222,7 @@ type HTTPRequest struct {
 	HTTPVersion string // "1.0", "1.1", "2"
 	KeepAlive   bool
 	Timeout     time.Duration
+	Client      string
 
 	// Execution control
 	Requests             int

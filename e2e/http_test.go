@@ -233,7 +233,7 @@ func TestPython_HTTP(t *testing.T) {
 				})
 				t.Run(image.TestName()+" HTTP/1.1 TLS", func(t *testing.T) {
 					if client == "aiohttp" {
-						t.Skip("Skipping HTTP/1.1 TLS tests for aiohttp -- TODO: investigate why this is failing")
+						t.Skip("Skipping HTTP/1.1 TLS tests for aiohttp (unsupported)")
 					}
 					rb.WithURL(http1server.URL)
 					rb.WithHTTPVersion("1.1")

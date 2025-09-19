@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/qpoint-io/qtap/pkg/e2e"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -14,13 +15,13 @@ import (
 func TestE2ETools(t *testing.T) {
 	t.Helper()
 	t.Run("Plain HTTP/1.1 Server", func(t *testing.T) {
-		testWithHTTPServerProtocol(t, "HTTP/1.1", NewPlainHTTP11TestServer)
+		testWithHTTPServerProtocol(t, "HTTP/1.1", e2e.NewPlainHTTP11TestServer)
 	})
 	t.Run("HTTP/1.1 Only Server", func(t *testing.T) {
-		testWithHTTPServerProtocol(t, "HTTP/1.1", NewHTTP11OnlyTestServer)
+		testWithHTTPServerProtocol(t, "HTTP/1.1", e2e.NewHTTP11OnlyTestServer)
 	})
 	t.Run("HTTP/2 Only Server", func(t *testing.T) {
-		testWithHTTPServerProtocol(t, "HTTP/2.0", NewHTTP2OnlyTestServer)
+		testWithHTTPServerProtocol(t, "HTTP/2.0", e2e.NewHTTP2OnlyTestServer)
 	})
 }
 

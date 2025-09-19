@@ -191,21 +191,21 @@ func TestPython_HTTP(t *testing.T) {
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
-		fmt.Println("⚙️ handling request", r.Proto, r.URL.String())
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
 	})
 
-	http1plainserver, err := NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1plainserver.Close()
 
-	http1server, err := NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1server.Close()
 
-	http2server, err := NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http2server.Close()
 
@@ -270,15 +270,15 @@ func TestRuby_HTTP(t *testing.T) {
 		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
 	})
 
-	http1plainserver, err := NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1plainserver.Close()
 
-	http1server, err := NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1server.Close()
 
-	http2server, err := NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http2server.Close()
 
@@ -335,15 +335,15 @@ func TestPHP_HTTP(t *testing.T) {
 		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
 	})
 
-	http1plainserver, err := NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1plainserver.Close()
 
-	http1server, err := NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http1server.Close()
 
-	http2server, err := NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
 	require.NoError(t, err)
 	defer http2server.Close()
 

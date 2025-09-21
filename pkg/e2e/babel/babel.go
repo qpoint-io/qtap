@@ -1,6 +1,7 @@
 package babel
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -177,6 +178,20 @@ func AllImages() []HTTPRequestImage {
 	images = append(images, AllNodeJSImages()...)
 	images = append(images, AllGoImages()...)
 	return images
+}
+
+type Container struct {
+	testcontainers.Container
+	resultCh chan ContainerResult
+}
+
+func (c *Container) WaitForExit(ctx context.Context) (*ContainerResult, error) {
+	select {
+	case result := <-c.resultCh:
+		return &result, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 type ContainerResult struct {

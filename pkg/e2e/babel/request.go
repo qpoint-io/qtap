@@ -321,9 +321,11 @@ func BuildHTTPRequest() *HTTPRequestBuilder {
 	}
 }
 
-func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *ContainerResult {
-	result := &ContainerResult{}
-	var err error
+func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
+	result := ContainerResult{}
+	c := &Container{
+		resultCh: make(chan ContainerResult),
+	}
 
 	envVars := m.toEnvVars()
 
@@ -337,7 +339,7 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *ContainerResult {
 			},
 			LogConsumerCfg: &testcontainers.LogConsumerConfig{
 				Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
-				Consumers: []testcontainers.LogConsumer{result},
+				Consumers: []testcontainers.LogConsumer{&result},
 			},
 			WaitingFor: wait.ForExit().WithPollInterval(10 * time.Millisecond),
 			AutoRemove: true, // Clean up container when it exits
@@ -355,29 +357,35 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *ContainerResult {
 	// 	}
 	// }
 
-	// Start the container
-	l.Info("🕹️ starting container", zap.String("image", m.ImageURL))
-	container, err := testcontainers.GenericContainer(ctx, req)
-	if err != nil {
-		l.Error("start container error", zap.Error(err))
-		result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
-		result.ExitCode = -1
-		return result
-	}
+	go func() {
+		// Start the container
+		l.Info("🕹️ starting container", zap.String("image", m.ImageURL))
+		container, err := testcontainers.GenericContainer(ctx, req)
+		if err != nil {
+			l.Error("start container error", zap.Error(err))
+			result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
+			result.ExitCode = -1
+			c.resultCh <- result
+			return
+		}
 
-	state, err := container.State(ctx)
-	if err != nil {
-		l.Error("get container state error", zap.Error(err))
-		result.Error = fmt.Errorf("getting container state: %w", err)
-		result.ExitCode = -1
-		return result
-	}
+		state, err := container.State(ctx)
+		if err != nil {
+			l.Error("get container state error", zap.Error(err))
+			result.Error = fmt.Errorf("getting container state: %w", err)
+			result.ExitCode = -1
+			c.resultCh <- result
+			return
+		}
 
-	l.Debug("container state", zap.Any("state", state))
-	result.ExitCode = state.ExitCode
-	if state.Error != "" {
-		result.Error = fmt.Errorf("container error: %s", state.Error)
-	}
+		l.Debug("container state", zap.Any("state", state))
+		result.ExitCode = state.ExitCode
+		if state.Error != "" {
+			result.Error = fmt.Errorf("container error: %s", state.Error)
+		}
 
-	return result
+		c.resultCh <- result
+	}()
+
+	return c
 }

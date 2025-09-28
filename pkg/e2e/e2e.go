@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
-	"github.com/qpoint-io/qtap/pkg/e2e/babel"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -191,7 +190,7 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	}
 }
 
-func (c *TestContext) Do(request *babel.HTTPRequest) ExecResult {
+func (c *TestContext) Do(request *HTTPRequest) ExecResult {
 	id := NewID()
 	request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s,ctxid:%s", c.ID, id))
 	c.L.Info("🕹️ executing babel http request", zap.String("image", request.ImageURL))
@@ -202,10 +201,10 @@ func (c *TestContext) Do(request *babel.HTTPRequest) ExecResult {
 	c.L.Debug("⏱️ Waiting for babel http container to exit", zap.String("image", request.ImageURL))
 	result, err := container.WaitForExit(c.T.Context())
 	require.NoError(c.T, err)
-	c.L.Debug("✅ babel http request finished", zap.String("image", request.ImageURL), zap.String("result", result.Logs))
+	c.L.Debug("✅ babel http request finished", zap.String("image", request.ImageURL), zap.String("stdout", result.Stdout()), zap.String("stderr", result.Stderr()))
 
 	return ExecResult{
-		Output: result.Logs,
+		Output: result.Combined(),
 		Err:    result.Error,
 		Code:   result.ExitCode,
 		ID:     id,

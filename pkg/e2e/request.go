@@ -1,9 +1,10 @@
-package babel
+package e2e
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -131,6 +132,7 @@ func (m *HTTPRequestBuilder) WithExtraEnvVar(key, value string) *HTTPRequestBuil
 
 // WithExtraEnvVars adds additional environment variables
 func (m *HTTPRequest) WithExtraEnvVars(vars map[string]string) *HTTPRequest {
+	maps.Copy(m.ExtraEnvVars, vars)
 	for k, v := range vars {
 		m.ExtraEnvVars[k] = v
 	}

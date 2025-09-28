@@ -1,0 +1,3 @@
+- [ ] Add ability to pass a handler to the suite
+- [ ] Tighter intgration with the test context generator
+- [ ] Add grouping ability, for example GroupBy("OS", "Language", "HTTPVersion", "Client")

@@ -12,7 +12,6 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/e2e"
-	"github.com/qpoint-io/qtap/pkg/e2e/babel"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
@@ -117,7 +116,7 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 }
 
 // testBabelHTTPRequest runs a test against a specific babel image
-func testBabelHTTPRequest(t *testing.T, r *babel.HTTPRequest) {
+func testBabelHTTPRequest(t *testing.T, r *e2e.HTTPRequest) {
 	t.Helper()
 	ctx := e2ectx.TestCtx(t)
 
@@ -187,7 +186,7 @@ func testBabelHTTPRequest(t *testing.T, r *babel.HTTPRequest) {
 
 func TestPython_HTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
-	images := babel.AllPythonImages()
+	images := e2e.AllPythonImages()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
@@ -209,7 +208,7 @@ func TestPython_HTTP(t *testing.T) {
 	require.NoError(t, err)
 	defer http2server.Close()
 
-	rb := babel.BuildHTTPRequest().
+	rb := e2e.BuildHTTPRequest().
 		WithMethod("GET").
 		WithTimeout(10 * time.Second).
 		WithOutputFormat("json").
@@ -260,7 +259,7 @@ func TestPython_HTTP(t *testing.T) {
 
 func TestRuby_HTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
-	images := babel.AllRubyImages()
+	images := e2e.AllRubyImages()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
@@ -282,7 +281,7 @@ func TestRuby_HTTP(t *testing.T) {
 	require.NoError(t, err)
 	defer http2server.Close()
 
-	rb := babel.BuildHTTPRequest().
+	rb := e2e.BuildHTTPRequest().
 		WithMethod("GET").
 		WithTimeout(10 * time.Second).
 		WithOutputFormat("json").
@@ -325,7 +324,7 @@ func TestRuby_HTTP(t *testing.T) {
 
 func TestPHP_HTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
-	images := babel.AllPHPImages()
+	images := e2e.AllPHPImages()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
@@ -347,7 +346,7 @@ func TestPHP_HTTP(t *testing.T) {
 	require.NoError(t, err)
 	defer http2server.Close()
 
-	rb := babel.BuildHTTPRequest().
+	rb := e2e.BuildHTTPRequest().
 		WithMethod("GET").
 		WithTimeout(10 * time.Second).
 		WithOutputFormat("json").

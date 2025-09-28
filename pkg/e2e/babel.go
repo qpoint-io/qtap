@@ -1,11 +1,8 @@
-package babel
+package e2e
 
 import (
-	"context"
 	"os"
 	"strings"
-
-	"github.com/testcontainers/testcontainers-go"
 )
 
 const officialImagesRegistry = "us-docker.pkg.dev/qpoint-edge/public/babel/"
@@ -178,28 +175,4 @@ func AllImages() []HTTPRequestImage {
 	images = append(images, AllNodeJSImages()...)
 	images = append(images, AllGoImages()...)
 	return images
-}
-
-type Container struct {
-	testcontainers.Container
-	resultCh chan ContainerResult
-}
-
-func (c *Container) WaitForExit(ctx context.Context) (*ContainerResult, error) {
-	select {
-	case result := <-c.resultCh:
-		return &result, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-type ContainerResult struct {
-	ExitCode int
-	Logs     string
-	Error    error
-}
-
-func (c *ContainerResult) Accept(log testcontainers.Log) {
-	c.Logs += string(log.Content) + "\n"
 }

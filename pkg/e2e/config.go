@@ -4,6 +4,9 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 )
 
+// ConfigMutator mutates the config
+type ConfigMutator func(*config.Config)
+
 // ConfigProvider loads configuration from an in-memory object
 type ConfigProvider struct {
 	cfg      *config.Config

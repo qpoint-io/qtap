@@ -1,4 +1,4 @@
-package babel
+package e2e
 
 import (
 	"crypto/tls"

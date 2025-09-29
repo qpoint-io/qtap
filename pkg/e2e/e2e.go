@@ -222,7 +222,7 @@ func (c *TestContext) Events(expectedConnections int) *Events {
 	return events
 }
 
-func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func(*testing.T)) {
+func (c *TestContext) WithConfig(t *testing.T, mut ConfigMutator, fn func(*testing.T)) {
 	t.Helper()
 	conf := c.e2ectx.TestConfig(mut)
 	c.L.Info("⚙️ setting test config")

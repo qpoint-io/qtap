@@ -1,9 +1,8 @@
-package babel
+package e2e
 
 import (
 	"fmt"
 	"strings"
-	"testing"
 )
 
 // Matrix defines the dimensions for test generation
@@ -41,9 +40,8 @@ type TestSuiteBuilder struct {
 	requestBuilder     *HTTPRequestBuilder
 	validations        []ValidationFunc
 	serverExpectations RequestExpectations
+	configMutator      ConfigMutator
 	errors             []error
-
-	tests map[string]func(*testing.T, HTTPRequest)
 }
 
 // NewTestSuite creates a new test suite builder
@@ -64,6 +62,12 @@ func NewTestSuite(name string) *TestSuiteBuilder {
 // OS configuration
 func (b *TestSuiteBuilder) WithOS(os ...string) *TestSuiteBuilder {
 	b.matrix.OS = append(b.matrix.OS, os...)
+	return b
+}
+
+// Qtap configuration
+func (b *TestSuiteBuilder) WithConfig(fn ConfigMutator) *TestSuiteBuilder {
+	b.configMutator = fn
 	return b
 }
 
@@ -97,11 +101,6 @@ func (b *TestSuiteBuilder) WithBody(body string) *TestSuiteBuilder {
 // Client configuration
 func (b *TestSuiteBuilder) WithClients(language Language, clients ...string) *TestSuiteBuilder {
 	b.matrix.Clients[language] = append(b.matrix.Clients[language], clients...)
-	return b
-}
-
-func (b *TestSuiteBuilder) WithTest(name string, t *testing.T, fn func(*testing.T, HTTPRequest)) *TestSuiteBuilder {
-	b.tests[name] = fn
 	return b
 }
 

@@ -1,4 +1,4 @@
-package e2e
+package babel
 
 import (
 	"testing"
@@ -9,11 +9,9 @@ type ValidationFunc func(t *testing.T, ctx ValidationContext) error
 
 // ValidationContext provides all test artifacts for validation
 type ValidationContext struct {
-	// TestCase    *TestCase
+	TestCase   *TestCase
 	Container  *ContainerResult
 	ServerReqs []CapturedRequest
-	// TODO(Jon): Add event store ref here
-	// AgentEvents []AgentEvent
 }
 
 // ExpectStatus validates HTTP status code
@@ -24,3 +22,5 @@ func ExpectStatus(code int) ValidationFunc {
 		return nil
 	}
 }
+
+// TODO(Jon): Add more validation functions

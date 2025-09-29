@@ -1,4 +1,4 @@
-package e2e
+package babel
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ func TestTestSuiteBuilder(t *testing.T) {
 	// Build a test suite as shown in the user's example
 	suite, err := NewTestSuite("Basic HTTP GET").
 		WithOS("alpine", "debian").
-		WithPythonVersions("3.10.0", "3.12.0").
+		WithVersions(Python, "3.10.0", "3.12.0").
 		WithMethod("GET").
 		WithURL("/api/health").
 		WithHTTPVersions("1.1").

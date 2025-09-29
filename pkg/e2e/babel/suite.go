@@ -1,8 +1,9 @@
-package e2e
+package babel
 
 import (
 	"fmt"
 	"strings"
+	"testing"
 )
 
 // Matrix defines the dimensions for test generation
@@ -41,6 +42,8 @@ type TestSuiteBuilder struct {
 	validations        []ValidationFunc
 	serverExpectations RequestExpectations
 	errors             []error
+
+	tests map[string]func(*testing.T, HTTPRequest)
 }
 
 // NewTestSuite creates a new test suite builder
@@ -65,18 +68,8 @@ func (b *TestSuiteBuilder) WithOS(os ...string) *TestSuiteBuilder {
 }
 
 // Language version configuration
-func (b *TestSuiteBuilder) WithPythonVersions(versions ...string) *TestSuiteBuilder {
-	b.matrix.Languages["python"] = append(b.matrix.Languages["python"], versions...)
-	return b
-}
-
-func (b *TestSuiteBuilder) WithRubyVersions(versions ...string) *TestSuiteBuilder {
-	b.matrix.Languages["ruby"] = append(b.matrix.Languages["ruby"], versions...)
-	return b
-}
-
-func (b *TestSuiteBuilder) WithPHPVersions(versions ...string) *TestSuiteBuilder {
-	b.matrix.Languages["php"] = append(b.matrix.Languages["php"], versions...)
+func (b *TestSuiteBuilder) WithVersions(language Language, versions ...string) *TestSuiteBuilder {
+	b.matrix.Languages[language] = append(b.matrix.Languages[language], versions...)
 	return b
 }
 
@@ -107,30 +100,24 @@ func (b *TestSuiteBuilder) WithClients(language Language, clients ...string) *Te
 	return b
 }
 
+func (b *TestSuiteBuilder) WithTest(name string, t *testing.T, fn func(*testing.T, HTTPRequest)) *TestSuiteBuilder {
+	b.tests[name] = fn
+	return b
+}
+
 // Validation configuration
 func (b *TestSuiteBuilder) ExpectStatus(code int) *TestSuiteBuilder {
 	b.validations = append(b.validations, ExpectStatus(code))
 	return b
 }
 
-// func (b *TestSuiteBuilder) ExpectAgentEvent(eventType string) *TestSuiteBuilder {
-// 	b.validations = append(b.validations, ExpectAgentEventCount(eventType, 1))
+// func (b *TestSuiteBuilder) ExpectServerReceives(exp RequestExpectations) *TestSuiteBuilder {
+// 	b.serverExpectations = exp
 // 	return b
 // }
 
-func (b *TestSuiteBuilder) ExpectServerReceives(exp RequestExpectations) *TestSuiteBuilder {
-	b.serverExpectations = exp
-	return b
-}
-
 // Build generates all test cases
 func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
-	// // Build the base request
-	// baseRequest, err := b.requestBuilder.Build()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("building base request: %w", err)
-	// }
-
 	var testCases []TestCase
 	var skipped []string
 
@@ -175,10 +162,6 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 						}
 
 						// Create test case
-						// req := *baseRequest
-						// req.ImageURL = string(cap.Image)
-						// req.Client = clientName
-						// req.HTTPVersion = httpVersion
 						rb := b.requestBuilder
 						rb.WithImageURL(string(cap.Image))
 						rb.WithClient(clientName)

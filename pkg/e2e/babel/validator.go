@@ -1,4 +1,4 @@
-package e2e
+package babel
 
 import (
 	"bytes"
@@ -9,6 +9,12 @@ import (
 	"testing"
 	"time"
 )
+
+// TODO(Jon): This started off as a exclusive interim request validator.
+// The purpose was to validate the request the local server received is
+// what we intended to send.
+// However, we should probably expand it to satisfy an interface and be
+// used as a general purpose validator.
 
 // RequestExpectations defines what we expect from the client
 type RequestExpectations struct {

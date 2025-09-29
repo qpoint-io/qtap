@@ -1,4 +1,4 @@
-package e2e
+package babel
 
 func RegisterPython() {
 	clients := map[string]*ClientCapabilities{

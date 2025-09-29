@@ -1,4 +1,4 @@
-package e2e
+package babel
 
 import (
 	"context"
@@ -14,11 +14,6 @@ type TestSuiteRunner struct {
 	Suite     *TestSuite
 	MachineIP string
 	Logger    *zap.Logger
-	// Add your agent capture here
-	// Agent *AgentCapture
-	// TODO(Jon): this is where we need to add the Context to create the test context which
-	// starts the qtap service and mocks the event store. The AgentCapture above is just a
-	// placeholder for the event store mock.
 }
 
 // Run executes all tests in the suite
@@ -112,9 +107,6 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tc TestCase,
 	// Update request URL to point to test server
 	tc.Request.URL = server.URL + tc.Request.URL
 
-	// Start agent capture if available
-	// r.Agent.StartCapture(tc.Name)
-
 	// Run the container
 	container := tc.Request.Run(ctx, r.Logger)
 
@@ -128,16 +120,11 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tc TestCase,
 	// Get captured data
 	capturedRequests := validator.GetCaptured()
 
-	// Get agent events if available
-	// var agentEvents []AgentEvent
-	// agentEvents = r.Agent.GetEvents(tc.Name)
-
 	// Create validation context
 	validationCtx := ValidationContext{
-		// TestCase:    &tc,
+		TestCase:   &tc,
 		Container:  &containerResult,
 		ServerReqs: capturedRequests,
-		// AgentEvents: agentEvents,
 	}
 
 	// Run all validations

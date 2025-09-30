@@ -2,6 +2,19 @@
 
 package e2e
 
+import (
+	"testing"
+
+	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/e2e"
+	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
+	"github.com/qpoint-io/qtap/pkg/plugins/report"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
+)
+
 // func TestHTTP(t *testing.T) {
 // 	ctx := e2ectx.TestCtx(t)
 
@@ -16,6 +29,62 @@ package e2e
 // 		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
 // 	})
 // }
+
+func TestHTTP_Babel(t *testing.T) {
+	e2e.Registry.ListAvailable()
+
+	configMut := func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}
+
+	suite, err := e2e.NewTestSuite("Babel HTTP").
+		WithConfig(configMut).
+		WithOS("alpine", "bullseye").
+		WithVersions(e2e.Python, "3.10.0", "3.12.0").
+		WithMethod("GET").
+		WithURL("/api/health").
+		WithHTTPVersions("1.1").
+		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
+			events := ctx.TestContext.Events(1)
+			require.Len(t, events.Connections, 1)
+
+			require.Equal(t, events.Connections[0].L7Protocol, eventstore.L7Protocol_HTTP1)
+
+			require.Len(t, events.Requests, 1)
+			// require.Equal(t, events.Connections[0].L7Protocol, eventstore.L7Protocol_HTTP1)
+			// require.Equal(t, events.Connections[0].Status, eventstore.ConnectionStatus_CONNECTED)
+			return nil
+		}).
+		Build()
+
+	require.NoError(t, err)
+	require.NotNil(t, suite)
+
+	runner := &e2e.TestSuiteRunner{
+		Suite:  suite,
+		Logger: zap.NewNop(),
+	}
+	runner.Run(t, e2ectx)
+}
 
 // func TestHTTP_SSE(t *testing.T) {
 // 	ctx := e2ectx.TestCtx(t)

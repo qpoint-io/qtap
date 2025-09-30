@@ -6,6 +6,7 @@ var Registry *ImageRegistry
 
 func init() {
 	Registry = NewImageRegistry()
+	RegisterPython()
 }
 
 // ClientCapabilities defines what a specific HTTP client can do

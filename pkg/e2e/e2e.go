@@ -190,31 +190,31 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	}
 }
 
-// func (c *TestContext) Do(request *HTTPRequest) ExecResult {
-// 	id := NewID()
-// 	request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s,ctxid:%s", c.ID, id))
-// 	c.L.Info("🕹️ executing babel http request", zap.String("image", request.ImageURL))
+func (c *TestContext) Do(request *HTTPRequest) ExecResult {
+	id := NewID()
+	request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s,ctxid:%s", c.ID, id))
+	c.L.Info("🕹️ executing babel http request", zap.String("image", request.ImageURL))
 
-// 	c.L.Debug("✅ babel http request starting", zap.String("image", request.ImageURL))
-// 	container := request.Run(c.T.Context(), c.L)
+	c.L.Debug("✅ babel http request starting", zap.String("image", request.ImageURL))
+	container := request.Run(c.T.Context(), c.L)
 
-// 	c.L.Debug("⏱️ Waiting for babel http container to exit", zap.String("image", request.ImageURL))
-// 	result, err := container.WaitForExit(c.T.Context())
-// 	require.NoError(c.T, err)
-// 	c.L.Debug("✅ babel http request finished", zap.String("image", request.ImageURL), zap.String("stdout", result.Stdout()), zap.String("stderr", result.Stderr()))
+	c.L.Debug("⏱️ Waiting for babel http container to exit", zap.String("image", request.ImageURL))
+	result, err := container.WaitForExit(c.T.Context())
+	require.NoError(c.T, err)
+	c.L.Debug("✅ babel http request finished", zap.String("image", request.ImageURL), zap.String("stdout", result.Stdout()), zap.String("stderr", result.Stderr()))
 
-// 	return ExecResult{
-// 		Output: result.Combined(),
-// 		Err:    result.Error,
-// 		Code:   result.ExitCode,
-// 		ID:     id,
-// 		AwaitEvents: func(expectedConnections int) *Events {
-// 			events, err := c.e2ectx.EventStore.AwaitByCtxID(id, expectedConnections, AwaitEventsTimeout)
-// 			require.NoError(c.T, err)
-// 			return events
-// 		},
-// 	}
-// }
+	return ExecResult{
+		Output: result.Combined(),
+		Err:    result.Error,
+		Code:   result.ExitCode,
+		ID:     id,
+		AwaitEvents: func(expectedConnections int) *Events {
+			events, err := c.e2ectx.EventStore.AwaitByCtxID(id, expectedConnections, AwaitEventsTimeout)
+			require.NoError(c.T, err)
+			return events
+		},
+	}
+}
 
 func (c *TestContext) Events(expectedConnections int) *Events {
 	events, err := c.e2ectx.EventStore.AwaitByCtxID(c.ID, expectedConnections, AwaitEventsTimeout)

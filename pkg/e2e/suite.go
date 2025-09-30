@@ -15,14 +15,15 @@ type Matrix struct {
 
 // TestCase represents a single test configuration
 type TestCase struct {
-	Name        string
-	Image       HTTPRequestImage
-	OS          string
-	Language    Language
-	Version     string
-	Client      string
-	Request     *HTTPRequest
-	Validations []ValidationFunc
+	Name          string
+	Image         HTTPRequestImage
+	OS            string
+	Language      Language
+	Version       string
+	Client        string
+	Request       *HTTPRequest
+	Validations   []ValidationFunc
+	ConfigMutator ConfigMutator
 }
 
 // TestSuite contains all generated test cases
@@ -34,21 +35,20 @@ type TestSuite struct {
 
 // TestSuiteBuilder builds test suites using the builder pattern
 type TestSuiteBuilder struct {
-	name               string
-	registry           *ImageRegistry
-	matrix             Matrix
-	requestBuilder     *HTTPRequestBuilder
-	validations        []ValidationFunc
-	serverExpectations RequestExpectations
-	configMutator      ConfigMutator
-	errors             []error
+	name string
+	// registry           *ImageRegistry
+	matrix         Matrix
+	requestBuilder *HTTPRequestBuilder
+	validations    []ValidationFunc
+	configMutator  ConfigMutator
+	errors         []error
 }
 
 // NewTestSuite creates a new test suite builder
 func NewTestSuite(name string) *TestSuiteBuilder {
 	return &TestSuiteBuilder{
-		name:           name,
-		registry:       Registry,
+		name: name,
+		// registry:       Registry,
 		requestBuilder: BuildHTTPRequest(),
 		matrix: Matrix{
 			Languages: make(map[Language][]string),
@@ -105,15 +105,10 @@ func (b *TestSuiteBuilder) WithClients(language Language, clients ...string) *Te
 }
 
 // Validation configuration
-func (b *TestSuiteBuilder) ExpectStatus(code int) *TestSuiteBuilder {
-	b.validations = append(b.validations, ExpectStatus(code))
+func (b *TestSuiteBuilder) WithValidation(validations ...ValidationFunc) *TestSuiteBuilder {
+	b.validations = append(b.validations, validations...)
 	return b
 }
-
-// func (b *TestSuiteBuilder) ExpectServerReceives(exp RequestExpectations) *TestSuiteBuilder {
-// 	b.serverExpectations = exp
-// 	return b
-// }
 
 // Build generates all test cases
 func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
@@ -125,9 +120,11 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 		for lang, versions := range b.matrix.Languages {
 			for _, version := range versions {
 				// Look up image capabilities
-				cap, exists := b.registry.Lookup(lang, version, os)
+				cap, exists := Registry.Lookup(lang, version, os)
 				if !exists {
-					return nil, fmt.Errorf("no image found for %s-%s-%s", lang, version, os)
+					skipped = append(skipped,
+						fmt.Sprintf("%s-%s-%s: no image found", lang, version, os))
+					continue
 				}
 
 				// Determine which clients to test
@@ -173,13 +170,14 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 						tc := TestCase{
 							Name: fmt.Sprintf("%s/%s-%s/%s/HTTP%s/%s",
 								os, lang, version, clientName, httpVersion, req.Method),
-							Image:       cap.Image,
-							OS:          os,
-							Language:    lang,
-							Version:     version,
-							Client:      clientName,
-							Request:     req,
-							Validations: b.validations,
+							Image:         cap.Image,
+							OS:            os,
+							Language:      lang,
+							Version:       version,
+							Client:        clientName,
+							Request:       req,
+							Validations:   b.validations,
+							ConfigMutator: b.configMutator,
 						}
 
 						testCases = append(testCases, tc)

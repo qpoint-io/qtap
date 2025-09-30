@@ -17,7 +17,6 @@ func TestTestSuiteBuilder(t *testing.T) {
 		WithMethod("GET").
 		WithURL("/api/health").
 		WithHTTPVersions("1.1").
-		ExpectStatus(200).
 		Build()
 
 	require.NoError(t, err)

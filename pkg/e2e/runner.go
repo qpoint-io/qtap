@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,13 +12,13 @@ import (
 
 // TestSuiteRunner runs a test suite
 type TestSuiteRunner struct {
-	Suite     *TestSuite
-	MachineIP string
-	Logger    *zap.Logger
+	Context *Context
+	Suite   *TestSuite
+	Logger  *zap.Logger
 }
 
 // Run executes all tests in the suite
-func (r *TestSuiteRunner) Run(t *testing.T) {
+func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 	t.Logf("Running test suite: %s", r.Suite.name)
 	t.Logf("Total test cases: %d", len(r.Suite.testCases))
 
@@ -28,19 +29,28 @@ func (r *TestSuiteRunner) Run(t *testing.T) {
 		}
 	}
 
+	r.Logger = ctx.L
+
 	// Group tests by HTTP version to reuse servers
 	testsByHTTPVersion := r.groupTestsByHTTPVersion()
 
 	for httpVersion, tests := range testsByHTTPVersion {
 		t.Run("HTTP/"+httpVersion, func(t *testing.T) {
 			// Create appropriate server for this HTTP version
-			server, validator := r.createTestServer(t, httpVersion, tests[0])
+			server := r.createTestServer(t, httpVersion, ctx.MachineIP().String(), tests[0])
 			defer server.Close()
 
 			// Run all tests for this HTTP version
 			for _, tc := range tests {
 				t.Run(tc.Name, func(t *testing.T) {
-					r.runSingleTest(t, tc, server, validator)
+					// This sets up the test context for Qtap, eg. specific configs
+					tctx := ctx.TestCtx(t)
+					if tc.Request != nil {
+						tc.Request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s", tctx.ID))
+					}
+					tctx.WithConfig(t, tc.ConfigMutator, func(t *testing.T) {
+						r.runSingleTest(t, tctx, tc, server)
+					})
 				})
 			}
 		})
@@ -55,8 +65,8 @@ func (r *TestSuiteRunner) groupTestsByHTTPVersion() map[string][]TestCase {
 	return groups
 }
 
-func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string,
-	sampleTest TestCase) (*httptest.Server, *RequestValidator) {
+func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, machineIP string,
+	sampleTest TestCase) *httptest.Server {
 
 	// Create request expectations - strict validation
 	expectations := RequestExpectations{
@@ -83,11 +93,11 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string,
 
 	switch httpVersion {
 	case "2":
-		server, err = NewHTTP2OnlyTestServer(r.MachineIP, handler)
+		server, err = NewHTTP2OnlyTestServer(machineIP, handler)
 	case "1.1":
-		server, err = NewHTTP11OnlyTestServer(r.MachineIP, handler)
+		server, err = NewHTTP11OnlyTestServer(machineIP, handler)
 	case "1.0":
-		server, err = NewPlainHTTP11TestServer(r.MachineIP, handler)
+		server, err = NewPlainHTTP11TestServer(machineIP, handler)
 	default:
 		t.Fatalf("unsupported HTTP version: %s", httpVersion)
 	}
@@ -96,11 +106,10 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string,
 		t.Fatalf("failed to create server: %v", err)
 	}
 
-	return server, validator
+	return server
 }
 
-func (r *TestSuiteRunner) runSingleTest(t *testing.T, tc TestCase,
-	server *httptest.Server, validator *RequestValidator) {
+func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc TestCase, server *httptest.Server) {
 
 	ctx := context.Background()
 
@@ -117,14 +126,11 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tc TestCase,
 	// TODO(Jon): wrap this in a timer
 	containerResult = <-container.resultCh
 
-	// Get captured data
-	capturedRequests := validator.GetCaptured()
-
 	// Create validation context
 	validationCtx := ValidationContext{
-		TestCase:   &tc,
-		Container:  &containerResult,
-		ServerReqs: capturedRequests,
+		TestContext: tctx,
+		TestCase:    &tc,
+		Container:   &containerResult,
 	}
 
 	// Run all validations

@@ -1,8 +1,6 @@
 package e2e
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -46,7 +44,7 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 					// This sets up the test context for Qtap, eg. specific configs
 					tctx := ctx.TestCtx(t)
 					if tc.Request != nil {
-						tc.Request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s", tctx.ID))
+						tc.Request.WithExtraEnvVar("QPOINT_TAGS", "ctxid:"+tctx.ID)
 					}
 					tctx.WithConfig(t, tc.ConfigMutator, func(t *testing.T) {
 						r.runSingleTest(t, tctx, tc, server)
@@ -67,7 +65,6 @@ func (r *TestSuiteRunner) groupTestsByHTTPVersion() map[string][]TestCase {
 
 func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, machineIP string,
 	sampleTest TestCase) *httptest.Server {
-
 	// Create request expectations - strict validation
 	expectations := RequestExpectations{
 		Method:      sampleTest.Request.Method,
@@ -80,8 +77,9 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, mac
 
 	// Base handler
 	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"success"}`))
+		_, _ = w.Write([]byte(`{"status":"success"}`))
 	})
 
 	// Wrap with validation
@@ -110,8 +108,7 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, mac
 }
 
 func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc TestCase, server *httptest.Server) {
-
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Update request URL to point to test server
 	tc.Request.URL = server.URL + tc.Request.URL
@@ -122,9 +119,7 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 	// Wait for any async operations
 	// time.Sleep(100 * time.Millisecond)
 
-	var containerResult ContainerResult
-	// TODO(Jon): wrap this in a timer
-	containerResult = <-container.resultCh
+	var containerResult ContainerResult = <-container.resultCh
 
 	// Create validation context
 	validationCtx := ValidationContext{

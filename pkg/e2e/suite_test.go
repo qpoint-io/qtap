@@ -13,7 +13,7 @@ func TestTestSuiteBuilder(t *testing.T) {
 	// Build a test suite as shown in the user's example
 	suite, err := NewTestSuite("Basic HTTP GET").
 		WithOS("alpine", "debian").
-		WithVersions(Python, "3.10.0", "3.12.0").
+		WithLanguage(Python, "3.10.0", "3.12.0").
 		WithMethod("GET").
 		WithURL("/api/health").
 		WithHTTPVersions("1.1").
@@ -27,7 +27,7 @@ func TestTestSuiteBuilder(t *testing.T) {
 
 	// Verify the suite has the expected structure
 	require.Equal(t, "Basic HTTP GET", suite.name)
-	require.Greater(t, len(suite.testCases), 0, "should have generated test cases")
+	require.NotEmpty(t, suite.testCases, "should have generated test cases")
 
 	// Check that test cases were generated for the matrix
 	t.Logf("Generated %d test cases", len(suite.testCases))

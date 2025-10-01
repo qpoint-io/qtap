@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Matrix defines the dimensions for test generation
@@ -72,7 +73,7 @@ func (b *TestSuiteBuilder) WithConfig(fn ConfigMutator) *TestSuiteBuilder {
 }
 
 // Language version configuration
-func (b *TestSuiteBuilder) WithVersions(language Language, versions ...string) *TestSuiteBuilder {
+func (b *TestSuiteBuilder) WithLanguage(language Language, versions ...string) *TestSuiteBuilder {
 	b.matrix.Languages[language] = append(b.matrix.Languages[language], versions...)
 	return b
 }
@@ -93,13 +94,18 @@ func (b *TestSuiteBuilder) WithHTTPVersions(versions ...string) *TestSuiteBuilde
 	return b
 }
 
+func (b *TestSuiteBuilder) WithHeader(key, value string) *TestSuiteBuilder {
+	b.requestBuilder.WithHeader(key, value)
+	return b
+}
+
 func (b *TestSuiteBuilder) WithBody(body string) *TestSuiteBuilder {
 	b.requestBuilder.WithBody(body)
 	return b
 }
 
 // Client configuration
-func (b *TestSuiteBuilder) WithClients(language Language, clients ...string) *TestSuiteBuilder {
+func (b *TestSuiteBuilder) WithLanguageClients(language Language, clients ...string) *TestSuiteBuilder {
 	b.matrix.Clients[language] = append(b.matrix.Clients[language], clients...)
 	return b
 }
@@ -107,6 +113,12 @@ func (b *TestSuiteBuilder) WithClients(language Language, clients ...string) *Te
 // Validation configuration
 func (b *TestSuiteBuilder) WithValidation(validations ...ValidationFunc) *TestSuiteBuilder {
 	b.validations = append(b.validations, validations...)
+	return b
+}
+
+// Startup delay configuration
+func (b *TestSuiteBuilder) WithStartupDelay(delay time.Duration) *TestSuiteBuilder {
+	b.requestBuilder.WithStartupDelay(delay)
 	return b
 }
 
@@ -223,7 +235,7 @@ func (ts *TestSuite) PrintTestPlan() string {
 	}
 
 	for os, cases := range byOS {
-		result.WriteString(fmt.Sprintf("%s:\n", os))
+		result.WriteString(os + ":\n")
 		for _, tc := range cases {
 			result.WriteString(fmt.Sprintf("  • %s\n", tc.Name))
 		}

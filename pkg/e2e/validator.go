@@ -101,7 +101,7 @@ func (rv *RequestValidator) validateRequest(captured CapturedRequest) error {
 
 	// Validate HTTP version - strict matching, no fallbacks
 	if exp.HTTPVersion != "" {
-		expectedProto := fmt.Sprintf("HTTP/%s", exp.HTTPVersion)
+		expectedProto := "HTTP/" + exp.HTTPVersion
 		if captured.Proto != expectedProto {
 			return fmt.Errorf("protocol mismatch: expected %s, got %s",
 				expectedProto, captured.Proto)

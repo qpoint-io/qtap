@@ -12,7 +12,7 @@ func RegisterPython() {
 		},
 		"httpx": {
 			Name:         "httpx",
-			HTTPVersions: []string{"2"},
+			HTTPVersions: []string{"1.0", "1.1", "2"},
 		},
 	}
 

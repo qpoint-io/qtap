@@ -89,6 +89,7 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, mac
 	var server *httptest.Server
 	var err error
 
+	// TODO(Jon): this needs to change to support tls and non-tls
 	switch httpVersion {
 	case "2":
 		server, err = NewHTTP2OnlyTestServer(machineIP, handler)

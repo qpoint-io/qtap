@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/hashicorp/golang-lru/v2/expirable"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/process/mocks"
 	"github.com/stretchr/testify/require"
@@ -53,10 +53,14 @@ func TestHandleExecStartEvent(t *testing.T) {
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, []byte(tt.exePath)))
 
+			cache, err := lru.New[int32, *process.Process](cacheSize)
+			if err != nil {
+				panic(err)
+			}
 			// Create manager
 			m := &Manager{
 				logger: zap.NewNop(),
-				cache:  expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
+				cache:  cache,
 			}
 
 			if tt.receiver {
@@ -65,7 +69,7 @@ func TestHandleExecStartEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err := m.handleExecStartEvent(bytes.NewReader(buf.Bytes()))
+			err = m.handleExecStartEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -122,10 +126,15 @@ func TestHandleExecArgvEvent(t *testing.T) {
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, []byte(tt.arg)))
 
+			cache, err := lru.New[int32, *process.Process](cacheSize)
+			if err != nil {
+				panic(err)
+			}
+
 			// Create manager with receiver
 			m := &Manager{
 				logger:   zap.NewNop(),
-				cache:    expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
+				cache:    cache,
 				reciever: mocks.NewMockReceiver(ctrl),
 			}
 
@@ -137,7 +146,7 @@ func TestHandleExecArgvEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err := m.handleExecArgvEvent(bytes.NewReader(buf.Bytes()))
+			err = m.handleExecArgvEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -197,6 +206,11 @@ func TestHandleExecEndEvent(t *testing.T) {
 			buf := new(bytes.Buffer)
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 
+			cache, err := lru.New[int32, *process.Process](cacheSize)
+			if err != nil {
+				panic(err)
+			}
+
 			// Create mock receiver
 			mockRcv := mocks.NewMockReceiver(ctrl)
 			if tt.setupPid {
@@ -206,7 +220,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 			// Create manager
 			m := &Manager{
 				logger:   zap.NewNop(),
-				cache:    expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
+				cache:    cache,
 				reciever: mockRcv,
 			}
 
@@ -216,7 +230,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err := m.handleExecEndEvent(bytes.NewReader(buf.Bytes()))
+			err = m.handleExecEndEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -266,6 +280,11 @@ func TestHandleExitEvent(t *testing.T) {
 			buf := new(bytes.Buffer)
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 
+			cache, err := lru.New[int32, *process.Process](cacheSize)
+			if err != nil {
+				panic(err)
+			}
+
 			// Create mock receiver
 			mockRcv := mocks.NewMockReceiver(ctrl)
 			mockRcv.EXPECT().UnregisterProcess(int(tt.pid), 0).Return(tt.endProcErr)
@@ -273,12 +292,12 @@ func TestHandleExitEvent(t *testing.T) {
 			// Create manager
 			m := &Manager{
 				logger:   zap.NewNop(),
-				cache:    expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
+				cache:    cache,
 				reciever: mockRcv,
 			}
 
 			// Test handler
-			err := m.handleExitEvent(bytes.NewReader(buf.Bytes()))
+			err = m.handleExitEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return

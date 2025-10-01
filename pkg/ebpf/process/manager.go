@@ -11,7 +11,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
-	"github.com/hashicorp/golang-lru/v2/expirable"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
@@ -31,7 +31,7 @@ var recordPool = sync.Pool{
 type Manager struct {
 	logger   *zap.Logger
 	reciever process.Receiver
-	cache    *expirable.LRU[int32, *process.Process]
+	cache    *lru.Cache[int32, *process.Process]
 
 	// bridge to the bpf probes
 	tracepoints []*common.Tracepoint
@@ -40,12 +40,17 @@ type Manager struct {
 }
 
 func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *Manager {
+	cache, err := lru.New[int32, *process.Process](cacheSize)
+	if err != nil {
+		panic(err)
+	}
+
 	return &Manager{
 		logger:      logger,
 		rb:          rb,
 		metaMap:     mmap,
 		tracepoints: tps,
-		cache:       expirable.NewLRU[int32, *process.Process](cacheSize, nil, cacheTTL),
+		cache:       cache,
 	}
 }
 

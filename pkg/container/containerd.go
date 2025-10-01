@@ -111,8 +111,6 @@ func (c *Containerd) loadNamespacedContainers(ctx context.Context) error {
 }
 
 func (c *Containerd) Start(ctx context.Context) error {
-	c.logger.Info("loading containerd containers")
-
 	if err := c.loadNamespacedContainers(ctx); err != nil {
 		return fmt.Errorf("load namespaced containers: %w", err)
 	}

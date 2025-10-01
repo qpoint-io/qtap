@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -36,6 +37,11 @@ type Containerd struct {
 func NewContainerdAccessor(logger *zap.Logger, endpoint string) (*Containerd, error) {
 	if endpoint == "" {
 		endpoint = DefaultContainerdSocketPath
+	}
+
+	// check if the endpoint exists and is a socket
+	if _, err := os.Stat(endpoint); err != nil {
+		return nil, fmt.Errorf("endpoint %s does not exist or is not a socket: %w", endpoint, err)
 	}
 
 	// create global client

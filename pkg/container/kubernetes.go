@@ -43,6 +43,11 @@ func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*Kube
 		return nil, "", errs
 	}
 
+	// verify the endpoint exists and is a socket
+	if _, err := os.Stat(endpoint); err != nil {
+		return nil, "", []error{fmt.Errorf("endpoint %s does not exist or is not a socket: %w", endpoint, err)}
+	}
+
 	podCache := expirable.NewLRU[string, *podCacheEntry](podCacheSize, nil, podCacheTTL)
 
 	return &KubernetesAccessor{logger: logger, rs: rs, podCache: podCache}, endpoint, nil

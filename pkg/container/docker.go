@@ -49,6 +49,11 @@ func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 		client.WithAPIVersionNegotiation(),
 	}
 
+	// check if the endpoint exists and is a socket
+	if _, err := os.Stat(endpoint); err != nil {
+		return nil, fmt.Errorf("endpoint %s does not exist or is not a socket: %w", endpoint, err)
+	}
+
 	if endpoint != "" {
 		opts = append(opts, client.WithHost(endpoint))
 	} else if os.Getenv(DefaultDockerHostEnv) == "" {

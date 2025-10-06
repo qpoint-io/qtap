@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -151,7 +152,7 @@ func (p *Parser) processRequestStream() {
 	p.state.mu.Lock()
 	p.state.request = request
 	p.state.requestBodyExpected = expectsRequestBody(request)
-	p.state.expectingContinue = request.Headers.Get("Expect") == "100-continue"
+	p.state.expectingContinue = strings.EqualFold(request.Headers.Get("Expect"), "100-continue")
 	p.state.mu.Unlock()
 
 	// Notify callback

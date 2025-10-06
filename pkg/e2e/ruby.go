@@ -3,8 +3,8 @@ package e2e
 func RegisterRuby() {
 	clients := map[string]*ClientCapabilities{
 		"default": {
-			Name:         "default",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "default",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_1},
 		},
 	}
 

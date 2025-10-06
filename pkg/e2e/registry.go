@@ -13,8 +13,8 @@ func init() {
 
 // ClientCapabilities defines what a specific HTTP client can do
 type ClientCapabilities struct {
-	Name         string
-	HTTPVersions []string // ["1.0", "1.1", "2"]
+	Name          string
+	HTTPProtocols []HTTPProtocol
 	// Features     map[string]bool   // TODO(Jon): maybe a future feature? "async", "streaming", "compression", etc.
 }
 
@@ -57,7 +57,7 @@ func (r *ImageRegistry) ListAvailable() {
 	for key, cap := range r.images {
 		fmt.Printf("%s:\n", key)
 		for clientName, client := range cap.Clients {
-			fmt.Printf("  %s: HTTP %v\n", clientName, client.HTTPVersions)
+			fmt.Printf("  %s: HTTP %v\n", clientName, client.HTTPProtocols)
 		}
 	}
 }

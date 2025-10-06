@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -10,7 +11,8 @@ import (
 type Matrix struct {
 	OS           []string
 	Languages    map[Language][]string // language -> versions
-	HTTPVersions []string
+	HTTPProtocol []HTTPProtocol
+	TLS          []bool                // whether to use TLS
 	Clients      map[Language][]string // language -> clients
 }
 
@@ -79,7 +81,7 @@ func (b *TestSuiteBuilder) WithLanguage(language Language, versions ...string) *
 }
 
 // HTTP configuration (proxies to request builder)
-func (b *TestSuiteBuilder) WithMethod(method string) *TestSuiteBuilder {
+func (b *TestSuiteBuilder) WithMethod(method HTTPMethod) *TestSuiteBuilder {
 	b.requestBuilder.WithMethod(method)
 	return b
 }
@@ -89,8 +91,28 @@ func (b *TestSuiteBuilder) WithURL(url string) *TestSuiteBuilder {
 	return b
 }
 
-func (b *TestSuiteBuilder) WithHTTPVersions(versions ...string) *TestSuiteBuilder {
-	b.matrix.HTTPVersions = append(b.matrix.HTTPVersions, versions...)
+func (b *TestSuiteBuilder) WithHTTPProtocols(protos ...HTTPProtocol) *TestSuiteBuilder {
+	b.matrix.HTTPProtocol = append(b.matrix.HTTPProtocol, protos...)
+	return b
+}
+
+func (b *TestSuiteBuilder) WithTLS(tls ...bool) *TestSuiteBuilder {
+	b.matrix.TLS = append(b.matrix.TLS, tls...)
+	return b
+}
+
+func (b *TestSuiteBuilder) WithTLSOnly() *TestSuiteBuilder {
+	b.matrix.TLS = []bool{true}
+	return b
+}
+
+func (b *TestSuiteBuilder) WithPlaintextOnly() *TestSuiteBuilder {
+	b.matrix.TLS = []bool{false}
+	return b
+}
+
+func (b *TestSuiteBuilder) WithBothTLSAndPlaintext() *TestSuiteBuilder {
+	b.matrix.TLS = []bool{true, false}
 	return b
 }
 
@@ -158,41 +180,64 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 						continue
 					}
 
-					// Test each HTTP version
-					for _, httpVersion := range b.matrix.HTTPVersions {
-						// Check if client supports this HTTP version
+					// Test each HTTP Protocol
+					for _, httpProto := range b.matrix.HTTPProtocol {
+						// Check if client supports this HTTP protocol
 						// Skip at matrix generation time - no runtime fallbacks
-						if !contains(clientCap.HTTPVersions, httpVersion) {
+						if !slices.Contains(clientCap.HTTPProtocols, httpProto) {
 							skipped = append(skipped,
 								fmt.Sprintf("%s-%s-%s/%s: doesn't support HTTP/%s",
-									lang, version, os, clientName, httpVersion))
+									lang, version, os, clientName, httpProto))
 							continue
 						}
 
-						// Create test case
-						rb := b.requestBuilder
-						rb.WithImageURL(cap.Image.String())
-						rb.WithClient(clientName)
-						rb.WithHTTPVersion(httpVersion)
-						req, err := rb.Build()
-						if err != nil {
-							return nil, fmt.Errorf("building request: %w", err)
-						}
+						// Test each TLS configuration
+						for _, useTLS := range b.matrix.TLS {
+							// HTTP/2 requires TLS, HTTP/1.0 doesn't support TLS
+							if httpProto == HTTPProtocolHTTP2_0 && !useTLS {
+								skipped = append(skipped,
+									fmt.Sprintf("%s-%s-%s/%s/HTTP%s: HTTP/2 requires TLS",
+										lang, version, os, clientName, httpProto))
+								continue
+							}
+							if httpProto == HTTPProtocolHTTP1_0 && useTLS {
+								skipped = append(skipped,
+									fmt.Sprintf("%s-%s-%s/%s/HTTP%s: HTTP/1.0 with TLS not supported",
+										lang, version, os, clientName, httpProto))
+								continue
+							}
 
-						tc := TestCase{
-							Name: fmt.Sprintf("%s/%s-%s/%s/HTTP%s/%s",
-								os, lang, version, clientName, httpVersion, req.Method),
-							Image:         cap.Image,
-							OS:            os,
-							Language:      lang,
-							Version:       version,
-							Client:        clientName,
-							Request:       req,
-							Validations:   b.validations,
-							ConfigMutator: b.configMutator,
-						}
+							// Create test case
+							rb := b.requestBuilder
+							rb.WithImageURL(cap.Image.String())
+							rb.WithClient(clientName)
+							rb.WithProtocol(httpProto)
+							rb.WithTLS(useTLS)
+							req, err := rb.Build()
+							if err != nil {
+								return nil, fmt.Errorf("building request: %w", err)
+							}
 
-						testCases = append(testCases, tc)
+							tlsStr := ""
+							if useTLS {
+								tlsStr = "/TLS"
+							}
+
+							tc := TestCase{
+								Name: fmt.Sprintf("%s/%s-%s/%s/%s%s/%s",
+									os, lang, version, clientName, httpProto, tlsStr, req.Method),
+								Image:         cap.Image,
+								OS:            os,
+								Language:      lang,
+								Version:       version,
+								Client:        clientName,
+								Request:       req,
+								Validations:   b.validations,
+								ConfigMutator: b.configMutator,
+							}
+
+							testCases = append(testCases, tc)
+						}
 					}
 				}
 			}
@@ -209,16 +254,6 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 		testCases: testCases,
 		skipped:   skipped,
 	}, nil
-}
-
-// Helper function
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }
 
 // PrintTestPlan outputs the test matrix for review

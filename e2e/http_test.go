@@ -147,15 +147,22 @@ func TestLanguages(t *testing.T) {
 		WithLanguage(e2e.Python, "3.10.0", "3.12.0").
 		WithLanguage(e2e.Ruby, "3.2.9", "3.3.9", "3.4.5").
 		WithLanguage(e2e.PHP, "8.1", "8.2", "8.3").
-		WithMethod("GET").
+		WithMethod(e2e.HTTPMethodGet).
 		WithURL("/api/health").
-		WithHTTPVersions("1.1").
+		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).
+		WithBothTLSAndPlaintext().
 		WithHeader("Content-Type", "application/json").
 		WithStartupDelay(500 * time.Millisecond).
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)
-			require.Equal(t, events.Connections[0].L7Protocol, eventstore.L7Protocol_HTTP1)
+
+			switch ctx.TestCase.Request.Proto {
+			case e2e.HTTPProtocolHTTP1_1:
+				require.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+			case e2e.HTTPProtocolHTTP2_0:
+				require.Equal(t, eventstore.L7Protocol_HTTP2, events.Connections[0].L7Protocol)
+			}
 
 			// Validate HTTP request
 			require.Len(t, events.Requests, 1)

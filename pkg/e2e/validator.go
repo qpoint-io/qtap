@@ -18,18 +18,18 @@ import (
 
 // RequestExpectations defines what we expect from the client
 type RequestExpectations struct {
-	Method      string
-	Path        string
-	HTTPVersion string
-	Headers     map[string]string
-	Body        string
+	Method  HTTPMethod
+	Path    string
+	Proto   HTTPProtocol
+	Headers map[string]string
+	Body    string
 }
 
 // CapturedRequest stores what actually arrived at the server
 type CapturedRequest struct {
-	Method     string
+	Method     HTTPMethod
 	Path       string
-	Proto      string
+	Proto      HTTPProtocol
 	Headers    http.Header
 	Body       []byte
 	RemoteAddr string
@@ -61,9 +61,9 @@ func (rv *RequestValidator) Middleware(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 		captured := CapturedRequest{
-			Method:     r.Method,
+			Method:     HTTPMethodFromString(r.Method),
 			Path:       r.URL.Path,
-			Proto:      r.Proto,
+			Proto:      HTTPProtocolFromString(r.Proto),
 			Headers:    r.Header.Clone(),
 			Body:       bodyBytes,
 			RemoteAddr: r.RemoteAddr,
@@ -99,12 +99,11 @@ func (rv *RequestValidator) validateRequest(captured CapturedRequest) error {
 		return fmt.Errorf("path mismatch: expected %s, got %s", exp.Path, captured.Path)
 	}
 
-	// Validate HTTP version - strict matching, no fallbacks
-	if exp.HTTPVersion != "" {
-		expectedProto := "HTTP/" + exp.HTTPVersion
-		if captured.Proto != expectedProto {
+	// Validate HTTP protocol - strict matching, no fallbacks
+	if exp.Proto != "" {
+		if captured.Proto != exp.Proto {
 			return fmt.Errorf("protocol mismatch: expected %s, got %s",
-				expectedProto, captured.Proto)
+				exp.Proto, captured.Proto)
 		}
 	}
 

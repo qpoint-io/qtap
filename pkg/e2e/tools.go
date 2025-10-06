@@ -11,26 +11,26 @@ import (
 
 type HTTPServerFunc func(machineIP string, handler http.Handler) (*httptest.Server, error)
 
-// NewHTTPServer creates an HTTP test server with the specified version and TLS configuration
-func NewHTTPServer(machineIP string, handler http.Handler, version string, useTLS bool) (*httptest.Server, error) {
-	switch version {
-	case "2":
+// NewHTTPServer creates an HTTP test server with the specified protocol and TLS configuration
+func NewHTTPServer(machineIP string, handler http.Handler, proto HTTPProtocol, useTLS bool) (*httptest.Server, error) {
+	switch proto {
+	case HTTPProtocolHTTP2_0:
 		if !useTLS {
 			return nil, errors.New("HTTP/2 requires TLS")
 		}
 		return NewHTTP2TLSServer(machineIP, handler)
-	case "1.1":
+	case HTTPProtocolHTTP1_1:
 		if useTLS {
 			return NewHTTP1TLSServer(machineIP, handler)
 		}
 		return NewHTTP1PlainServer(machineIP, handler)
-	case "1.0":
+	case HTTPProtocolHTTP1_0:
 		if useTLS {
 			return nil, errors.New("HTTP/1.0 with TLS is not currently supported")
 		}
 		return NewHTTP1PlainServer(machineIP, handler)
 	default:
-		return nil, fmt.Errorf("unsupported HTTP version: %s", version)
+		return nil, fmt.Errorf("unsupported HTTP protocol: %s", proto)
 	}
 }
 

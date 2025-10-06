@@ -14,16 +14,17 @@ func TestTestSuiteBuilder(t *testing.T) {
 	suite, err := NewTestSuite("Basic HTTP GET").
 		WithOS("alpine", "debian").
 		WithLanguage(Python, "3.10.0", "3.12.0").
-		WithMethod("GET").
+		WithMethod(HTTPMethodGet).
 		WithURL("/api/health").
-		WithHTTPVersions("1.1").
+		WithHTTPProtocols(HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1, HTTPProtocolHTTP2_0).
+		WithBothTLSAndPlaintext().
 		Build()
 
 	require.NoError(t, err)
 	require.NotNil(t, suite)
 
-	// Print the test plan for review
-	t.Log(suite.PrintTestPlan())
+	// // Print the test plan for review
+	// t.Log(suite.PrintTestPlan())
 
 	// Verify the suite has the expected structure
 	require.Equal(t, "Basic HTTP GET", suite.name)
@@ -38,9 +39,9 @@ func TestTestSuiteBuilder(t *testing.T) {
 		require.Contains(t, []string{"alpine", "debian"}, tc.OS)
 		require.Contains(t, []string{"3.10.0", "3.12.0"}, tc.Version)
 		require.NotNil(t, tc.Request)
-		require.Equal(t, "GET", tc.Request.Method)
+		require.Equal(t, HTTPMethodGet, tc.Request.Method)
 		require.Equal(t, "/api/health", tc.Request.URL)
-		require.Equal(t, "1.1", tc.Request.HTTPVersion)
+		require.Contains(t, []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1, HTTPProtocolHTTP2_0}, tc.Request.Proto)
 	}
 }
 
@@ -52,16 +53,16 @@ func setupTestRegistry() {
 	// Register Python images with client capabilities
 	clients := map[string]*ClientCapabilities{
 		"requests": {
-			Name:         "requests",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "requests",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1},
 		},
 		"urllib3": {
-			Name:         "urllib3",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "urllib3",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1},
 		},
 		"httpx": {
-			Name:         "httpx",
-			HTTPVersions: []string{"2"},
+			Name:          "httpx",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP2_0},
 		},
 	}
 

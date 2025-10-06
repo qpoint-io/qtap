@@ -3,17 +3,21 @@ package e2e
 func RegisterPython() {
 	clients := map[string]*ClientCapabilities{
 		"requests": {
-			Name:         "requests",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "requests",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1},
 		},
 		"urllib3": {
-			Name:         "urllib3",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "urllib3",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1},
 		},
 		"httpx": {
-			Name:         "httpx",
-			HTTPVersions: []string{"1.0", "1.1", "2"},
+			Name:          "httpx",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_0, HTTPProtocolHTTP1_1, HTTPProtocolHTTP2_0},
 		},
+		// "aiohttp": {
+		// 	Name:          "aiohttp",
+		// 	HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_1},
+		// },
 	}
 
 	// Register Python 3.9 Alpine

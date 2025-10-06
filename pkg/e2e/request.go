@@ -17,7 +17,7 @@ import (
 )
 
 // WithMethod sets the HTTP method (GET, POST, PUT, DELETE, etc.)
-func (m *HTTPRequestBuilder) WithMethod(method string) *HTTPRequestBuilder {
+func (m *HTTPRequestBuilder) WithMethod(method HTTPMethod) *HTTPRequestBuilder {
 	m.req.Method = method
 	return m
 }
@@ -58,9 +58,9 @@ func (m *HTTPRequestBuilder) WithBodyFile(bodyFile string) *HTTPRequestBuilder {
 	return m
 }
 
-// WithHTTPVersion sets the HTTP version ("1.0", "1.1", "2")
-func (m *HTTPRequestBuilder) WithHTTPVersion(version string) *HTTPRequestBuilder {
-	m.req.HTTPVersion = version
+// WithProtocol sets the HTTP proto ("HTTP/1.0", "HTTP/1.1", "HTTP/2.0")
+func (m *HTTPRequestBuilder) WithProtocol(proto HTTPProtocol) *HTTPRequestBuilder {
+	m.req.Proto = proto
 	return m
 }
 
@@ -159,7 +159,7 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	if m.URL != "" {
 		envVars["URL"] = m.URL
 	}
-	envVars["HTTP_METHOD"] = m.Method
+	envVars["HTTP_METHOD"] = m.Method.String()
 
 	// Headers - convert map to comma-separated key:value pairs
 	if len(m.Headers) > 0 {
@@ -178,8 +178,18 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 		envVars["HTTP_BODY_FILE"] = m.BodyFile
 	}
 
+	var proto string = m.Proto.String()
+	switch m.Proto {
+	case HTTPProtocolHTTP1_0:
+		proto = "1.0"
+	case HTTPProtocolHTTP1_1:
+		proto = "1.1"
+	case HTTPProtocolHTTP2_0:
+		proto = "2"
+	}
+
 	// Protocol settings
-	envVars["HTTP_VERSION"] = m.HTTPVersion
+	envVars["HTTP_VERSION"] = proto
 	if m.KeepAlive {
 		envVars["HTTP_KEEP_ALIVE"] = "on"
 	} else {
@@ -217,21 +227,56 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	return envVars
 }
 
+type HTTPMethod string
+
+const (
+	HTTPMethodGet     HTTPMethod = "GET"
+	HTTPMethodPost    HTTPMethod = "POST"
+	HTTPMethodPut     HTTPMethod = "PUT"
+	HTTPMethodDelete  HTTPMethod = "DELETE"
+	HTTPMethodPatch   HTTPMethod = "PATCH"
+	HTTPMethodOptions HTTPMethod = "OPTIONS"
+)
+
+func (m HTTPMethod) String() string {
+	return string(m)
+}
+
+func HTTPMethodFromString(s string) HTTPMethod {
+	return HTTPMethod(s)
+}
+
+type HTTPProtocol string
+
+const (
+	HTTPProtocolHTTP1_0 HTTPProtocol = "HTTP/1.0"
+	HTTPProtocolHTTP1_1 HTTPProtocol = "HTTP/1.1"
+	HTTPProtocolHTTP2_0 HTTPProtocol = "HTTP/2.0"
+)
+
+func (m HTTPProtocol) String() string {
+	return string(m)
+}
+
+func HTTPProtocolFromString(s string) HTTPProtocol {
+	return HTTPProtocol(s)
+}
+
 // HTTPRequest represents a generic HTTP client testcontainers module
 type HTTPRequest struct {
 	// Request configuration
-	Method   string
+	Method   HTTPMethod
 	URL      string
 	Headers  map[string]string
 	Body     string
 	BodyFile string
 
 	// Protocol settings
-	HTTPVersion string // "1.0", "1.1", "2"
-	TLS         bool   // Whether to use TLS
-	KeepAlive   bool
-	Timeout     time.Duration
-	Client      string
+	Proto     HTTPProtocol
+	TLS       bool // Whether to use TLS
+	KeepAlive bool
+	Timeout   time.Duration
+	Client    string
 
 	// Execution control
 	Requests             int
@@ -270,11 +315,11 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		Body:     m.req.Body,
 		BodyFile: m.req.BodyFile,
 
-		HTTPVersion: m.req.HTTPVersion,
-		TLS:         m.req.TLS,
-		KeepAlive:   m.req.KeepAlive,
-		Timeout:     m.req.Timeout,
-		Client:      m.req.Client,
+		Proto:     m.req.Proto,
+		TLS:       m.req.TLS,
+		KeepAlive: m.req.KeepAlive,
+		Timeout:   m.req.Timeout,
+		Client:    m.req.Client,
 
 		Requests:             m.req.Requests,
 		ConcurrentRequests:   m.req.ConcurrentRequests,
@@ -306,15 +351,16 @@ func BuildHTTPRequest() *HTTPRequestBuilder {
 	return &HTTPRequestBuilder{
 		req: &HTTPRequest{
 			// Default request configuration
-			Method:   "GET",
+			Method:   HTTPMethodGet,
 			Headers:  make(map[string]string),
 			Body:     "",
 			BodyFile: "",
 
 			// Default protocol settings
-			HTTPVersion: "1.1",
-			KeepAlive:   false,
-			Timeout:     10 * time.Second,
+			Proto:     HTTPProtocolHTTP1_1,
+			KeepAlive: false,
+			Timeout:   10 * time.Second,
+			TLS:       true, // default to TLS on
 
 			// Default execution control
 			Requests:             1,

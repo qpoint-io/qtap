@@ -29,16 +29,16 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 
 	r.Logger = ctx.L
 
-	// Group tests by HTTP version to reuse servers
-	testsByHTTPVersion := r.groupTestsByHTTPVersion()
+	// Group tests by HTTP protocol to reuse servers
+	testsByHTTPProto := r.groupTestsByHTTPProto()
 
-	for httpVersion, tests := range testsByHTTPVersion {
-		t.Run("HTTP/"+httpVersion, func(t *testing.T) {
-			// Create appropriate server for this HTTP version
-			server := r.createTestServer(t, httpVersion, ctx.MachineIP().String(), tests[0])
+	for httpProto, tests := range testsByHTTPProto {
+		t.Run(httpProto.String(), func(t *testing.T) {
+			// Create appropriate server for this HTTP protocol
+			server := r.createTestServer(t, httpProto, ctx.MachineIP().String(), tests[0])
 			defer server.Close()
 
-			// Run all tests for this HTTP version
+			// Run all tests for this HTTP protocol
 			for _, tc := range tests {
 				t.Run(tc.Name, func(t *testing.T) {
 					// This sets up the test context for Qtap, eg. specific configs
@@ -55,22 +55,22 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 	}
 }
 
-func (r *TestSuiteRunner) groupTestsByHTTPVersion() map[string][]TestCase {
-	groups := make(map[string][]TestCase)
+func (r *TestSuiteRunner) groupTestsByHTTPProto() map[HTTPProtocol][]TestCase {
+	groups := make(map[HTTPProtocol][]TestCase)
 	for _, tc := range r.Suite.testCases {
-		groups[tc.Request.HTTPVersion] = append(groups[tc.Request.HTTPVersion], tc)
+		groups[tc.Request.Proto] = append(groups[tc.Request.Proto], tc)
 	}
 	return groups
 }
 
-func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, machineIP string,
+func (r *TestSuiteRunner) createTestServer(t *testing.T, httpProto HTTPProtocol, machineIP string,
 	sampleTest TestCase) *httptest.Server {
 	// Create request expectations - strict validation
 	expectations := RequestExpectations{
-		Method:      sampleTest.Request.Method,
-		HTTPVersion: httpVersion,
-		Headers:     sampleTest.Request.Headers,
-		Body:        sampleTest.Request.Body,
+		Method:  sampleTest.Request.Method,
+		Proto:   httpProto,
+		Headers: sampleTest.Request.Headers,
+		Body:    sampleTest.Request.Body,
 	}
 
 	validator := NewRequestValidator(t, expectations)
@@ -85,9 +85,9 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, mac
 	// Wrap with validation
 	handler := validator.Middleware(baseHandler)
 
-	// Create server based on HTTP version and TLS requirement
+	// Create server based on HTTP protocol and TLS requirement
 	useTLS := sampleTest.Request.TLS
-	server, err := NewHTTPServer(machineIP, handler, httpVersion, useTLS)
+	server, err := NewHTTPServer(machineIP, handler, httpProto, useTLS)
 
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

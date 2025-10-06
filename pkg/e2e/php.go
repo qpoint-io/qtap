@@ -3,12 +3,12 @@ package e2e
 func RegisterPHP() {
 	clients := map[string]*ClientCapabilities{
 		"guzzle": {
-			Name:         "guzzle",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "guzzle",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_1, HTTPProtocolHTTP2_0},
 		},
 		"curl": {
-			Name:         "curl",
-			HTTPVersions: []string{"1.0", "1.1"},
+			Name:          "curl",
+			HTTPProtocols: []HTTPProtocol{HTTPProtocolHTTP1_1, HTTPProtocolHTTP2_0},
 		},
 	}
 

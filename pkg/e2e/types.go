@@ -3,9 +3,7 @@ package e2e
 import (
 	"context"
 	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -96,15 +94,4 @@ func (c *ContainerResult) Accept(log testcontainers.Log) {
 	_, _ = c.combined.Write([]byte("\n")) // TODO(Jon): confirm if this is required
 	_, _ = w.Write(log.Content)
 	_, _ = w.Write([]byte("\n")) // TODO(Jon): confirm if this is required
-}
-
-// ReceivedRequest represents a request received by the test server
-type ReceivedRequest struct {
-	Method     string
-	Path       string
-	Headers    http.Header
-	Body       string
-	StatusCode int
-	Latency    time.Duration
-	Proto      string // "HTTP/1.0", "HTTP/1.1", "HTTP/2.0"
 }

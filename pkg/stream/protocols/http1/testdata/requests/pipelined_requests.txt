@@ -1,0 +1,7 @@
+GET /req1 HTTP/1.1
+Host: example.com
+User-Agent: PipelinedClient/1.0
+
+GET /req2 HTTP/1.1
+Host: example.com
+User-Agent: PipelinedClient/1.0

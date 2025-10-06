@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go run:*)",
+      "Bash(grep:*)",
+      "Bash(go doc:*)",
+      "Bash(go test:*)",
+      "Bash(ls:*)",
+      "Bash(go build:*)",
+      "Bash(mkdir:*)",
+      "WebFetch(domain:pkg.go.dev)",
+      "Bash(go tool:*)",
+      "Bash(go vet:*)",
+      "Bash(find:*)",
+      "Bash(make:*)",
+      "Bash(go list:*)",
+      "Bash(sed:*)",
+      "Bash(printf:*)",
+      "Bash(echo:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(golangci-lint run:*)"
+    ],
+    "deny": []
+  }
+}

@@ -14,7 +14,7 @@ function extract_payloads(tag, timestamp, record)
     }
     
     -- Get the request ID from the original record
-    local request_id = record.request and record.request.qpoint_request_id
+    local request_id = record.request and record.request.request_id
     
     -- Create a copy of the original record to modify
     local modified_record = {}
@@ -51,7 +51,7 @@ function extract_payloads(tag, timestamp, record)
             local new_record = {
                 msg = "HTTP payload",
                 payload = field.payload,
-                qpoint_request_id = request_id,
+                request_id = request_id,
                 data = current
             }
 

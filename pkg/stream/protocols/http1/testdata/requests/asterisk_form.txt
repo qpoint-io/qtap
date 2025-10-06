@@ -1,0 +1,4 @@
+OPTIONS * HTTP/1.1
+Host: example.com
+User-Agent: OptionsClient/1.0
+

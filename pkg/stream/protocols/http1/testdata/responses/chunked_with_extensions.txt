@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Transfer-Encoding: chunked
+Server: TestServer/1.0
+
+7;ext1=foo
+Mozilla
+0
+

@@ -12,11 +12,13 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/e2e"
+	"github.com/qpoint-io/qtap/pkg/e2e/babel"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -114,87 +116,279 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
 
-// func TestPython_Requests(t *testing.T) {
-// 	ctx := e2ectx.TestCtx(t)
+// testBabelHTTPRequest runs a test against a specific babel image
+func testBabelHTTPRequest(t *testing.T, r *babel.HTTPRequest) {
+	t.Helper()
+	ctx := e2ectx.TestCtx(t)
 
-// 	// Setup HTTP server
-// 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-// 		w.Header().Set("Content-Type", "application/json")
-// 		w.WriteHeader(http.StatusOK)
-// 		w.Write([]byte(`{"message": "Hello from Python test", "status": "success"}`))
-// 	}))
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
 
-// 	l, err := net.Listen("tcp", ctx.MachineIP().String()+":0")
-// 	if err != nil {
-// 		t.Fatalf("httptest: failed to listen on a port: %v", err)
-// 	}
-// 	server.Listener = l
-// 	server.Config.Addr = l.Addr().String()
-// 	server.Start()
-// 	defer server.Close()
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
 
-// 	ctx.WithConfig(t, func(c *config.Config) {
-// 		c.Tap.IgnoreLoopback = false
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}, func(t *testing.T) {
+		result := ctx.Do(r)
+		require.NoError(t, result.Err)
+		require.Equal(t, 0, result.Code, "Container should exit successfully, logs: %s", result.Output)
 
-// 		var pluginConfYaml yaml.Node
-// 		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
-// 			Level:  httpcapture.CaptureLevelFull,
-// 			Format: httpcapture.OutputFormatJSON,
-// 		})
-// 		require.NoError(t, err)
+		ctx.L.Info("✅ result", zap.String("ID", result.ID), zap.Int("code", result.Code), zap.String("output", result.Output), zap.Error(result.Err))
 
-// 		c.Stacks[c.Tap.Http.Stack] = config.Stack{
-// 			Plugins: []config.Plugin{
-// 				{
-// 					Type:   string(httpcapture.PluginTypeHttpCapture),
-// 					Config: pluginConfYaml,
-// 				},
-// 				{
-// 					Type: string(report.PluginTypeReport),
-// 				},
-// 			},
-// 		}
-// 	}, func(t *testing.T) {
-// 		t.Logf("server URL: %s", server.URL)
+		events := result.AwaitEvents(1)
+		ctx.L.Info("✅ events", zap.Any("events", events))
 
-// 		// create our request
-// 		request := babel.NewHTTPRequest(babel.HTTPRequestPython3_9_0_Alpine, server.URL).
-// 			WithMethod("GET").
-// 			WithHTTPVersion("1.1").
-// 			WithTimeout(10 * time.Second).
-// 			WithOutputFormat("json")
+		// Validate connection
+		require.Len(t, events.Connections, 1)
+		conn := events.Connections[0]
+		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
 
-// 		result := ctx.Do(request)
-// 		require.NoError(t, result.Err)
-// 		require.Equal(t, 0, result.Code, "Go container should exit successfully, logs: %s", result.Output)
+		var expectedL7Protocol eventstore.L7Protocol
+		switch r.HTTPVersion {
+		case "1.1":
+			expectedL7Protocol = eventstore.L7Protocol_HTTP1
+		case "2":
+			expectedL7Protocol = eventstore.L7Protocol_HTTP2
+		}
+		assert.Equal(t, expectedL7Protocol, conn.L7Protocol)
 
-// 		ctx.L.Info("✅ result", zap.String("ID", result.ID), zap.Int("code", result.Code), zap.String("output", result.Output), zap.Error(result.Err))
+		// Validate HTTP request
+		require.Len(t, events.Requests, 1)
+		req := events.Requests[0]
+		assert.Equal(t, "application/json", req.ContentType)
 
-// 		events := result.AwaitEvents(1)
-// 		ctx.L.Info("✅ events", zap.Any("events", events))
+		// Validate captured artifacts
+		require.Len(t, events.Artifacts, 1)
+		artifact := events.Artifacts[0]
+		assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
 
-// 		// Validate connection
-// 		require.Len(t, events.Connections, 1)
-// 		t.Logf("connection: %#v", events.Connections[0])
-// 		conn := events.Connections[0]
-// 		assert.Equal(t, eventstore.SocketProtocol_TCP, conn.SocketProtocol)
-// 		assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+		var transaction httpcapture.HttpTransaction
+		err := json.Unmarshal(artifact.Data, &transaction)
+		require.NoError(t, err)
+		assert.Equal(t, "GET", transaction.Request.Method)
+		assert.Equal(t, "application/json", transaction.Response.ContentType)
+		assert.Contains(t, string(transaction.Response.Body), "Hello from test")
+	})
+}
 
-// 		// Validate HTTP request
-// 		require.Len(t, events.Requests, 1)
-// 		req := events.Requests[0]
-// 		assert.Equal(t, "application/json", req.ContentType)
+func TestPython_HTTP(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	images := babel.AllPythonImages()
 
-// 		// // Validate captured artifacts
-// 		require.Len(t, events.Artifacts, 1)
-// 		artifact := events.Artifacts[0]
-// 		assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, artifact.Type)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
 
-// 		var transaction httpcapture.HttpTransaction
-// 		err = json.Unmarshal(artifact.Data, &transaction)
-// 		require.NoError(t, err)
-// 		assert.Equal(t, "GET", transaction.Request.Method)
-// 		assert.Equal(t, "application/json", transaction.Response.ContentType)
-// 		assert.Contains(t, string(transaction.Response.Body), "Hello from Python test")
-// 	})
-// }
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
+	})
+
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1plainserver.Close()
+
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1server.Close()
+
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http2server.Close()
+
+	rb := babel.BuildHTTPRequest().
+		WithMethod("GET").
+		WithTimeout(10 * time.Second).
+		WithOutputFormat("json").
+		WithVerbose().
+		WithStartupDelay(100 * time.Millisecond)
+
+	for _, image := range images {
+		rb.WithImageURL(image.String())
+
+		for _, client := range []string{"requests", "httpx", "aiohttp", "urllib3"} {
+			t.Run(client, func(t *testing.T) {
+				rb.WithClient(client)
+				t.Run(image.TestName()+" HTTP/1.1 Plain", func(t *testing.T) {
+					rb.WithURL(http1plainserver.URL).
+						WithHTTPVersion("1.1")
+
+					req, err := rb.Build()
+					require.NoError(t, err)
+
+					testBabelHTTPRequest(t, req)
+				})
+				t.Run(image.TestName()+" HTTP/1.1 TLS", func(t *testing.T) {
+					if client == "aiohttp" {
+						t.Skip("Skipping HTTP/1.1 TLS tests for aiohttp (unsupported)")
+					}
+					rb.WithURL(http1server.URL)
+					rb.WithHTTPVersion("1.1")
+
+					req, err := rb.Build()
+					require.NoError(t, err)
+
+					testBabelHTTPRequest(t, req)
+				})
+			})
+		}
+		t.Run(image.TestName()+" HTTP/2 TLS", func(t *testing.T) {
+			rb.WithURL(http2server.URL).
+				WithHTTPVersion("2").
+				WithClient("httpx")
+
+			req, err := rb.Build()
+			require.NoError(t, err)
+
+			testBabelHTTPRequest(t, req)
+		})
+	}
+}
+
+func TestRuby_HTTP(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	images := babel.AllRubyImages()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
+	})
+
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1plainserver.Close()
+
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1server.Close()
+
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http2server.Close()
+
+	rb := babel.BuildHTTPRequest().
+		WithMethod("GET").
+		WithTimeout(10 * time.Second).
+		WithOutputFormat("json").
+		WithVerbose().
+		WithStartupDelay(250 * time.Millisecond)
+
+	for _, image := range images {
+		rb.WithImageURL(image.String())
+
+		t.Run(image.TestName()+" HTTP/1.1 Plain", func(t *testing.T) {
+			rb.WithURL(http1plainserver.URL)
+			rb.WithHTTPVersion("1.1")
+
+			req, err := rb.Build()
+			require.NoError(t, err)
+
+			testBabelHTTPRequest(t, req)
+		})
+		t.Run(image.TestName()+" HTTP/1.1 TLS", func(t *testing.T) {
+			rb.WithURL(http1server.URL)
+			rb.WithHTTPVersion("1.1")
+
+			req, err := rb.Build()
+			require.NoError(t, err)
+
+			testBabelHTTPRequest(t, req)
+		})
+		// t.Run(image.TestName()+" HTTP/2 TLS", func(t *testing.T) {
+		// 	t.Skip("Skipping HTTP/2 TLS tests -- currently not supported by Babel containers")
+		// 	rb.WithURL(http2server.URL)
+		// 	rb.WithHTTPVersion("2")
+
+		// 	req, err := rb.Build()
+		// 	require.NoError(t, err)
+
+		// 	testBabelHTTPRequest(t, req)
+		// })
+	}
+}
+
+func TestPHP_HTTP(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	images := babel.AllPHPImages()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx.L.Info("⚙️ handling request", zap.String("protocol", r.Proto), zap.String("url", r.URL.String()))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message": "Hello from test", "status": "success"}`))
+	})
+
+	http1plainserver, err := e2e.NewPlainHTTP11TestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1plainserver.Close()
+
+	http1server, err := e2e.NewHTTP11OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http1server.Close()
+
+	http2server, err := e2e.NewHTTP2OnlyTestServer(e2ectx.MachineIP().String(), handler)
+	require.NoError(t, err)
+	defer http2server.Close()
+
+	rb := babel.BuildHTTPRequest().
+		WithMethod("GET").
+		WithTimeout(10 * time.Second).
+		WithOutputFormat("json").
+		WithVerbose().
+		WithStartupDelay(500 * time.Millisecond)
+
+	for _, image := range images {
+		rb.WithImageURL(image.String())
+
+		for _, client := range []string{"curl", "guzzle"} {
+			t.Run(client, func(t *testing.T) {
+				rb.WithClient(client)
+
+				t.Run(image.TestName()+" HTTP/1.1 Plain", func(t *testing.T) {
+					rb.WithURL(http1plainserver.URL)
+					rb.WithHTTPVersion("1.1")
+
+					req, err := rb.Build()
+					require.NoError(t, err)
+
+					testBabelHTTPRequest(t, req)
+				})
+				t.Run(image.TestName()+" HTTP/1.1 TLS", func(t *testing.T) {
+					rb.WithURL(http1server.URL)
+					rb.WithHTTPVersion("1.1")
+
+					req, err := rb.Build()
+					require.NoError(t, err)
+
+					testBabelHTTPRequest(t, req)
+				})
+				t.Run(image.TestName()+" HTTP/2 TLS", func(t *testing.T) {
+					rb.WithURL(http2server.URL)
+					rb.WithHTTPVersion("2")
+
+					req, err := rb.Build()
+					require.NoError(t, err)
+
+					testBabelHTTPRequest(t, req)
+				})
+			})
+		}
+	}
+}

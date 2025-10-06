@@ -1,0 +1,4 @@
+get /resource HTTP/1.1
+Host: example.com
+User-Agent: BadClient/1.0
+

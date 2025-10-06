@@ -1,0 +1,8 @@
+GET /repos/company/hello-world HTTP/1.1
+Host: api.example.com
+User-Agent: python-requests/2.32.5
+Accept-Encoding: gzip, deflate
+Accept: */*
+Connection: keep-alive
+Authorization: Bearer token123
+

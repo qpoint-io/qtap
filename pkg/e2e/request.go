@@ -64,6 +64,12 @@ func (m *HTTPRequestBuilder) WithHTTPVersion(version string) *HTTPRequestBuilder
 	return m
 }
 
+// WithTLS sets whether to use TLS
+func (m *HTTPRequestBuilder) WithTLS(tls bool) *HTTPRequestBuilder {
+	m.req.TLS = tls
+	return m
+}
+
 // WithKeepAlive sets the connection keep-alive setting
 func (m *HTTPRequestBuilder) WithKeepAlive(keepAlive bool) *HTTPRequestBuilder {
 	m.req.KeepAlive = keepAlive
@@ -222,6 +228,7 @@ type HTTPRequest struct {
 
 	// Protocol settings
 	HTTPVersion string // "1.0", "1.1", "2"
+	TLS         bool   // Whether to use TLS
 	KeepAlive   bool
 	Timeout     time.Duration
 	Client      string
@@ -264,6 +271,7 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		BodyFile: m.req.BodyFile,
 
 		HTTPVersion: m.req.HTTPVersion,
+		TLS:         m.req.TLS,
 		KeepAlive:   m.req.KeepAlive,
 		Timeout:     m.req.Timeout,
 		Client:      m.req.Client,

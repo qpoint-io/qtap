@@ -85,21 +85,9 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpVersion string, mac
 	// Wrap with validation
 	handler := validator.Middleware(baseHandler)
 
-	// Create server based on HTTP version
-	var server *httptest.Server
-	var err error
-
-	// TODO(Jon): this needs to change to support tls and non-tls
-	switch httpVersion {
-	case "2":
-		server, err = NewHTTP2OnlyTestServer(machineIP, handler)
-	case "1.1":
-		server, err = NewHTTP11OnlyTestServer(machineIP, handler)
-	case "1.0":
-		server, err = NewPlainHTTP11TestServer(machineIP, handler)
-	default:
-		t.Fatalf("unsupported HTTP version: %s", httpVersion)
-	}
+	// Create server based on HTTP version and TLS requirement
+	useTLS := sampleTest.Request.TLS
+	server, err := NewHTTPServer(machineIP, handler, httpVersion, useTLS)
 
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)

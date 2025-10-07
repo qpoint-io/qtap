@@ -28,7 +28,7 @@ const (
 )
 
 const (
-	commandQueueSize = 100
+	commandQueueSize = 8192
 )
 
 // Command represents a unit of work to be processed asynchronously

@@ -141,7 +141,7 @@ func TestLanguages(t *testing.T) {
 		}
 	}
 
-	suite, err := e2e.NewTestSuite("Babel HTTP").
+	suite, err := e2e.NewTestSuite("HTTP").
 		WithConfig(configMut).
 		WithOS("alpine", "bullseye").
 		WithLanguage(e2e.Python, "3.10.0", "3.12.0").

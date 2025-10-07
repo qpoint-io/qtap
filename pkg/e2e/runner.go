@@ -17,13 +17,21 @@ type TestSuiteRunner struct {
 
 // Run executes all tests in the suite
 func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
+	t.Run(r.Suite.name, func(t *testing.T) {
+		r.run(t, ctx)
+	})
+}
+
+// run executes all tests in the suite
+func (r *TestSuiteRunner) run(t *testing.T, ctx *Context) {
 	t.Logf("Running test suite: %s", r.Suite.name)
 	t.Logf("Total test cases: %d", len(r.Suite.testCases))
 
 	if len(r.Suite.skipped) > 0 {
-		t.Logf("Skipped combinations:")
 		for _, skip := range r.Suite.skipped {
-			t.Logf("  - %s", skip)
+			t.Run(skip.name, func(t *testing.T) {
+				t.Skip(skip.reason)
+			})
 		}
 	}
 
@@ -53,6 +61,14 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 	}
 }
 
+// groupTestsByHTTPProto groups tests by HTTP protocol to use the same http server
+// for all the tests that require it. This is a bit unecessary and we could spin all
+// of the http servers up at once and leave them up.
+//
+// TODO(Jon): Spin up all of of the require servers at once and ignore this. Then we
+// can add the ability to adding a sql-like GroupBy() function onto the suite so that
+// we can indicate how we want tests grouped to highlight the functionality that is
+// being tested.
 func (r *TestSuiteRunner) groupTestsByHTTPProto() map[HTTPProtocol][]TestCase {
 	groups := make(map[HTTPProtocol][]TestCase)
 	for _, tc := range r.Suite.testCases {
@@ -70,6 +86,10 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpProto HTTPProtocol,
 		Headers: sampleTest.Request.Headers,
 		Body:    sampleTest.Request.Body,
 	}
+
+	// TODO(Jon): Implement a request expectation mutator check here
+	// so that if we know a specific language/client/etc is going to change
+	// we can ensure that the expected request is updated accordingly.
 
 	validator := NewRequestValidator(t, expectations)
 

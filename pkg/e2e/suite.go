@@ -33,7 +33,12 @@ type TestCase struct {
 type TestSuite struct {
 	name      string
 	testCases []TestCase
-	skipped   []string
+	skipped   []skippedTestCase
+}
+
+type skippedTestCase struct {
+	name   string
+	reason string
 }
 
 // TestSuiteBuilder builds test suites using the builder pattern
@@ -147,7 +152,7 @@ func (b *TestSuiteBuilder) WithStartupDelay(delay time.Duration) *TestSuiteBuild
 // Build generates all test cases
 func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 	var testCases []TestCase
-	var skipped []string
+	var skipped []skippedTestCase
 
 	// Generate test matrix
 	for _, os := range b.matrix.OS {
@@ -157,7 +162,10 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 				cap, exists := Registry.Lookup(lang, version, os)
 				if !exists {
 					skipped = append(skipped,
-						fmt.Sprintf("%s-%s-%s: no image found", lang, version, os))
+						skippedTestCase{
+							name:   fmt.Sprintf("%s-%s-%s", lang, version, os),
+							reason: "no image found",
+						})
 					continue
 				}
 
@@ -175,8 +183,11 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 					clientCap, hasClient := cap.Clients[clientName]
 					if !hasClient {
 						skipped = append(skipped,
-							fmt.Sprintf("%s-%s-%s: missing client %s",
-								lang, version, os, clientName))
+							skippedTestCase{
+								name: fmt.Sprintf("%s-%s-%s-%s",
+									lang, version, os, clientName),
+								reason: "missing client",
+							})
 						continue
 					}
 
@@ -186,8 +197,11 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 						// Skip at matrix generation time - no runtime fallbacks
 						if !slices.Contains(clientCap.HTTPProtocols, httpProto) {
 							skipped = append(skipped,
-								fmt.Sprintf("%s-%s-%s/%s: doesn't support HTTP/%s",
-									lang, version, os, clientName, httpProto))
+								skippedTestCase{
+									name: fmt.Sprintf("%s-%s-%s-%s-%s",
+										lang, version, os, clientName, httpProto),
+									reason: "doesn't support " + httpProto.String(),
+								})
 							continue
 						}
 
@@ -196,14 +210,20 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 							// HTTP/2 requires TLS, HTTP/1.0 doesn't support TLS
 							if httpProto == HTTPProtocolHTTP2_0 && !useTLS {
 								skipped = append(skipped,
-									fmt.Sprintf("%s-%s-%s/%s/HTTP%s: HTTP/2 requires TLS",
-										lang, version, os, clientName, httpProto))
+									skippedTestCase{
+										name: fmt.Sprintf("%s-%s-%s/%s/%s",
+											lang, version, os, clientName, httpProto),
+										reason: "HTTP/2 requires TLS",
+									})
 								continue
 							}
 							if httpProto == HTTPProtocolHTTP1_0 && useTLS {
 								skipped = append(skipped,
-									fmt.Sprintf("%s-%s-%s/%s/HTTP%s: HTTP/1.0 with TLS not supported",
-										lang, version, os, clientName, httpProto))
+									skippedTestCase{
+										name: fmt.Sprintf("%s-%s-%s/%s/%s",
+											lang, version, os, clientName, httpProto),
+										reason: "HTTP/1.0 with TLS not supported",
+									})
 								continue
 							}
 

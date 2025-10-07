@@ -165,7 +165,7 @@ test: ## Run tests
 .PHONY: e2e
 e2e: ## Run e2e tests
 	@echo $(INFO) Running e2e tests... $(RESET)
-	$(GOTESTSUM) --format testdox --format-hide-empty-pkg --format-icons=hivis \
+	$(GOTESTSUM) --format testname --format-hide-empty-pkg --format-icons=hivis \
 		--junitfile /tmp/e2e-tests-results.xml \
 		-- \
 		-timeout $(TEST_TIMEOUT) \

@@ -220,12 +220,12 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 
 							tlsStr := ""
 							if useTLS {
-								tlsStr = "/TLS"
+								tlsStr = "_TLS"
 							}
 
 							tc := TestCase{
-								Name: fmt.Sprintf("%s/%s-%s/%s/%s%s/%s",
-									os, lang, version, clientName, httpProto, tlsStr, req.Method),
+								Name: fmt.Sprintf("%s:%s_%s_%s_%s%s_%s",
+									lang, version, os, clientName, httpProto, tlsStr, req.Method),
 								Image:         cap.Image,
 								OS:            os,
 								Language:      lang,

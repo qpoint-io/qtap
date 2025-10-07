@@ -33,25 +33,23 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 	testsByHTTPProto := r.groupTestsByHTTPProto()
 
 	for httpProto, tests := range testsByHTTPProto {
-		t.Run(httpProto.String(), func(t *testing.T) {
-			// Create appropriate server for this HTTP protocol
-			server := r.createTestServer(t, httpProto, ctx.MachineIP().String(), tests[0])
-			defer server.Close()
+		// Create appropriate server for this HTTP protocol
+		server := r.createTestServer(t, httpProto, ctx.MachineIP().String(), tests[0])
+		defer server.Close()
 
-			// Run all tests for this HTTP protocol
-			for _, tc := range tests {
-				t.Run(tc.Name, func(t *testing.T) {
-					// This sets up the test context for Qtap, eg. specific configs
-					tctx := ctx.TestCtx(t)
-					if tc.Request != nil {
-						tc.Request.WithExtraEnvVar("QPOINT_TAGS", "ctxid:"+tctx.ID)
-					}
-					tctx.WithConfig(t, tc.ConfigMutator, func(t *testing.T) {
-						r.runSingleTest(t, tctx, tc, server)
-					})
+		// Run all tests for this HTTP protocol
+		for _, tc := range tests {
+			t.Run(tc.Name, func(t *testing.T) {
+				// This sets up the test context for Qtap, eg. specific configs
+				tctx := ctx.TestCtx(t)
+				if tc.Request != nil {
+					tc.Request.WithExtraEnvVar("QPOINT_TAGS", "ctxid:"+tctx.ID)
+				}
+				tctx.WithConfig(t, tc.ConfigMutator, func(t *testing.T) {
+					r.runSingleTest(t, tctx, tc, server)
 				})
-			}
-		})
+			})
+		}
 	}
 }
 

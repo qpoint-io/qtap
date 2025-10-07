@@ -42,7 +42,7 @@ func (r *TestSuiteRunner) run(t *testing.T, ctx *Context) {
 
 	for httpProto, tests := range testsByHTTPProto {
 		// Create appropriate server for this HTTP protocol
-		server := r.createTestServer(t, httpProto, ctx.MachineIP().String(), tests[0])
+		server := r.createTestServer(t, httpProto, ctx.MachineIP().String(), r.Suite.handler, tests[0])
 		defer server.Close()
 
 		// Run all tests for this HTTP protocol
@@ -78,7 +78,7 @@ func (r *TestSuiteRunner) groupTestsByHTTPProto() map[HTTPProtocol][]TestCase {
 }
 
 func (r *TestSuiteRunner) createTestServer(t *testing.T, httpProto HTTPProtocol, machineIP string,
-	sampleTest TestCase) *httptest.Server {
+	suiteHandler http.Handler, sampleTest TestCase) *httptest.Server {
 	// Create request expectations - strict validation
 	expectations := RequestExpectations{
 		Method:  sampleTest.Request.Method,
@@ -93,12 +93,18 @@ func (r *TestSuiteRunner) createTestServer(t *testing.T, httpProto HTTPProtocol,
 
 	validator := NewRequestValidator(t, expectations)
 
-	// Base handler
-	baseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Add("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"success"}`))
-	})
+	// Use custom handler if provided, otherwise use default
+	var baseHandler http.Handler
+	if suiteHandler != nil {
+		baseHandler = suiteHandler
+	} else {
+		// Default handler
+		baseHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"success"}`))
+		})
+	}
 
 	// Wrap with validation
 	handler := validator.Middleware(baseHandler)

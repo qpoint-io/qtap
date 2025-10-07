@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -34,6 +35,7 @@ type TestSuite struct {
 	name      string
 	testCases []TestCase
 	skipped   []skippedTestCase
+	handler   http.Handler
 }
 
 type skippedTestCase struct {
@@ -49,6 +51,7 @@ type TestSuiteBuilder struct {
 	requestBuilder *HTTPRequestBuilder
 	validations    []ValidationFunc
 	configMutator  ConfigMutator
+	handler        http.Handler
 	errors         []error
 }
 
@@ -146,6 +149,12 @@ func (b *TestSuiteBuilder) WithValidation(validations ...ValidationFunc) *TestSu
 // Startup delay configuration
 func (b *TestSuiteBuilder) WithStartupDelay(delay time.Duration) *TestSuiteBuilder {
 	b.requestBuilder.WithStartupDelay(delay)
+	return b
+}
+
+// Handler configuration
+func (b *TestSuiteBuilder) WithHandler(handler http.Handler) *TestSuiteBuilder {
+	b.handler = handler
 	return b
 }
 
@@ -273,6 +282,7 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 		name:      b.name,
 		testCases: testCases,
 		skipped:   skipped,
+		handler:   b.handler,
 	}, nil
 }
 

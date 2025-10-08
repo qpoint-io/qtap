@@ -118,6 +118,12 @@ func (m *HTTPRequestBuilder) WithOutputFormat(format string) *HTTPRequestBuilder
 	return m
 }
 
+func (m *HTTPRequestBuilder) WithWaitForFile(file string, timeout time.Duration) *HTTPRequestBuilder {
+	m.req.WaitForFile = file
+	m.req.WaitForFileTimeout = timeout
+	return m
+}
+
 // WithVerbose enables verbose logging
 func (m *HTTPRequestBuilder) WithVerbose() *HTTPRequestBuilder {
 	m.req.Verbose = true
@@ -210,6 +216,9 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	if m.StartupDelay > 0 {
 		envVars["STARTUP_DELAY"] = strconv.FormatInt(m.StartupDelay.Milliseconds(), 10)
 	}
+	if m.WaitForFile != "" {
+		envVars["WAIT_FOR_FILE"] = fmt.Sprintf("%s:%d", m.WaitForFile, m.WaitForFileTimeout.Milliseconds())
+	}
 
 	// Output control
 	envVars["OUTPUT_FORMAT"] = m.OutputFormat
@@ -283,6 +292,8 @@ type HTTPRequest struct {
 	ConcurrentRequests   int
 	DelayBetweenRequests time.Duration
 	StartupDelay         time.Duration // Milliseconds
+	WaitForFile          string
+	WaitForFileTimeout   time.Duration
 
 	// Output control
 	OutputFormat string // "json" or other for human-readable
@@ -293,6 +304,9 @@ type HTTPRequest struct {
 
 	// Container configuration
 	ImageURL string
+
+	// Private field to store the running container
+	container *Container
 }
 
 type HTTPRequestBuilder struct {
@@ -325,6 +339,8 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		ConcurrentRequests:   m.req.ConcurrentRequests,
 		DelayBetweenRequests: m.req.DelayBetweenRequests,
 		StartupDelay:         m.req.StartupDelay,
+		WaitForFile:          m.req.WaitForFile,
+		WaitForFileTimeout:   m.req.WaitForFileTimeout,
 
 		OutputFormat: m.req.OutputFormat,
 		Verbose:      m.req.Verbose,
@@ -359,7 +375,7 @@ func BuildHTTPRequest() *HTTPRequestBuilder {
 			// Default protocol settings
 			Proto:     HTTPProtocolHTTP1_1,
 			KeepAlive: false,
-			Timeout:   10 * time.Second,
+			Timeout:   30 * time.Second,
 			TLS:       true, // default to TLS on
 
 			// Default execution control
@@ -400,7 +416,7 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 			WaitingFor: wait.ForExit().WithPollInterval(10 * time.Millisecond),
 			AutoRemove: true, // Clean up container when it exits
 		},
-		Started: true,
+		// Started: true,
 	}
 
 	// TODO(Jon): test this
@@ -413,10 +429,24 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 	// 	}
 	// }
 
+	// Start the container
+	l.Info("🕹️ starting container", zap.String("image", m.ImageURL), zap.Any("env", envVars))
+	container, err := testcontainers.GenericContainer(ctx, req)
+	if err != nil {
+		l.Error("start container error", zap.Error(err))
+		result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
+		result.ExitCode = -1
+		return nil
+	}
+
+	c.Container = container
+
+	// Store the container reference on the request so ProcessStarted can find it
+	m.container = c
+
 	go func() {
 		// Start the container
-		l.Info("🕹️ starting container", zap.String("image", m.ImageURL))
-		container, err := testcontainers.GenericContainer(ctx, req)
+		err := container.Start(ctx)
 		if err != nil {
 			l.Error("start container error", zap.Error(err))
 			result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)

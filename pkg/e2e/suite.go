@@ -152,6 +152,12 @@ func (b *TestSuiteBuilder) WithStartupDelay(delay time.Duration) *TestSuiteBuild
 	return b
 }
 
+// Wait for file configuration
+func (b *TestSuiteBuilder) WithWaitForFile(file string, timeout time.Duration) *TestSuiteBuilder {
+	b.requestBuilder.WithWaitForFile(file, timeout)
+	return b
+}
+
 // Handler configuration
 func (b *TestSuiteBuilder) WithHandler(handler http.Handler) *TestSuiteBuilder {
 	b.handler = handler

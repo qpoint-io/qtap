@@ -17,7 +17,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -116,8 +115,6 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 }
 
 func TestLanguages(t *testing.T) {
-	e2e.Registry.ListAvailable()
-
 	configMut := func(c *config.Config) {
 		c.Tap.IgnoreLoopback = false
 
@@ -152,7 +149,8 @@ func TestLanguages(t *testing.T) {
 		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).
 		WithBothTLSAndPlaintext().
 		WithHeader("Content-Type", "application/json").
-		WithStartupDelay(500 * time.Millisecond).
+		WithStartupDelay(500*time.Millisecond).
+		WithWaitForFile("/tmp/wait-for-file", 10*time.Second).
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)
@@ -188,9 +186,10 @@ func TestLanguages(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, suite)
 
+	// TODO(Jon): could this be rolled into the test suite?
 	runner := &e2e.TestSuiteRunner{
 		Suite:  suite,
-		Logger: zap.NewNop(),
+		Logger: e2ectx.L,
 	}
 	runner.Run(t, e2ectx)
 }

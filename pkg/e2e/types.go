@@ -22,6 +22,7 @@ const (
 type Container struct {
 	testcontainers.Container
 	resultCh chan ContainerResult
+	// Request  *HTTPRequest
 }
 
 func (c *Container) WaitForExit(ctx context.Context) (*ContainerResult, error) {

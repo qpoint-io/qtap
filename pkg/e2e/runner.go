@@ -24,8 +24,8 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 
 // run executes all tests in the suite
 func (r *TestSuiteRunner) run(t *testing.T, ctx *Context) {
-	t.Logf("Running test suite: %s", r.Suite.name)
-	t.Logf("Total test cases: %d", len(r.Suite.testCases))
+	r.Logger.Info("Running test suite", zap.String("suite", r.Suite.name))
+	r.Logger.Info("Total test cases", zap.Int("count", len(r.Suite.testCases)))
 
 	if len(r.Suite.skipped) > 0 {
 		for _, skip := range r.Suite.skipped {
@@ -126,6 +126,9 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 	// Update request URL to point to test server
 	tc.Request.URL = server.URL + tc.Request.URL
 
+	// Register the request with the test context so ProcessStarted can find its container
+	tctx.RegisterRequest(tc.Request)
+
 	// Run the container
 	container := tc.Request.Run(ctx, r.Logger)
 
@@ -133,6 +136,14 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 	// time.Sleep(100 * time.Millisecond)
 
 	var containerResult ContainerResult = <-container.resultCh
+
+	r.Logger.Info("⭕ Container result", zap.String("container_logs", containerResult.Combined()))
+
+	// Check container exit code
+	if containerResult.ExitCode != 0 {
+		t.Errorf("Container exited with code %d: %v",
+			containerResult.ExitCode, containerResult.Error)
+	}
 
 	// Create validation context
 	validationCtx := ValidationContext{
@@ -146,11 +157,5 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 		if err := validation(t, validationCtx); err != nil {
 			t.Errorf("Validation failed: %v", err)
 		}
-	}
-
-	// Check container exit code
-	if containerResult.ExitCode != 0 {
-		t.Errorf("Container exited with code %d: %v",
-			containerResult.ExitCode, containerResult.Error)
 	}
 }

@@ -222,11 +222,12 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 
 	// Output control
 	envVars["OUTPUT_FORMAT"] = m.OutputFormat
-	if m.Verbose {
-		envVars["VERBOSE"] = "true"
-	} else {
-		envVars["VERBOSE"] = "false"
-	}
+	// if m.Verbose {
+	// 	envVars["VERBOSE"] = "true"
+	// } else {
+	// 	envVars["VERBOSE"] = "false"
+	// }
+	envVars["VERBOSE"] = "true"
 
 	// Add any extra environment variables
 	for key, value := range m.ExtraEnvVars {

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -284,17 +285,40 @@ func (c *Context) ProcessStopped(proc *process.Process) error {
 }
 
 func (c *TestContext) ProcessStarted(proc *process.Process) error {
-	// c.L.Info("⭕ process started", zap.String("container_id", proc.ContainerID), zap.String("process_binary", proc.Binary))
-
-	if proc.Binary != "python" && proc.Binary != "php" && proc.Binary != "ruby" {
-		return nil
-	}
+	// c.L.Info("⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
 
 	// Find the container by searching through active requests
 	c.mu.RLock()
 	var req *HTTPRequest
 	for _, r := range c.requests {
-		if r.container != nil && r.container.GetContainerID() == proc.ContainerID {
+		if r.container != nil {
+			// Not our container
+			if !strings.HasPrefix(r.container.GetContainerID(), proc.ContainerID) {
+				return nil
+			}
+
+			// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
+			// on binary processes that we expect, and not the creation processes.
+			//
+			// It's not uncommong to get several bin calls for an expected binary "php" shows
+			// up 4 or 5 times and we may or may not be finishing processing it before the first.
+			//
+			// This might indicate that we need to have a binary processing pipeline, I imagine that
+			// if a "php" binary is called 3 or 4 times really quickly, we might try and scan it multiple
+			// times concurrently because it's not in the cache yet. This could be a general resource
+			// improvement opportunity.
+			//
+			// Check that this is the binary we expect
+			exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
+			containerCtx, err := r.container.Inspect(c.T.Context())
+			if err != nil {
+				return fmt.Errorf("inspecting container: %w", err)
+			}
+			if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
+				c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
+				return nil
+			}
+
 			req = r
 			break
 		}
@@ -302,7 +326,7 @@ func (c *TestContext) ProcessStarted(proc *process.Process) error {
 	c.mu.RUnlock()
 
 	if req != nil && req.WaitForFile != "" {
-		c.L.Info("⭕ creating file in container", zap.String("binary", proc.Binary), zap.String("file", req.WaitForFile))
+		c.L.Info("🆕 creating file in container", zap.String("binary", proc.Binary), zap.String("file", req.WaitForFile))
 		if err := req.container.CopyToContainer(c.T.Context(), []byte("Q"), req.WaitForFile, 0644); err != nil {
 			return fmt.Errorf("creating file in container: %w", err)
 		}

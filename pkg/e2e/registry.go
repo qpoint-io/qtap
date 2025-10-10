@@ -15,7 +15,6 @@ func init() {
 type ClientCapabilities struct {
 	Name          string
 	HTTPProtocols []HTTPProtocol
-	// Features     map[string]bool   // TODO(Jon): maybe a future feature? "async", "streaming", "compression", etc.
 }
 
 // ImageCapabilities defines what a Docker image supports

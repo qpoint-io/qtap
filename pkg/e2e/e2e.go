@@ -297,26 +297,28 @@ func (c *TestContext) ProcessStarted(proc *process.Process) error {
 				return nil
 			}
 
-			// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
-			// on binary processes that we expect, and not the creation processes.
-			//
-			// It's not uncommong to get several bin calls for an expected binary "php" shows
-			// up 4 or 5 times and we may or may not be finishing processing it before the first.
-			//
-			// This might indicate that we need to have a binary processing pipeline, I imagine that
-			// if a "php" binary is called 3 or 4 times really quickly, we might try and scan it multiple
-			// times concurrently because it's not in the cache yet. This could be a general resource
-			// improvement opportunity.
-			//
-			// Check that this is the binary we expect
-			exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
-			containerCtx, err := r.container.Inspect(c.T.Context())
-			if err != nil {
-				return fmt.Errorf("inspecting container: %w", err)
-			}
-			if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
-				c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
-				return nil
+			{
+				// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
+				// on binary processes that we expect, and not the creation processes.
+				//
+				// It's not uncommong to get several bin calls for an expected binary "php" shows
+				// up 4 or 5 times and we may or may not be finishing processing it before the first.
+				//
+				// This might indicate that we need to have a binary processing pipeline, I imagine that
+				// if a "php" binary is called 3 or 4 times really quickly, we might try and scan it multiple
+				// times concurrently because it's not in the cache yet. This could be a general resource
+				// improvement opportunity.
+				//
+				// Check that this is the binary we expect
+				exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
+				containerCtx, err := r.container.Inspect(c.T.Context())
+				if err != nil {
+					return fmt.Errorf("inspecting container: %w", err)
+				}
+				if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
+					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
+					return nil
+				}
 			}
 
 			req = r

@@ -92,7 +92,7 @@ func (c *ContainerResult) Accept(log testcontainers.Log) {
 	}
 
 	_, _ = c.combined.Write(log.Content)
-	_, _ = c.combined.Write([]byte("\n")) // TODO(Jon): confirm if this is required
+	_, _ = c.combined.Write([]byte("\n"))
 	_, _ = w.Write(log.Content)
-	_, _ = w.Write([]byte("\n")) // TODO(Jon): confirm if this is required
+	_, _ = w.Write([]byte("\n"))
 }

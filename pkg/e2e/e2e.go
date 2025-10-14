@@ -301,7 +301,7 @@ func (c *TestContext) ProcessStarted(proc *process.Process) error {
 				// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
 				// on binary processes that we expect, and not the creation processes.
 				//
-				// It's not uncommong to get several bin calls for an expected binary "php" shows
+				// It's not uncommon to get several bin calls for an expected binary "php" shows
 				// up 4 or 5 times and we may or may not be finishing processing it before the first.
 				//
 				// This might indicate that we need to have a binary processing pipeline, I imagine that

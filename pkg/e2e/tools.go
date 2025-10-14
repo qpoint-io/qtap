@@ -1,9 +1,9 @@
-//go:build e2e
-
 package e2e
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,10 +11,33 @@ import (
 
 type HTTPServerFunc func(machineIP string, handler http.Handler) (*httptest.Server, error)
 
-// NewHTTP11OnlyTestServer creates an HTTP/1.1-only test server bound to a specific IP
+// NewHTTPServer creates an HTTP test server with the specified protocol and TLS configuration
+func NewHTTPServer(machineIP string, handler http.Handler, proto HTTPProtocol, useTLS bool) (*httptest.Server, error) {
+	switch proto {
+	case HTTPProtocolHTTP2_0:
+		if !useTLS {
+			return nil, errors.New("HTTP/2 requires TLS")
+		}
+		return NewHTTP2TLSServer(machineIP, handler)
+	case HTTPProtocolHTTP1_1:
+		if useTLS {
+			return NewHTTP1TLSServer(machineIP, handler)
+		}
+		return NewHTTP1PlainServer(machineIP, handler)
+	case HTTPProtocolHTTP1_0:
+		if useTLS {
+			return nil, errors.New("HTTP/1.0 with TLS is not currently supported")
+		}
+		return NewHTTP1PlainServer(machineIP, handler)
+	default:
+		return nil, fmt.Errorf("unsupported HTTP protocol: %s", proto)
+	}
+}
+
+// NewHTTP1TLSServer creates an HTTP/1.1 test server with TLS bound to a specific IP
 // This is useful when you need to test HTTP/1.1-specific behavior or ensure
 // compatibility with legacy clients
-func NewHTTP11OnlyTestServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
+func NewHTTP1TLSServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
 	// Create the unstarted server with your handler
 	server := httptest.NewUnstartedServer(handler)
 
@@ -55,9 +78,9 @@ func NewHTTP11OnlyTestServer(machineIP string, handler http.Handler) (*httptest.
 	return server, nil
 }
 
-// NewPlainHTTP11TestServer creates a non-TLS HTTP/1.1 server
+// NewHTTP1PlainServer creates a non-TLS HTTP/1.1 server
 // Use this when you don't need TLS and want to ensure HTTP/1.1 behavior
-func NewPlainHTTP11TestServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
+func NewHTTP1PlainServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
 	// Create the unstarted server
 	server := httptest.NewUnstartedServer(handler)
 
@@ -80,8 +103,8 @@ func NewPlainHTTP11TestServer(machineIP string, handler http.Handler) (*httptest
 	return server, nil
 }
 
-// NewHTTP2OnlyTestServer creates an HTTP/2-only test server bound to a specific IP
-func NewHTTP2OnlyTestServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
+// NewHTTP2TLSServer creates an HTTP/2 test server with TLS bound to a specific IP
+func NewHTTP2TLSServer(machineIP string, handler http.Handler) (*httptest.Server, error) {
 	// Create the unstarted server with your handler
 	server := httptest.NewUnstartedServer(handler)
 

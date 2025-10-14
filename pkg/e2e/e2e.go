@@ -7,12 +7,14 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
-	"github.com/qpoint-io/qtap/pkg/e2e/babel"
+	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/rs/xid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -30,6 +32,7 @@ type Context struct {
 	ConfProvider *ConfigProvider
 	L            *zap.Logger
 	TestConfig   func(mut func(*config.Config)) *config.Config
+	testContexts []*TestContext
 }
 
 func NewContext(ctx context.Context) *Context {
@@ -133,11 +136,13 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 func (c *Context) TestCtx(t *testing.T) *TestContext {
 	id := NewID()
 	ctx := &TestContext{
-		ID:     id,
-		e2ectx: c,
-		T:      t,
-		L:      c.L.With(zap.String("ctxid", id)),
+		ID:       id,
+		e2ectx:   c,
+		T:        t,
+		L:        c.L.With(zap.String("ctxid", id)),
+		requests: make([]*HTTPRequest, 0),
 	}
+	c.testContexts = append(c.testContexts, ctx)
 	ctx.L.Info("🔧 test context created")
 	return ctx
 }
@@ -151,10 +156,12 @@ func (c *Context) SetConfig(conf *config.Config) {
 }
 
 type TestContext struct {
-	e2ectx *Context
-	ID     string
-	T      *testing.T
-	L      *zap.Logger
+	e2ectx   *Context
+	ID       string
+	T        *testing.T
+	L        *zap.Logger
+	requests []*HTTPRequest
+	mu       sync.RWMutex // protects requests slice
 }
 
 type ExecResult struct {
@@ -191,39 +198,13 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	}
 }
 
-func (c *TestContext) Do(request *babel.HTTPRequest) ExecResult {
-	id := NewID()
-	request.WithExtraEnvVar("QPOINT_TAGS", fmt.Sprintf("ctxid:%s,ctxid:%s", c.ID, id))
-	c.L.Info("🕹️ executing babel http request", zap.String("image", request.ImageURL))
-
-	c.L.Debug("✅ babel http request starting", zap.String("image", request.ImageURL))
-	container := request.Run(c.T.Context(), c.L)
-
-	c.L.Debug("⏱️ Waiting for babel http container to exit", zap.String("image", request.ImageURL))
-	result, err := container.WaitForExit(c.T.Context())
-	require.NoError(c.T, err)
-	c.L.Debug("✅ babel http request finished", zap.String("image", request.ImageURL), zap.String("result", result.Logs))
-
-	return ExecResult{
-		Output: result.Logs,
-		Err:    result.Error,
-		Code:   result.ExitCode,
-		ID:     id,
-		AwaitEvents: func(expectedConnections int) *Events {
-			events, err := c.e2ectx.EventStore.AwaitByCtxID(id, expectedConnections, AwaitEventsTimeout)
-			require.NoError(c.T, err)
-			return events
-		},
-	}
-}
-
 func (c *TestContext) Events(expectedConnections int) *Events {
 	events, err := c.e2ectx.EventStore.AwaitByCtxID(c.ID, expectedConnections, AwaitEventsTimeout)
 	require.NoError(c.T, err)
 	return events
 }
 
-func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func(*testing.T)) {
+func (c *TestContext) WithConfig(t *testing.T, mut ConfigMutator, fn func(*testing.T)) {
 	t.Helper()
 	conf := c.e2ectx.TestConfig(mut)
 	c.L.Info("⚙️ setting test config")
@@ -241,6 +222,13 @@ func (c *TestContext) WithConfig(t *testing.T, mut func(*config.Config), fn func
 
 func (c *TestContext) MachineIP() net.IP {
 	return c.e2ectx.MachineIP()
+}
+
+// RegisterRequest adds an HTTP request to the test context's request list
+func (c *TestContext) RegisterRequest(req *HTTPRequest) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.requests = append(c.requests, req)
 }
 
 func (c *Context) SetMachineIP(ip net.IP) {
@@ -267,4 +255,92 @@ func NewLogger(start time.Time) *zap.Logger {
 		panic(err)
 	}
 	return ll
+}
+
+func (c *Context) ProcessStarted(proc *process.Process) error {
+	for _, testCtx := range c.testContexts {
+		if err := testCtx.ProcessStarted(proc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Context) ProcessReplaced(proc *process.Process) error {
+	for _, testCtx := range c.testContexts {
+		if err := testCtx.ProcessReplaced(proc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Context) ProcessStopped(proc *process.Process) error {
+	for _, testCtx := range c.testContexts {
+		if err := testCtx.ProcessStopped(proc); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *TestContext) ProcessStarted(proc *process.Process) error {
+	// c.L.Info("⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
+
+	// Find the container by searching through active requests
+	c.mu.RLock()
+	var req *HTTPRequest
+	for _, r := range c.requests {
+		if r.container != nil {
+			// Not our container
+			if !strings.HasPrefix(r.container.GetContainerID(), proc.ContainerID) {
+				return nil
+			}
+
+			{
+				// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
+				// on binary processes that we expect, and not the creation processes.
+				//
+				// It's not uncommon to get several bin calls for an expected binary "php" shows
+				// up 4 or 5 times and we may or may not be finishing processing it before the first.
+				//
+				// This might indicate that we need to have a binary processing pipeline, I imagine that
+				// if a "php" binary is called 3 or 4 times really quickly, we might try and scan it multiple
+				// times concurrently because it's not in the cache yet. This could be a general resource
+				// improvement opportunity.
+				//
+				// Check that this is the binary we expect
+				exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
+				containerCtx, err := r.container.Inspect(c.T.Context())
+				if err != nil {
+					return fmt.Errorf("inspecting container: %w", err)
+				}
+				if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
+					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
+					return nil
+				}
+			}
+
+			req = r
+			break
+		}
+	}
+	c.mu.RUnlock()
+
+	if req != nil && req.WaitForFile != "" {
+		c.L.Info("🆕 creating file in container", zap.String("binary", proc.Binary), zap.String("file", req.WaitForFile))
+		if err := req.container.CopyToContainer(c.T.Context(), []byte("Q"), req.WaitForFile, 0644); err != nil {
+			return fmt.Errorf("creating file in container: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (c *TestContext) ProcessReplaced(proc *process.Process) error {
+	return nil
+}
+
+func (c *TestContext) ProcessStopped(proc *process.Process) error {
+	return nil
 }

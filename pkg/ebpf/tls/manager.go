@@ -22,6 +22,8 @@ type TlsManager struct {
 
 	// probes
 	probes []TlsProbe
+
+	final process.Observer
 }
 
 func NewTlsManager(logger *zap.Logger, probes ...TlsProbe) *TlsManager {
@@ -48,6 +50,10 @@ func (m *TlsManager) Start() error {
 	)
 
 	return nil
+}
+
+func (m *TlsManager) SetFinalObserver(o process.Observer) {
+	m.final = o
 }
 
 func (m *TlsManager) Stop() error {
@@ -103,6 +109,12 @@ func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 		}
 	}
 
+	if m.final != nil {
+		if err := m.final.ProcessStarted(proc); err != nil {
+			return fmt.Errorf("starting process on final observer: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -125,6 +137,12 @@ func (m *TlsManager) ProcessStopped(proc *process.Process) error {
 	for _, p := range m.probes {
 		if err := p.ProcessStopped(proc); err != nil {
 			return fmt.Errorf("stopping process on tls probe: %w", err)
+		}
+	}
+
+	if m.final != nil {
+		if err := m.final.ProcessStopped(proc); err != nil {
+			return fmt.Errorf("stopping process on final observer: %w", err)
 		}
 	}
 

@@ -9,6 +9,9 @@ func init() {
 	RegisterPython()
 	RegisterRuby()
 	RegisterPHP()
+	RegisterJava()
+	RegisterNodeJS()
+	RegisterGo()
 }
 
 // ClientCapabilities defines what a specific HTTP client can do

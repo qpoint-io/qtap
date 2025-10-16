@@ -114,6 +114,9 @@ func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
 
+// This test verifies that we capture the connection and subsequent HTTP
+// request content and artifacts for languages that
+// support TLS introspection within the Qtap opensource project.
 func TestLanguages(t *testing.T) {
 	configMut := func(c *config.Config) {
 		c.Tap.IgnoreLoopback = false
@@ -138,7 +141,7 @@ func TestLanguages(t *testing.T) {
 		}
 	}
 
-	suite, err := e2e.NewTestSuite("HTTP").
+	suite, err := e2e.NewTestSuite("HTTP Introspective").
 		WithConfig(configMut).
 		WithOS("alpine", "bullseye").
 		WithLanguage(e2e.Python, "3.10.0", "3.12.0").
@@ -178,6 +181,63 @@ func TestLanguages(t *testing.T) {
 			assert.Equal(t, "GET", transaction.Request.Method)
 			assert.Equal(t, "application/json", transaction.Response.ContentType)
 			assert.Contains(t, string(transaction.Response.Body), "success")
+
+			return nil
+		}).
+		Build()
+
+	require.NoError(t, err)
+	require.NotNil(t, suite)
+
+	// TODO(Jon): could this be rolled into the test suite?
+	runner := &e2e.TestSuiteRunner{
+		Suite:  suite,
+		Logger: e2ectx.L,
+	}
+	runner.Run(t, e2ectx)
+}
+
+// This test verifies that we capture the connection for languages that do not
+// support TLS introspection within the Qtap opensource project.
+func TestLanguageNonIntrospective(t *testing.T) {
+	configMut := func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}
+
+	suite, err := e2e.NewTestSuite("HTTP NonIntrospective").
+		WithConfig(configMut).
+		WithOS("alpine").
+		WithLanguage(e2e.NodeJS, "18.20.0", "22.16.0", "24.5.0").
+		WithLanguage(e2e.Go, "1.22.0", "1.24.4", "1.25.1").
+		WithLanguage(e2e.Java, "11", "17", "21").
+		WithMethod(e2e.HTTPMethodGet).
+		WithURL("/api/health").
+		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).
+		WithTLSOnly().
+		WithStartupDelay(100 * time.Millisecond).
+		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
+			events := ctx.TestContext.Events(1)
+			require.Len(t, events.Connections, 1)
+			require.Len(t, events.Requests, 0)
 
 			return nil
 		}).

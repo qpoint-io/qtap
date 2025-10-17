@@ -218,15 +218,6 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		open_event->cookie = cookie;
 		// bpf_printk("submit_open_event, cookie: %lu", cookie);
 
-		if (cookie <= 0) {
-			// If we don't have a valid cookie, ignore the connection
-			// this is either an error state or premature and will
-			// be called again.
-			// TODO(Jon): Investigate ways to tighten up the trigger
-			// points for this event.
-			conn_info->ignore = true;
-		}
-
 		// read the local and remote ports
 		__be16 local_port;
 		bpf_probe_read(&local_port, sizeof(local_port), &sk->__sk_common.skc_num);
@@ -353,7 +344,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		conn_info->ignore = true;
 
 	// if we're ignoring, discard the event and return early
-	if (conn_info->ignore) {
+	if (conn_info->ignore || conn_info->cookie == 0) {
 		bpf_ringbuf_discard(open_event, 0);
 		return;
 	}
@@ -395,17 +386,6 @@ static void submit_proto_event(struct socket_ctx *ctx, struct conn_info *conn_in
 
 // common addr handler for multiple syscall probes
 static void process_syscall_addr(struct socket_ctx *ctx, struct addr_args *addr, enum CONNECTION_TYPE function) {
-	// extract the sock address
-	struct sockaddr *sockaddr = (struct sockaddr *)addr->addr;
-
-	// read the socket family
-	sa_family_t family;
-	bpf_probe_read_user(&family, sizeof(family), (const void *)&sockaddr->sa_family);
-
-	// we're only concerned with network sockets
-	if (!(family == AF_INET || family == AF_INET6))
-		return;
-
 	// initialize connection info
 	struct conn_info conn_info     = {};
 	conn_info.rd_bytes             = 0;
@@ -419,6 +399,18 @@ static void process_syscall_addr(struct socket_ctx *ctx, struct addr_args *addr,
 	conn_info.conn_pid_id.tsid     = bpf_ktime_get_ns();
 	conn_info.conn_pid_id.function = function;
 
+	// try to read address from the syscall and put it on the conn_info
+	// as a backup in the event that submit_open_event is unable to lookup
+	// the underlying socket pointer from the registry. This is a last resort
+	// and should not be relied on for correctness.
+
+	// extract the sock address
+	struct sockaddr *sockaddr = (struct sockaddr *)addr->addr;
+
+	// read the socket family
+	sa_family_t family;
+	bpf_probe_read_user(&family, sizeof(family), (const void *)&sockaddr->sa_family);
+
 	// set the address family
 	conn_info.addr.sa_family = family;
 
@@ -427,12 +419,13 @@ static void process_syscall_addr(struct socket_ctx *ctx, struct addr_args *addr,
 		struct sockaddr_in *sa = (struct sockaddr_in *)sockaddr;
 		bpf_probe_read_user(&conn_info.addr.addr, 4, &sa->sin_addr);
 		bpf_probe_read_user(&conn_info.addr.port, sizeof(conn_info.addr.port), &sa->sin_port);
-	} else {
+	} else if (family == AF_INET6) {
 		struct sockaddr_in6 *sa = (struct sockaddr_in6 *)sockaddr;
 		bpf_probe_read_user(&conn_info.addr.addr, 16, &sa->sin6_addr);
 		bpf_probe_read_user(&conn_info.addr.port, sizeof(conn_info.addr.port), &sa->sin6_port);
 	}
 
+	// submit the open event
 	submit_open_event(ctx, &conn_info);
 
 	// persist
@@ -567,6 +560,32 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	if (meta != NULL && meta->qpoint_strategy == QP_IGNORE) {
 		conn_info->ignore = true;
 		return;
+	}
+
+	// does this connection have a cookie?
+	if (conn_info->cookie == 0) {
+		struct pid_fd_key fd_sock_key = {
+			.pid = ctx->id->pid,
+			.fd  = ctx->id->fd,
+		};
+
+		// try to fetch the socket pointer
+		uintptr_t *sock_ptr = bpf_map_lookup_elem(&pid_fd_to_sock_map, &fd_sock_key);
+		if (sock_ptr != NULL) {
+			const struct socket *sock = (struct socket *)*sock_ptr;
+
+			struct sock *sk;
+			bpf_probe_read(&sk, sizeof(sk), &sock->sk);
+
+			// read socket cookie
+			uint64_t cookie;
+			bpf_probe_read(&cookie, sizeof(cookie), &sk->__sk_common.skc_cookie);
+
+			// submit open event if we have a cookie
+			if (cookie > 0) {
+				submit_open_event(ctx, conn_info);
+			}
+		}
 	}
 
 	// checks that no ingress reads or egress writes have happened yet, indicating a new connection
@@ -972,6 +991,10 @@ int syscall__probe_ret_accept(struct trace_event_raw_sys_exit *ctx) {
 		// set the file descriptor
 		id.fd = ret_val;
 
+		// trace
+		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept", TRACE_STRING("caller", "syscall/accept"),
+			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
+
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
 		sock_ctx.id                = &id;
@@ -1037,6 +1060,10 @@ int syscall__probe_ret_accept4(struct trace_event_raw_sys_exit *ctx) {
 
 		// set the file descriptor
 		id.fd = ret_val;
+
+		// trace
+		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept4", TRACE_STRING("caller", "syscall/accept4"),
+			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1685,6 +1712,7 @@ int syscall__probe_ret_read_init(struct trace_event_raw_sys_exit *ctx) {
 		struct socket_ctx sock_ctx = {};
 		sock_ctx.id                = &id;
 		sock_ctx.pid_tgid          = pid_tgid;
+		sock_ctx.trace_mod         = QTAP_SOCKET;
 		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "syscall/read");
 
 		// process the data

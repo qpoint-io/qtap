@@ -551,6 +551,7 @@ func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 		// ftraces
 		common.NewFexit("tcp_v4_connect", objs.TapPrograms.TraceTcpV4ConnectFexit),
 		common.NewFexit("tcp_v6_connect", objs.TapPrograms.TraceTcpV6ConnectFexit),
+		common.NewFexit("tcp_recvmsg", objs.TapPrograms.TraceTcpRecvmsgFexit),
 	}
 
 	// open a ring buffer reader

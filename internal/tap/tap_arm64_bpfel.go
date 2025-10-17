@@ -239,6 +239,7 @@ type TapProgramSpecs struct {
 	SyscallProbeRetWritev        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev"`
 	SyscallProbeRetWritevInit    *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev_init"`
 	TraceTcpClose                *ebpf.ProgramSpec `ebpf:"trace_tcp_close"`
+	TraceTcpRecvmsgFexit         *ebpf.ProgramSpec `ebpf:"trace_tcp_recvmsg_fexit"`
 	TraceTcpV4ConnectFexit       *ebpf.ProgramSpec `ebpf:"trace_tcp_v4_connect_fexit"`
 	TraceTcpV6ConnectFexit       *ebpf.ProgramSpec `ebpf:"trace_tcp_v6_connect_fexit"`
 	TracepointSchedProcessExit   *ebpf.ProgramSpec `ebpf:"tracepoint__sched__process_exit"`
@@ -415,6 +416,7 @@ type TapPrograms struct {
 	SyscallProbeRetWritev        *ebpf.Program `ebpf:"syscall__probe_ret_writev"`
 	SyscallProbeRetWritevInit    *ebpf.Program `ebpf:"syscall__probe_ret_writev_init"`
 	TraceTcpClose                *ebpf.Program `ebpf:"trace_tcp_close"`
+	TraceTcpRecvmsgFexit         *ebpf.Program `ebpf:"trace_tcp_recvmsg_fexit"`
 	TraceTcpV4ConnectFexit       *ebpf.Program `ebpf:"trace_tcp_v4_connect_fexit"`
 	TraceTcpV6ConnectFexit       *ebpf.Program `ebpf:"trace_tcp_v6_connect_fexit"`
 	TracepointSchedProcessExit   *ebpf.Program `ebpf:"tracepoint__sched__process_exit"`
@@ -470,6 +472,7 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeRetWritev,
 		p.SyscallProbeRetWritevInit,
 		p.TraceTcpClose,
+		p.TraceTcpRecvmsgFexit,
 		p.TraceTcpV4ConnectFexit,
 		p.TraceTcpV6ConnectFexit,
 		p.TracepointSchedProcessExit,

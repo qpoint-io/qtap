@@ -238,6 +238,17 @@ int BPF_PROG(trace_tcp_v6_connect_fexit, struct sock *sk, int ret) {
 	return 0;
 }
 
+SEC("fexit/tcp_recvmsg")
+int BPF_PROG(trace_tcp_recvmsg_fexit, struct sock *sk, int ret) {
+	if (!sk)
+		return 0;
+
+	// force the kernel to generate a cookie for the socket
+	bpf_get_socket_cookie(sk);
+
+	return 0;
+}
+
 SEC("kprobe/tcp_close")
 int BPF_KPROBE(trace_tcp_close) {
 	struct sock *sk = (struct sock *)PT_REGS_PARM1(ctx);

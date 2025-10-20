@@ -285,7 +285,9 @@ func (c *Context) ProcessStopped(proc *process.Process) error {
 }
 
 func (c *TestContext) ProcessStarted(proc *process.Process) error {
-	// c.L.Info("⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
+	if proc.Binary == "ruby" {
+		c.L.Warn("⭕ TestContext ⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
+	}
 
 	// Find the container by searching through active requests
 	c.mu.RLock()

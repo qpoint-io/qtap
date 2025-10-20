@@ -120,6 +120,10 @@ func (m *OpenSSLManager) Stop() (err error) {
 }
 
 func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
+	if p.Binary == "ruby" {
+		m.logger.Warn("⭕ *OpenSSLManager ⭕ process started", zap.String("container_id", p.ContainerID), zap.Int("pid", p.Pid), zap.String("process_binary", p.Binary), zap.String("exe", p.Exe), zap.String("exe_filename", p.ExeFilename))
+	}
+
 	// get the cache key
 	cacheKey := p.CacheKey()
 

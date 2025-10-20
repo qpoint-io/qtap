@@ -67,6 +67,10 @@ func (m *TlsManager) Stop() error {
 }
 
 func (m *TlsManager) ProcessStarted(proc *process.Process) error {
+	if proc.Binary == "ruby" {
+		m.logger.Warn("⭕ *TlsManager ⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
+	}
+
 	// ensure only one scan process happening at a time per process
 	proc.ScanLock()
 	defer proc.ScanUnlock()

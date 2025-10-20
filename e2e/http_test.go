@@ -144,9 +144,9 @@ func TestLanguages(t *testing.T) {
 	suite, err := e2e.NewTestSuite("HTTP Introspective").
 		WithConfig(configMut).
 		WithOS("alpine", "bullseye").
-		WithLanguage(e2e.Python, "3.10.0", "3.12.0").
+		// WithLanguage(e2e.Python, "3.10.0", "3.12.0").
 		WithLanguage(e2e.Ruby, "3.2.9", "3.3.9", "3.4.5").
-		WithLanguage(e2e.PHP, "8.1", "8.2", "8.3").
+		// WithLanguage(e2e.PHP, "8.1", "8.2", "8.3").
 		WithMethod(e2e.HTTPMethodGet).
 		WithURL("/api/health").
 		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).

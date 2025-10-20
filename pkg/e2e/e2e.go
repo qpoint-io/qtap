@@ -285,9 +285,18 @@ func (c *Context) ProcessStopped(proc *process.Process) error {
 }
 
 func (c *TestContext) ProcessStarted(proc *process.Process) error {
-	if proc.Binary == "ruby" {
+	if proc.Binary == "ruby" || proc.Binary == "node" {
 		c.L.Warn("⭕ TestContext ⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
 	}
+
+	// // ensure only one scan process happening at a time per process
+	// proc.ScanLock()
+	// defer proc.ScanUnlock()
+
+	// // check if process is still active
+	// if proc.Exited() {
+	// 	return nil
+	// }
 
 	// Find the container by searching through active requests
 	c.mu.RLock()
@@ -318,7 +327,7 @@ func (c *TestContext) ProcessStarted(proc *process.Process) error {
 					return fmt.Errorf("inspecting container: %w", err)
 				}
 				if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
-					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
+					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("exe_filename", exeFilename), zap.String("expected", containerCtx.Config.Cmd[0]))
 					return nil
 				}
 			}

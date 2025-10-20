@@ -120,7 +120,7 @@ func (m *OpenSSLManager) Stop() (err error) {
 }
 
 func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
-	if p.Binary == "ruby" {
+	if p.Binary == "ruby" || p.Binary == "node" {
 		m.logger.Warn("⭕ *OpenSSLManager ⭕ process started", zap.String("container_id", p.ContainerID), zap.Int("pid", p.Pid), zap.String("process_binary", p.Binary), zap.String("exe", p.Exe), zap.String("exe_filename", p.ExeFilename))
 	}
 

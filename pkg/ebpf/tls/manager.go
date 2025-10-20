@@ -67,7 +67,7 @@ func (m *TlsManager) Stop() error {
 }
 
 func (m *TlsManager) ProcessStarted(proc *process.Process) error {
-	if proc.Binary == "ruby" {
+	if proc.Binary == "ruby" || proc.Binary == "node" {
 		m.logger.Warn("⭕ *TlsManager ⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
 	}
 

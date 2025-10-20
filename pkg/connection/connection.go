@@ -53,6 +53,9 @@ type Connection struct {
 	// connecting reporting system
 	report
 
+	// Connection Key (PID, LocalIP, RemoteIP, LocalPort, RemotePort)
+	ConnKey
+
 	// lifecycle management
 	cancel    context.CancelFunc
 	startOnce sync.Once
@@ -70,10 +73,6 @@ type Connection struct {
 
 	// held indicates that another claimant is holding the close condition for the connection
 	held bool
-
-	// keys
-	cookie     Cookie
-	connPIDKey ConnPIDKey
 
 	Protocol Protocol
 
@@ -165,13 +164,12 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	id := xid.New().String()
 	span.SetAttributes(
 		attribute.String("connection.id", id),
-		attribute.Int64("connection.cookie", int64(openEvent.Cookie)),
 	)
 
 	t := tags.New()
 	t.Add("ip", openEvent.Local.IP.String())
 
-	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
+	logger = logger.With(zap.String("conn_id", id)) // TODO(Jon): add some combination of the new conn key?
 	c := &Connection{
 		report: report{
 			ctx: ctx,
@@ -179,8 +177,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		cancel:      cancel,
 		logger:      logger,
 		id:          id,
-		cookie:      openEvent.Cookie,
-		connPIDKey:  openEvent.ConnPIDKey,
+		ConnKey:     openEvent.ConnKey,
 		held:        openEvent.IsRedirected,
 		OpenEvent:   openEvent,
 		eventQueue:  synq.NewQueue(ctx),
@@ -515,10 +512,6 @@ func (c *Connection) Context() context.Context {
 	}
 
 	return c.ctx
-}
-
-func (c *Connection) Cookie() Cookie {
-	return c.cookie
 }
 
 // ControlValues returns the values that are used to evaluate the control rules

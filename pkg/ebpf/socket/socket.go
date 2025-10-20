@@ -1,10 +1,9 @@
 package socket
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
-	"strconv"
-	"syscall"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/qnet"
@@ -80,90 +79,47 @@ func (p Protocol) String() string {
 	}
 }
 
-// connPIDID represents the C structure conn_pid_id_t in Go.
-type connPIDID struct {
-	PID      uint32 // Process PID
-	TGID     uint32 // Process TGID
-	FD       int32  // The file descriptor to the opened network connection
-	FUNCTION Source // The function of the connection
-	TSID     uint64 // Timestamp at the initialization of the struct
+// connKey represents the C structure c_key_t in Go.
+type connKey struct {
+	Pid        uint32
+	LocalIP    [16]uint8
+	RemoteIP   [16]uint8
+	LocalPort  uint16
+	RemotePort uint16
 }
 
-func (c connPIDID) buildConnPIDKey() connection.ConnPIDKey {
-	return connection.ConnPIDKey{
-		PID:      c.PID,
-		TGID:     c.TGID,
-		FD:       c.FD,
-		FUNCTION: connection.Source(c.FUNCTION),
-		TSID:     c.TSID,
+func (c connKey) buildConnKey() connection.ConnKey {
+	return connection.ConnKey{
+		Pid:        c.Pid,
+		LocalIP:    net.IP(c.LocalIP[:]),
+		RemoteIP:   net.IP(c.RemoteIP[:]),
+		LocalPort:  fixPortEndianness(binary.NativeEndian, c.LocalPort),
+		RemotePort: fixPortEndianness(binary.NativeEndian, c.RemotePort),
 	}
 }
 
-// ensure netAddr fulfills net.Addr interface
-var _ net.Addr = netAddr{}
+func (c connKey) String() string {
+	localIP := net.IP(c.LocalIP[:])
+	remoteIP := net.IP(c.RemoteIP[:])
 
-type netAddr struct {
-	SaFamily uint16   // Address family (AF_INET or AF_INET6), 2 bytes
-	Addr     [16]byte // IPv6 address space, also used for IPv4, 16 bytes
-	Port     uint16   // Address port, 2 bytes
-}
-
-func (a netAddr) AddrSize() uint16 {
-	switch a.SaFamily {
-	case syscall.AF_INET:
-		return 4
-	case syscall.AF_INET6:
-		return 16
-	default:
-		return 0
+	localFamily := "ipv4"
+	if localIP.To4() == nil {
+		localFamily = "ipv6"
 	}
-}
-
-func (a netAddr) FamilyString() string {
-	switch a.SaFamily {
-	case syscall.AF_INET:
-		return "ipv4"
-	case syscall.AF_INET6:
-		return "ipv6"
-	default:
-		return "unknown"
+	remoteFamily := "ipv4"
+	if remoteIP.To4() == nil {
+		remoteFamily = "ipv6"
 	}
-}
 
-func (a netAddr) AddrString() string {
-	switch {
-	case a.Port == 0 && a.SaFamily == syscall.AF_INET:
-		return "0.0.0.0"
-	case a.Port == 0 && a.SaFamily == syscall.AF_INET6:
-		return "::"
-	default:
-		return net.IP(a.Addr[:a.AddrSize()]).String()
-	}
-}
-
-func (a netAddr) String() string {
-	switch a.SaFamily {
-	case syscall.AF_INET, syscall.AF_INET6:
-		return net.JoinHostPort(a.AddrString(), strconv.Itoa(int(a.Port)))
-	default:
-		return "unknown"
-	}
-}
-
-func (a *netAddr) IsPrivateIP() bool {
-	return net.IP(a.Addr[:a.AddrSize()]).IsPrivate()
-}
-
-func (a netAddr) Network() string {
-	return ""
-}
-
-func (a netAddr) buildConnectionNetAddr() qnet.NetAddr {
-	return qnet.NetAddr{
-		Family: qnet.NetFamily(a.FamilyString()),
-		IP:     net.IP(a.Addr[:a.AddrSize()]),
-		Port:   a.Port,
-	}
+	return fmt.Sprintf("ID:%d SRC:%s IPv4/IPv6:%s DST:%s IPv4/IPv6:%s SRC_PORT:%d DST_PORT:%d",
+		c.Pid,
+		localIP.String(),
+		localFamily,
+		remoteIP.String(),
+		remoteFamily,
+		c.LocalPort,
+		c.RemotePort,
+	)
 }
 
 // socketEvents represents socket event types
@@ -186,30 +142,27 @@ type socketEvent struct {
 // socketOpenEvent represents the C structure socket_open_event_t in Go.
 type socketOpenEvent struct {
 	TimestampNS  uint64     // The time of the event in nanoseconds
-	ConnID       connPIDID  // A unique ID for the connection
-	Cookie       uint64     // Socket cookie
-	Local        netAddr    // the local address
-	Remote       netAddr    // the remote address
+	ConnKey      connKey    // Connection key
 	Pid          uint32     // Process PID
 	Tgid         uint32     // Process TGID
 	SocketType   socketType // socket type
 	IsRedirected bool       // is this a redirected through a forwarder?
+	Source       Source     // the source of the connection
 }
 
 func (e socketOpenEvent) buildConnOpenEvent() connection.OpenEvent {
 	oe := connection.OpenEvent{
-		Cookie:       connection.Cookie(e.Cookie),
-		ConnPIDKey:   e.ConnID.buildConnPIDKey(),
+		ConnKey:      e.ConnKey.buildConnKey(),
 		TimestampNS:  e.TimestampNS,
-		PID:          e.ConnID.PID,
-		TGID:         e.ConnID.TGID,
-		Local:        e.Local.buildConnectionNetAddr(),
-		Remote:       e.Remote.buildConnectionNetAddr(),
+		PID:          e.Pid,
+		TGID:         e.Tgid,
+		Local:        qnet.NetAddrFromIPPort(net.IP(e.ConnKey.LocalIP[:]), e.ConnKey.LocalPort),
+		Remote:       qnet.NetAddrFromIPPort(net.IP(e.ConnKey.RemoteIP[:]), e.ConnKey.RemotePort),
 		IsRedirected: e.IsRedirected,
 		SocketType:   e.socketType(),
 	}
 
-	switch e.ConnID.FUNCTION {
+	switch e.Source {
 	case Client:
 		oe.Source = connection.Client
 	case Server:
@@ -236,18 +189,17 @@ func (e socketOpenEvent) socketType() connection.SocketType {
 
 // socketCloseEvent represents the C structure socket_close_event_t in Go.
 type socketCloseEvent struct {
-	TimestampNS uint64    // Timestamp of the close syscall
-	ConnID      connPIDID // The unique ID of the connection
-	Cookie      uint64    // Socket cookie
-	WrBytes     int64     // Total number of bytes written on that connection
-	RdBytes     int64     // Total number of bytes read on that connection
-	Pid         uint32    // Process PID
-	Tgid        uint32    // Process TGID
+	TimestampNS uint64  // Timestamp of the close syscall
+	ConnKey     connKey // Connection key
+	WrBytes     int64   // Total number of bytes written on that connection
+	RdBytes     int64   // Total number of bytes read on that connection
+	Pid         uint32  // Process PID
+	Tgid        uint32  // Process TGID
 }
 
 func (e socketCloseEvent) buildConnCloseEvent() connection.CloseEvent {
 	return connection.CloseEvent{
-		Cookie:      connection.Cookie(e.Cookie),
+		ConnKey:     e.ConnKey.buildConnKey(),
 		TimestampNS: e.TimestampNS,
 		WrBytes:     e.WrBytes,
 		RdBytes:     e.RdBytes,
@@ -258,23 +210,21 @@ const MAX_MSG_SIZE = 30720 // Ensure this matches the C definition
 
 // attr represents the attributes within the socket_data_event_t struct.
 type attr struct {
-	TimestampNS uint64    // The timestamp when syscall completed
-	ConnID      connPIDID // Connection identifier
-	Cookie      uint64    // Socket cookie
-	Direction   uint32    // The type of the actual data
-	MsgSize     uint32    // The size of the original message
-	Pos         uint64    // A 0-based position number for this event
-	Pid         uint32    // Process PID
-	Tgid        uint32    // Process TGID
+	TimestampNS uint64  // The timestamp when syscall completed
+	ConnKey     connKey // Connection key
+	Direction   uint32  // The type of the actual data
+	MsgSize     uint32  // The size of the original message
+	Pos         uint64  // A 0-based position number for this event
+	Pid         uint32  // Process PID
+	Tgid        uint32  // Process TGID
 }
 
 // socketProtoEvent represents the C struct socket_proto_event_t in Go.
 type socketProtoEvent struct {
-	TimestampNS uint64    // Timestamp when the protocol was detected
-	ConnID      connPIDID // Connection identifier
-	Cookie      uint64    // Socket cookie
-	Protocol    Protocol  // l7 protocol
-	IsTLS       bool      // is this ssl?
+	TimestampNS uint64   // Timestamp when the protocol was detected
+	ConnKey     connKey  // Connection key
+	Protocol    Protocol // l7 protocol
+	IsTLS       bool     // is this ssl?
 }
 
 func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEvent {
@@ -296,7 +246,7 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 	}
 
 	return connection.ProtocolEvent{
-		Cookie:      connection.Cookie(e.Cookie),
+		ConnKey:     e.ConnKey.buildConnKey(),
 		TimestampNS: e.TimestampNS,
 		Protocol:    p,
 		IsTLS:       e.IsTLS,
@@ -306,8 +256,7 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 // socketHostnameAttr represents the attributes within the socket_hostname_event_t struct.
 type socketHostnameAttr struct {
 	TimestampNs uint64
-	ConnID      connPIDID
-	Cookie      uint64 // Socket cookie
+	ConnKey     connKey // Connection key
 	HostnameLen uint8
 	_           [7]byte
 }
@@ -327,7 +276,6 @@ func (e socketProtoEvent) ProtocolString() string {
 
 // socketTLSClientHelloAttr represents the attributes within the socket_tls_client_hello_attr_t struct.
 type socketTLSClientHelloAttr struct {
-	Cookie uint64  // 8 bytes
-	Size   uint32  // 4 bytes
-	_      [4]byte // 4 bytes padding to align to 8 bytes
+	ConnKey connKey // Connection key
+	Size    uint32  // 4 bytes
 }

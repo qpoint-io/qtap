@@ -24,7 +24,7 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 	// if this is DNS, ensure we're wanted
 	if m.config != nil && conn.Protocol == Protocol_DNS && !m.config.Tap.AuditIncludeDNS {
 		m.logger.Debug("generateAuditLog: DNS audit log disabled",
-			zap.String("conn_pid_id", conn.connPIDKey.String()),
+			zap.String("conn_key", conn.Key()),
 			zap.String("local_addr", conn.OpenEvent.Local.String()),
 			zap.String("remote_addr", conn.OpenEvent.Remote.String()))
 		return
@@ -34,7 +34,7 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 	// interupted in the socket layer. The connection is invalid and we can safely ignore it.
 	if strings.EqualFold(conn.Domain(), "<nil>") {
 		m.logger.Debug("generateAuditLog: domain is <nil>, ignoring",
-			zap.String("conn_pid_id", conn.connPIDKey.String()),
+			zap.String("conn_key", conn.Key()),
 			zap.String("local_addr", conn.OpenEvent.Local.String()),
 			zap.String("remote_addr", conn.OpenEvent.Remote.String()))
 		return
@@ -44,7 +44,7 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 	if m.config != nil {
 		if !m.config.Services.HasAnyEventStores() {
 			m.logger.Debug("generateAuditLog: audit logs disabled",
-				zap.String("conn_pid_id", conn.connPIDKey.String()),
+				zap.String("conn_key", conn.Key()),
 				zap.String("local_addr", conn.OpenEvent.Local.String()),
 				zap.String("remote_addr", conn.OpenEvent.Remote.String()))
 			return

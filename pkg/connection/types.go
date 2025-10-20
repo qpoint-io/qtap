@@ -2,40 +2,27 @@ package connection
 
 import (
 	"fmt"
+	"net"
 )
 
-type Cookie uint64
-
-func (c Cookie) Key() Cookie {
-	return c
+type ConnKey struct {
+	Pid        uint32
+	LocalIP    net.IP
+	RemoteIP   net.IP
+	LocalPort  uint16
+	RemotePort uint16
 }
 
-type pidfd struct {
-	PID uint32
-	FD  int32
+func (c ConnKey) String() string {
+	return fmt.Sprintf("PID:%d LOCAL_IP:%s REMOTE_IP:%s LOCAL_PORT:%d REMOTE_PORT:%d",
+		c.Pid,
+		c.LocalIP.String(),
+		c.RemoteIP.String(),
+		c.LocalPort,
+		c.RemotePort)
 }
-
-// a unique connection composite key
-type ConnPIDKey struct {
-	PID      uint32 // Process PID
-	TGID     uint32 // Process TGID
-	FD       int32  // The file descriptor to the opened network connection
-	FUNCTION Source // The function of the connection
-	TSID     uint64 // Timestamp at the initialization of the struct
-}
-
-// returns a string representation of connID
-func (c ConnPIDKey) String() string {
-	return fmt.Sprintf("PID:%d TGID:%d FD:%d FUNCTION:%s TSID:%d",
-		c.PID,
-		c.TGID,
-		c.FD,
-		c.FUNCTION.String(),
-		c.TSID)
-}
-
-func (c ConnPIDKey) PIDFD() pidfd {
-	return pidfd{PID: c.PID, FD: c.FD}
+func (c ConnKey) Key() string {
+	return c.String()
 }
 
 type SocketType string

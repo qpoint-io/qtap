@@ -29,7 +29,7 @@
 
 #define TASK_COMM_LEN 16
 
-#define MAX_HOSTNAME_LENGTH 255
+// #define MAX_HOSTNAME_LENGTH 255
 
 enum SOCKET_EVENT {
 	S_OPEN             = 1ULL,
@@ -75,6 +75,15 @@ struct addr_port_key {
 	__u16 port;
 };
 
+// source and destination address and port composite key + pid
+struct conn_key {
+	uint32_t pid;
+	uint8_t local_ip[16];
+	uint8_t remote_ip[16];
+	uint16_t local_port;
+	uint16_t remote_port;
+};
+
 // A unique ID that is composed of the pid, the file
 // descriptor and the creation time of the struct
 struct conn_pid_id {
@@ -96,7 +105,9 @@ struct conn_info {
 	struct conn_pid_id conn_pid_id;
 	// Socket cookie
 	uint64_t cookie;
-	// Address provided to syscall
+	// Connection key
+	struct conn_key c_key;
+	// Address provided to syscall (this is a fallback)
 	struct net_addr addr;
 	// The number of bytes written on this connection
 	int64_t wr_bytes;
@@ -124,14 +135,8 @@ struct socket_open_event {
 	uint64_t type;
 	// The time of the event
 	uint64_t timestamp_ns;
-	// A unique ID for the connection
-	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
-	// Local address
-	struct net_addr local;
-	// Remote address
-	struct net_addr remote;
+	// Connection key
+	struct conn_key c_key;
 	// Process PID
 	uint32_t pid;
 	// Process TGID
@@ -140,6 +145,8 @@ struct socket_open_event {
 	enum SOCKET_TYPE socket_type;
 	// is this redirected?
 	bool is_redirected;
+	// The client or server function
+	uint32_t source;
 };
 
 // Struct describing the close event being sent to the user mode
@@ -148,10 +155,8 @@ struct socket_close_event {
 	uint64_t type;
 	// Timestamp of the close syscall
 	uint64_t timestamp_ns;
-	// The unique ID of the connection
-	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
+	// Connection key
+	struct conn_key c_key;
 	// Total number of bytes written on that connection
 	int64_t wr_bytes;
 	// Total number of bytes read on that connection
@@ -170,10 +175,8 @@ struct socket_data_event {
 	struct socket_data_attr_t {
 		// The timestamp when syscall completed (return probe was triggered)
 		uint64_t timestamp_ns;
-		// Connection identifier (PID, FD, etc.)
-		struct conn_pid_id conn_pid_id;
-		// Socket cookie
-		uint64_t cookie;
+		// Connection key
+		struct conn_key c_key;
 		// The type of the actual data that the msg field encodes, which is used by the caller
 		// to determine how to interpret the data
 		enum DIRECTION direction;
@@ -198,40 +201,36 @@ struct socket_proto_event {
 	uint64_t type;
 	// The time of the event
 	uint64_t timestamp_ns;
-	// Connection identifier (PID, FD, etc.)
-	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
+	// Connection key
+	struct conn_key c_key;
 	// Detected protocol
 	enum PROTOCOL protocol;
 	// Is this an ssl connection?
 	bool is_ssl;
 };
 
-// When a hostname has been found for a socket connection
-struct socket_hostname_event {
-	// Event type
-	uint64_t type;
-	struct socket_hostname_attr_t {
-		// The timestamp when syscall completed (return probe was triggered)
-		uint64_t timestamp_ns;
-		// Connection identifier (PID, FD, etc.)
-		struct conn_pid_id conn_pid_id;
-		// Socket cookie
-		uint64_t cookie;
-		// hostname length
-		uint8_t hostname_len;
-	} attr;
-	// hostname
-	char hostname[MAX_HOSTNAME_LENGTH];
-};
+// // When a hostname has been found for a socket connection
+// struct socket_hostname_event {
+// 	// Event type
+// 	uint64_t type;
+// 	struct socket_hostname_attr_t {
+// 		// The timestamp when syscall completed (return probe was triggered)
+// 		uint64_t timestamp_ns;
+// 		// Connection key
+// 		struct c_key c_key;
+// 		// hostname length
+// 		uint8_t hostname_len;
+// 	} attr;
+// 	// hostname
+// 	char hostname[MAX_HOSTNAME_LENGTH];
+// };
 
 struct socket_tls_client_hello_event {
 	// Event type
 	uint64_t type;
 	struct socket_tls_client_hello_attr_t {
-		// Socket cookie
-		uint64_t cookie;
+		// Connection key
+		struct conn_key c_key;
 		// TLS handshake size
 		uint32_t size;
 	} attr;

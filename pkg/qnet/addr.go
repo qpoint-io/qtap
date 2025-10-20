@@ -57,6 +57,22 @@ func NetAddrFromTCPAddr(addr *net.TCPAddr) NetAddr {
 	return a
 }
 
+func NetAddrFromIPPort(ip net.IP, port uint16) NetAddr {
+	a := NetAddr{
+		Family: NetFamily_IPv4,
+		IP:     ip,
+		Port:   port,
+	}
+
+	if ip4 := ip.To4(); ip4 != nil {
+		a.Family = NetFamily_IPv4
+	} else {
+		a.Family = NetFamily_IPv6
+	}
+
+	return a
+}
+
 func (na NetAddr) ToBytes() [16]byte {
 	var result [16]byte
 	switch na.Family {

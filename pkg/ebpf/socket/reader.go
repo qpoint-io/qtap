@@ -85,14 +85,10 @@ func (m *SocketEventManager) readEvent(record *ringbuf.Record) error {
 
 func (m *SocketEventManager) handleSocketOpenEvent(r *bytes.Reader) {
 	var e socketOpenEvent
-
 	if err := binary.Read(r, binary.NativeEndian, &e); err != nil {
 		m.logger.Error("failed to parse event", zap.Error(err))
 		return
 	}
-
-	e.Local.Port = fixPortEndianness(binary.NativeEndian, e.Local.Port)
-	e.Remote.Port = fixPortEndianness(binary.NativeEndian, e.Remote.Port)
 
 	m.eventHandler.HandleEvent(e.buildConnOpenEvent())
 }
@@ -126,7 +122,7 @@ func (m *SocketEventManager) handleSocketDataEvent(r *bytes.Reader) {
 	}
 
 	event := connection.DataEvent{
-		Cookie:   connection.Cookie(attr.Cookie),
+		ConnKey:  attr.ConnKey.buildConnKey(),
 		Size:     int(attr.MsgSize),
 		Position: int(attr.Pos),
 		Data:     msg,
@@ -157,6 +153,7 @@ func (m *SocketEventManager) handleSocketProtoEvent(r *bytes.Reader) {
 	m.eventHandler.HandleEvent(e.buildConnectionProtocolEvent())
 }
 
+// TODO(Jon): This is not used.
 func (m *SocketEventManager) handleSocketHostnameEvent(r *bytes.Reader) {
 	attr := hostnameAttrProol.Get().(*socketHostnameAttr)
 	defer hostnameAttrProol.Put(attr)
@@ -176,8 +173,8 @@ func (m *SocketEventManager) handleSocketHostnameEvent(r *bytes.Reader) {
 	}
 
 	m.eventHandler.HandleEvent(connection.HostnameEvent{
-		Cookie: connection.Cookie(attr.Cookie),
-		Name:   string(msg),
+		ConnKey: attr.ConnKey.buildConnKey(),
+		Name:    string(msg),
 	})
 }
 
@@ -204,8 +201,8 @@ func (m *SocketEventManager) handleSocketTLSClientHelloEvent(r *bytes.Reader) {
 	}
 
 	m.eventHandler.HandleEvent(connection.TLSClientHelloEvent{
-		Cookie: connection.Cookie(attr.Cookie),
-		Msg:    h,
+		ConnKey: attr.ConnKey.buildConnKey(),
+		Msg:     h,
 	})
 }
 

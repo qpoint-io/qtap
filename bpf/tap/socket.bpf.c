@@ -41,14 +41,6 @@
 // and effectively makes the maximum message size to be CHUNK_LIMIT*MAX_MSG_SIZE.
 #define CHUNK_LIMIT 4
 
-#define socklen_t size_t
-
-// Define a minimal structure to read the address family.
-// This assumes you're interested in IPv4 and IPv6, for example.
-struct minimal_sockaddr {
-	unsigned short sa_family; // Address family, AF_INET or AF_INET6
-};
-
 // The syscall kernel functions we're observing
 enum SYSCALL_OP {
 	SYS_ACCEPT,
@@ -67,20 +59,6 @@ enum SYSCALL_OP {
 struct socket_op_key {
 	uint64_t pid_tgid;
 	enum SYSCALL_OP func_name;
-};
-
-// ip v4/v6 socket state
-struct inet_sock_state {
-	uint64_t pid;
-	struct net_addr local;
-	struct net_addr remote;
-};
-
-// A composite key for syscall probes to lookup the socket state
-struct sock_state_key {
-	uint64_t pid;
-	uint8_t addr[16];
-	uint16_t port;
 };
 
 // Persist the socket type for the exit handler
@@ -147,13 +125,13 @@ struct {
 	__type(value, struct socket_data_event);
 } socket_data_event_buffer_heap SEC(".maps");
 
-// Heap memory for temporary storing hostnames
-struct {
-	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__uint(max_entries, 1);
-	__type(key, uint32_t);
-	__type(value, struct socket_hostname_event);
-} socket_hostname_event_heap SEC(".maps");
+// // Heap memory for temporary storing hostnames
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+// 	__uint(max_entries, 1);
+// 	__type(key, uint32_t);
+// 	__type(value, struct socket_hostname_event);
+// } socket_hostname_event_heap SEC(".maps");
 
 // Heap memory for temporary storing tls client hello events
 struct {
@@ -187,7 +165,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 	// init open_event
 	open_event->type         = S_OPEN;
 	open_event->timestamp_ns = conn_info->conn_pid_id.tsid;
-	open_event->conn_pid_id  = conn_info->conn_pid_id;
+	open_event->source       = conn_info->conn_pid_id.function;
 	open_event->pid          = ctx->id->pid;
 	open_event->tgid         = (uint32_t)(ctx->pid_tgid & 0xFFFFFFFF);
 	open_event->socket_type  = S_UNKNOWN;
@@ -214,9 +192,11 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		// read socket cookie
 		uint64_t cookie;
 		bpf_probe_read(&cookie, sizeof(cookie), &sk->__sk_common.skc_cookie);
-		conn_info->cookie  = cookie;
-		open_event->cookie = cookie;
-		// bpf_printk("submit_open_event, cookie: %lu", cookie);
+		conn_info->cookie = cookie;
+
+		// read the address family
+		sa_family_t family;
+		bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
 
 		// read the local and remote ports
 		__be16 local_port;
@@ -228,34 +208,26 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		// the port in host order, so we need to convert it to network order
 		local_port = bpf_htons(local_port);
 
-		// read the address family
-		sa_family_t family;
-		bpf_probe_read(&family, sizeof(family), &sk->__sk_common.skc_family);
+		struct conn_key c_key = {};
+		c_key.pid             = ctx->id->pid;
+		c_key.local_port      = local_port;
+		c_key.remote_port     = remote_port;
 
-		// create local net_addr
-		struct net_addr local_addr = {};
-		local_addr.sa_family       = family;
-		local_addr.port            = local_port;
-
-		// create remote net_addr
-		struct net_addr remote_addr = {};
-		remote_addr.sa_family       = family;
-		remote_addr.port            = remote_port;
-
-		// parse ipv4 address
 		if (family == AF_INET) {
-			// read the local and remote addresses
 			__be32 local_ip;
 			bpf_probe_read(&local_ip, sizeof(local_ip), &sk->__sk_common.skc_rcv_saddr);
 			__be32 remote_ip;
 			bpf_probe_read(&remote_ip, sizeof(remote_ip), &sk->__sk_common.skc_daddr);
 
-			// copy the local and remote addresses
-			__builtin_memcpy(local_addr.addr, &local_ip, sizeof(local_ip));
-			__builtin_memcpy(remote_addr.addr, &remote_ip, sizeof(remote_ip));
+			// add prefix into ips
+			__builtin_memcpy(&c_key.local_ip, ip4_in_ip6_prefix, sizeof(ip4_in_ip6_prefix));
+			__builtin_memcpy(&c_key.remote_ip, ip4_in_ip6_prefix, sizeof(ip4_in_ip6_prefix));
+
+			// copy the source and destination addresses after the prefix
+			__builtin_memcpy(&c_key.local_ip[sizeof(ip4_in_ip6_prefix)], &local_ip, sizeof(local_ip));
+			__builtin_memcpy(&c_key.remote_ip[sizeof(ip4_in_ip6_prefix)], &remote_ip, sizeof(remote_ip));
 		}
 
-		// parse ipv6 address
 		if (family == AF_INET6) {
 			// read the local and remote addresses
 			struct in6_addr local_ip;
@@ -264,9 +236,12 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 			bpf_probe_read(&remote_ip, sizeof(remote_ip), &sk->__sk_common.skc_v6_daddr);
 
 			// copy the local and remote addresses
-			__builtin_memcpy(local_addr.addr, local_ip.in6_u.u6_addr8, sizeof(local_addr.addr));
-			__builtin_memcpy(remote_addr.addr, remote_ip.in6_u.u6_addr8, sizeof(remote_addr.addr));
+			__builtin_memcpy(&c_key.local_ip, &local_ip, sizeof(local_ip));
+			__builtin_memcpy(&c_key.remote_ip, &remote_ip, sizeof(remote_ip));
 		}
+
+		conn_info->c_key  = c_key;
+		open_event->c_key = c_key;
 
 		if (type_ptr == NULL) {
 			// bpf_printk("type_ptr is NULL; trying fallback");
@@ -284,20 +259,12 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 
 			// bpf_printk("fallback: pid: %u, proto: %d, sock_type: %d, socket_type: %d", ctx->id->pid, proto, sock_type, open_event->socket_type);
 		}
-
-		// Set the local and remote addresses on the open_event
-		open_event->local  = local_addr;
-		open_event->remote = remote_addr;
 	}
-
-	// if remote isn't set yet for some reason, fallback to conn_info->addr
-	if (open_event->remote.sa_family == 0)
-		open_event->remote = conn_info->addr;
 
 	// determine if this connections destination is a management address
 	// which means it has been redirected and it going to be handled
 	// by an external service such as a transparent proxy
-	open_event->is_redirected = is_management_address(&open_event->remote);
+	open_event->is_redirected = is_management_address(open_event->c_key.remote_ip, open_event->c_key.remote_port);
 
 	// get the capture direction from settings
 	enum DIRECTION capture_direction = get_direction_setting();
@@ -306,7 +273,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 	bool ignore_loopback = get_ignore_loopback_setting();
 
 	// determine if this is a loopback IP
-	bool is_loopback = is_local_ip(&open_event->remote);
+	bool is_loopback = is_local_ip(open_event->c_key.remote_ip);
 
 	// ignore local/loopback
 	if (is_loopback && ignore_loopback) {
@@ -324,7 +291,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 			conn_info->ignore = true;
 
 		// determine if this is an internal service
-		bool is_internal_service = is_private_ip(&open_event->remote);
+		bool is_internal_service = is_private_ip(open_event->c_key.remote_ip);
 
 		// ignore internal services when only looking for external
 		if (is_internal_service && capture_direction == D_EGRESS_EXTERNAL && !open_event->is_redirected)
@@ -371,8 +338,7 @@ static void submit_proto_event(struct socket_ctx *ctx, struct conn_info *conn_in
 	// init proto_event
 	proto_event->type         = S_PROTO;
 	proto_event->timestamp_ns = bpf_ktime_get_ns();
-	proto_event->conn_pid_id  = conn_info->conn_pid_id;
-	proto_event->cookie       = conn_info->cookie;
+	proto_event->c_key        = conn_info->c_key;
 	proto_event->protocol     = conn_info->protocol;
 	proto_event->is_ssl       = conn_info->is_ssl;
 
@@ -447,8 +413,7 @@ static void process_close(struct socket_ctx *ctx) {
 		if (close_event) {
 			close_event->type         = S_CLOSE;
 			close_event->timestamp_ns = bpf_ktime_get_ns();
-			close_event->conn_pid_id  = conn_info->conn_pid_id;
-			close_event->cookie       = conn_info->cookie;
+			close_event->c_key        = conn_info->c_key;
 			close_event->rd_bytes     = conn_info->rd_bytes;
 			close_event->wr_bytes     = conn_info->wr_bytes;
 			close_event->pid          = ctx->id->pid;
@@ -618,8 +583,8 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	}
 
 	if (capture_tls_client_hello(hello, &buf_info, bytes)) {
-		hello->type        = S_TLS_CLIENT_HELLO;
-		hello->attr.cookie = conn_info->cookie;
+		hello->type       = S_TLS_CLIENT_HELLO;
+		hello->attr.c_key = conn_info->c_key;
 		// handshake.data now contains the complete ClientHello
 		// handshake.size contains the actual size of the data
 
@@ -787,8 +752,7 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	event->type              = S_DATA;
 	event->attr.timestamp_ns = bpf_ktime_get_ns();
 	event->attr.direction    = direction;
-	event->attr.conn_pid_id  = conn_info->conn_pid_id;
-	event->attr.cookie       = conn_info->cookie;
+	event->attr.c_key        = conn_info->c_key;
 	event->attr.pid          = ctx->id->pid;
 	event->attr.tgid         = (uint32_t)(ctx->pid_tgid & 0xFFFFFFFF);
 
@@ -992,8 +956,7 @@ int syscall__probe_ret_accept(struct trace_event_raw_sys_exit *ctx) {
 		id.fd = ret_val;
 
 		// trace
-		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept", TRACE_STRING("caller", "syscall/accept"),
-			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
+		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept", TRACE_STRING("caller", "syscall/accept"), TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1062,8 +1025,8 @@ int syscall__probe_ret_accept4(struct trace_event_raw_sys_exit *ctx) {
 		id.fd = ret_val;
 
 		// trace
-		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept4", TRACE_STRING("caller", "syscall/accept4"),
-			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
+		TRACE_IF_ENABLED(
+			QTAP_SOCKET, pid, "syscall/accept4", TRACE_STRING("caller", "syscall/accept4"), TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};

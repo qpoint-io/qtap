@@ -29,7 +29,7 @@
 
 #define TASK_COMM_LEN 16
 
-#define MAX_HOSTNAME_LENGTH 255
+// #define MAX_HOSTNAME_LENGTH 255
 
 enum SOCKET_EVENT {
 	S_OPEN             = 1ULL,
@@ -208,23 +208,23 @@ struct socket_proto_event {
 	bool is_ssl;
 };
 
-// When a hostname has been found for a socket connection
-struct socket_hostname_event {
-	// Event type
-	uint64_t type;
-	struct socket_hostname_attr_t {
-		// The timestamp when syscall completed (return probe was triggered)
-		uint64_t timestamp_ns;
-		// Connection identifier (PID, FD, etc.)
-		struct conn_pid_id conn_pid_id;
-		// Socket cookie
-		uint64_t cookie;
-		// hostname length
-		uint8_t hostname_len;
-	} attr;
-	// hostname
-	char hostname[MAX_HOSTNAME_LENGTH];
-};
+// // When a hostname has been found for a socket connection
+// struct socket_hostname_event {
+// 	// Event type
+// 	uint64_t type;
+// 	struct socket_hostname_attr_t {
+// 		// The timestamp when syscall completed (return probe was triggered)
+// 		uint64_t timestamp_ns;
+// 		// Connection identifier (PID, FD, etc.)
+// 		struct conn_pid_id conn_pid_id;
+// 		// Socket cookie
+// 		uint64_t cookie;
+// 		// hostname length
+// 		uint8_t hostname_len;
+// 	} attr;
+// 	// hostname
+// 	char hostname[MAX_HOSTNAME_LENGTH];
+// };
 
 struct socket_tls_client_hello_event {
 	// Event type

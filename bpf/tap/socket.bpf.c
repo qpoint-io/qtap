@@ -41,14 +41,6 @@
 // and effectively makes the maximum message size to be CHUNK_LIMIT*MAX_MSG_SIZE.
 #define CHUNK_LIMIT 4
 
-#define socklen_t size_t
-
-// Define a minimal structure to read the address family.
-// This assumes you're interested in IPv4 and IPv6, for example.
-struct minimal_sockaddr {
-	unsigned short sa_family; // Address family, AF_INET or AF_INET6
-};
-
 // The syscall kernel functions we're observing
 enum SYSCALL_OP {
 	SYS_ACCEPT,
@@ -67,20 +59,6 @@ enum SYSCALL_OP {
 struct socket_op_key {
 	uint64_t pid_tgid;
 	enum SYSCALL_OP func_name;
-};
-
-// ip v4/v6 socket state
-struct inet_sock_state {
-	uint64_t pid;
-	struct net_addr local;
-	struct net_addr remote;
-};
-
-// A composite key for syscall probes to lookup the socket state
-struct sock_state_key {
-	uint64_t pid;
-	uint8_t addr[16];
-	uint16_t port;
 };
 
 // Persist the socket type for the exit handler
@@ -147,13 +125,13 @@ struct {
 	__type(value, struct socket_data_event);
 } socket_data_event_buffer_heap SEC(".maps");
 
-// Heap memory for temporary storing hostnames
-struct {
-	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__uint(max_entries, 1);
-	__type(key, uint32_t);
-	__type(value, struct socket_hostname_event);
-} socket_hostname_event_heap SEC(".maps");
+// // Heap memory for temporary storing hostnames
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+// 	__uint(max_entries, 1);
+// 	__type(key, uint32_t);
+// 	__type(value, struct socket_hostname_event);
+// } socket_hostname_event_heap SEC(".maps");
 
 // Heap memory for temporary storing tls client hello events
 struct {

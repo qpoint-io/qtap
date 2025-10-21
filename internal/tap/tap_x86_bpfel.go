@@ -113,25 +113,6 @@ type TapSocketDataEvent struct {
 	Msg [30720]int8
 }
 
-type TapSocketHostnameEvent struct {
-	Type uint64
-	Attr struct {
-		TimestampNs uint64
-		ConnPidId   struct {
-			Pid      uint32
-			Tgid     uint32
-			Fd       int32
-			Function uint32
-			Tsid     uint64
-		}
-		Cookie      uint64
-		HostnameLen uint8
-		_           [7]byte
-	}
-	Hostname [255]int8
-	_        [1]byte
-}
-
 type TapSocketOpKey struct {
 	PidTgid  uint64
 	FuncName uint32
@@ -274,7 +255,6 @@ type TapMapSpecs struct {
 	ProcessMetaMap                *ebpf.MapSpec `ebpf:"process_meta_map"`
 	SocketDataEventBufferHeap     *ebpf.MapSpec `ebpf:"socket_data_event_buffer_heap"`
 	SocketEvents                  *ebpf.MapSpec `ebpf:"socket_events"`
-	SocketHostnameEventHeap       *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.MapSpec `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_client_hello_event_heap"`
 	SslToFdMap                    *ebpf.MapSpec `ebpf:"ssl_to_fd_map"`
@@ -324,7 +304,6 @@ type TapMaps struct {
 	ProcessMetaMap                *ebpf.Map `ebpf:"process_meta_map"`
 	SocketDataEventBufferHeap     *ebpf.Map `ebpf:"socket_data_event_buffer_heap"`
 	SocketEvents                  *ebpf.Map `ebpf:"socket_events"`
-	SocketHostnameEventHeap       *ebpf.Map `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.Map `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.Map `ebpf:"socket_tls_client_hello_event_heap"`
 	SslToFdMap                    *ebpf.Map `ebpf:"ssl_to_fd_map"`
@@ -357,7 +336,6 @@ func (m *TapMaps) Close() error {
 		m.ProcessMetaMap,
 		m.SocketDataEventBufferHeap,
 		m.SocketEvents,
-		m.SocketHostnameEventHeap,
 		m.SocketSettingsMap,
 		m.SocketTlsClientHelloEventHeap,
 		m.SslToFdMap,

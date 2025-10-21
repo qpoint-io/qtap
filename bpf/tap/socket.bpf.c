@@ -220,6 +220,11 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		remote_addr.sa_family       = family;
 		remote_addr.port            = remote_port;
 
+		struct conn_key c_key = {};
+		c_key.pid             = ctx->id->pid;
+		c_key.local_port      = local_port;
+		c_key.remote_port     = remote_port;
+
 		// parse ipv4 address
 		if (family == AF_INET) {
 			// read the local and remote addresses
@@ -231,6 +236,15 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 			// copy the local and remote addresses
 			__builtin_memcpy(local_addr.addr, &local_ip, sizeof(local_ip));
 			__builtin_memcpy(remote_addr.addr, &remote_ip, sizeof(remote_ip));
+
+			// NEW --------------------------------------------------------------------------------------
+			// add prefix into ips
+			__builtin_memcpy(&c_key.local_ip, ip4_in_ip6_prefix, sizeof(ip4_in_ip6_prefix));
+			__builtin_memcpy(&c_key.remote_ip, ip4_in_ip6_prefix, sizeof(ip4_in_ip6_prefix));
+
+			// copy the source and destination addresses after the prefix
+			__builtin_memcpy(&c_key.local_ip[sizeof(ip4_in_ip6_prefix)], &local_ip, sizeof(local_ip));
+			__builtin_memcpy(&c_key.remote_ip[sizeof(ip4_in_ip6_prefix)], &remote_ip, sizeof(remote_ip));
 		}
 
 		// parse ipv6 address
@@ -244,7 +258,14 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 			// copy the local and remote addresses
 			__builtin_memcpy(local_addr.addr, local_ip.in6_u.u6_addr8, sizeof(local_addr.addr));
 			__builtin_memcpy(remote_addr.addr, remote_ip.in6_u.u6_addr8, sizeof(remote_addr.addr));
+
+			// NEW --------------------------------------------------------------------------------------
+			__builtin_memcpy(&c_key.local_ip, &local_ip, sizeof(local_ip));
+			__builtin_memcpy(&c_key.remote_ip, &remote_ip, sizeof(remote_ip));
 		}
+
+		conn_info->c_key  = c_key;
+		open_event->c_key = c_key;
 
 		if (type_ptr == NULL) {
 			// bpf_printk("type_ptr is NULL; trying fallback");
@@ -348,6 +369,7 @@ static void submit_proto_event(struct socket_ctx *ctx, struct conn_info *conn_in
 
 	// init proto_event
 	proto_event->type         = S_PROTO;
+	proto_event->c_key        = conn_info->c_key;
 	proto_event->timestamp_ns = bpf_ktime_get_ns();
 	proto_event->conn_pid_id  = conn_info->conn_pid_id;
 	proto_event->cookie       = conn_info->cookie;
@@ -424,6 +446,7 @@ static void process_close(struct socket_ctx *ctx) {
 		close_event = bpf_ringbuf_reserve(&socket_events, sizeof(struct socket_close_event), 0);
 		if (close_event) {
 			close_event->type         = S_CLOSE;
+			close_event->c_key        = conn_info->c_key;
 			close_event->timestamp_ns = bpf_ktime_get_ns();
 			close_event->conn_pid_id  = conn_info->conn_pid_id;
 			close_event->cookie       = conn_info->cookie;
@@ -597,6 +620,7 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 
 	if (capture_tls_client_hello(hello, &buf_info, bytes)) {
 		hello->type        = S_TLS_CLIENT_HELLO;
+		hello->attr.c_key  = conn_info->c_key;
 		hello->attr.cookie = conn_info->cookie;
 		// handshake.data now contains the complete ClientHello
 		// handshake.size contains the actual size of the data
@@ -763,6 +787,7 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 
 	// initialize the data event
 	event->type              = S_DATA;
+	event->attr.c_key        = conn_info->c_key;
 	event->attr.timestamp_ns = bpf_ktime_get_ns();
 	event->attr.direction    = direction;
 	event->attr.conn_pid_id  = conn_info->conn_pid_id;

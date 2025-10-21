@@ -75,6 +75,15 @@ struct addr_port_key {
 	__u16 port;
 };
 
+// source and destination address and port composite key + pid
+struct conn_key {
+	uint32_t pid;
+	uint8_t local_ip[16];
+	uint8_t remote_ip[16];
+	uint16_t local_port;
+	uint16_t remote_port;
+};
+
 // A unique ID that is composed of the pid, the file
 // descriptor and the creation time of the struct
 struct conn_pid_id {
@@ -92,6 +101,8 @@ struct conn_pid_id {
 
 // Contains information collected when a connection is established
 struct conn_info {
+	// Connection key
+	struct conn_key c_key;
 	// Connection identifier
 	struct conn_pid_id conn_pid_id;
 	// Socket cookie
@@ -122,6 +133,8 @@ struct capture_event {
 struct socket_open_event {
 	// Event type
 	uint64_t type;
+	// Connection key
+	struct conn_key c_key;
 	// The time of the event
 	uint64_t timestamp_ns;
 	// A unique ID for the connection
@@ -146,6 +159,8 @@ struct socket_open_event {
 struct socket_close_event {
 	// Event type
 	uint64_t type;
+	// Connection key
+	struct conn_key c_key;
 	// Timestamp of the close syscall
 	uint64_t timestamp_ns;
 	// The unique ID of the connection
@@ -168,6 +183,8 @@ struct socket_data_event {
 	// We split attributes into a separate struct, because BPF gets upset if you do lots of
 	// size arithmetic. This makes it so that it's attributes followed by message.
 	struct socket_data_attr_t {
+		// Connection key
+		struct conn_key c_key;
 		// The timestamp when syscall completed (return probe was triggered)
 		uint64_t timestamp_ns;
 		// Connection identifier (PID, FD, etc.)
@@ -196,6 +213,8 @@ struct socket_data_event {
 struct socket_proto_event {
 	// Event type
 	uint64_t type;
+	// Connection key
+	struct conn_key c_key;
 	// The time of the event
 	uint64_t timestamp_ns;
 	// Connection identifier (PID, FD, etc.)
@@ -230,6 +249,8 @@ struct socket_tls_client_hello_event {
 	// Event type
 	uint64_t type;
 	struct socket_tls_client_hello_attr_t {
+		// Connection key
+		struct conn_key c_key;
 		// Socket cookie
 		uint64_t cookie;
 		// TLS handshake size

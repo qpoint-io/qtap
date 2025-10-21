@@ -80,6 +80,15 @@ func (p Protocol) String() string {
 	}
 }
 
+// connKey represents the C structure c_key_t in Go.
+type connKey struct {
+	Pid        uint32
+	LocalIP    [16]uint8
+	RemoteIP   [16]uint8
+	LocalPort  uint16
+	RemotePort uint16
+}
+
 // connPIDID represents the C structure conn_pid_id_t in Go.
 type connPIDID struct {
 	PID      uint32 // Process PID
@@ -185,6 +194,7 @@ type socketEvent struct {
 
 // socketOpenEvent represents the C structure socket_open_event_t in Go.
 type socketOpenEvent struct {
+	Key          connKey    // Connection key
 	TimestampNS  uint64     // The time of the event in nanoseconds
 	ConnID       connPIDID  // A unique ID for the connection
 	Cookie       uint64     // Socket cookie
@@ -236,6 +246,7 @@ func (e socketOpenEvent) socketType() connection.SocketType {
 
 // socketCloseEvent represents the C structure socket_close_event_t in Go.
 type socketCloseEvent struct {
+	Key         connKey   // Connection key
 	TimestampNS uint64    // Timestamp of the close syscall
 	ConnID      connPIDID // The unique ID of the connection
 	Cookie      uint64    // Socket cookie
@@ -258,6 +269,7 @@ const MAX_MSG_SIZE = 30720 // Ensure this matches the C definition
 
 // attr represents the attributes within the socket_data_event_t struct.
 type attr struct {
+	Key         connKey   // Connection key
 	TimestampNS uint64    // The timestamp when syscall completed
 	ConnID      connPIDID // Connection identifier
 	Cookie      uint64    // Socket cookie
@@ -270,6 +282,7 @@ type attr struct {
 
 // socketProtoEvent represents the C struct socket_proto_event_t in Go.
 type socketProtoEvent struct {
+	Key         connKey   // Connection key
 	TimestampNS uint64    // Timestamp when the protocol was detected
 	ConnID      connPIDID // Connection identifier
 	Cookie      uint64    // Socket cookie
@@ -305,6 +318,7 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 
 // socketHostnameAttr represents the attributes within the socket_hostname_event_t struct.
 type socketHostnameAttr struct {
+	Key         connKey // Connection key
 	TimestampNs uint64
 	ConnID      connPIDID
 	Cookie      uint64 // Socket cookie
@@ -327,6 +341,7 @@ func (e socketProtoEvent) ProtocolString() string {
 
 // socketTLSClientHelloAttr represents the attributes within the socket_tls_client_hello_attr_t struct.
 type socketTLSClientHelloAttr struct {
+	Key    connKey // Connection key
 	Cookie uint64  // 8 bytes
 	Size   uint32  // 4 bytes
 	_      [4]byte // 4 bytes padding to align to 8 bytes

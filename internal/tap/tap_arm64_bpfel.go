@@ -23,6 +23,13 @@ type TapAddrPortKey struct {
 type TapCloseArgs struct{ Fd int32 }
 
 type TapConnInfo struct {
+	C_key struct {
+		Pid        uint32
+		LocalIp    [16]uint8
+		RemoteIp   [16]uint8
+		LocalPort  uint16
+		RemotePort uint16
+	}
 	ConnPidId struct {
 		Pid      uint32
 		Tgid     uint32
@@ -95,6 +102,13 @@ const (
 type TapSocketDataEvent struct {
 	Type uint64
 	Attr struct {
+		C_key struct {
+			Pid        uint32
+			LocalIp    [16]uint8
+			RemoteIp   [16]uint8
+			LocalPort  uint16
+			RemotePort uint16
+		}
 		TimestampNs uint64
 		ConnPidId   struct {
 			Pid      uint32
@@ -127,6 +141,13 @@ type TapSocketSettingValue struct {
 type TapSocketTlsClientHelloEvent struct {
 	Type uint64
 	Attr struct {
+		C_key struct {
+			Pid        uint32
+			LocalIp    [16]uint8
+			RemoteIp   [16]uint8
+			LocalPort  uint16
+			RemotePort uint16
+		}
 		Cookie uint64
 		Size   uint32
 		_      [4]byte

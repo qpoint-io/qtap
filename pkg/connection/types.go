@@ -26,12 +26,6 @@ func (c ConnKey) Key() string {
 	return c.String()
 }
 
-type Cookie uint64
-
-func (c Cookie) Key() Cookie {
-	return c
-}
-
 type pidfd struct {
 	PID uint32
 	FD  int32

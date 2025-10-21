@@ -192,8 +192,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 		// read socket cookie
 		uint64_t cookie;
 		bpf_probe_read(&cookie, sizeof(cookie), &sk->__sk_common.skc_cookie);
-		conn_info->cookie  = cookie;
-		open_event->cookie = cookie;
+		conn_info->cookie = cookie;
 		// bpf_printk("submit_open_event, cookie: %lu", cookie);
 
 		// read the local and remote ports
@@ -372,7 +371,6 @@ static void submit_proto_event(struct socket_ctx *ctx, struct conn_info *conn_in
 	proto_event->c_key        = conn_info->c_key;
 	proto_event->timestamp_ns = bpf_ktime_get_ns();
 	proto_event->conn_pid_id  = conn_info->conn_pid_id;
-	proto_event->cookie       = conn_info->cookie;
 	proto_event->protocol     = conn_info->protocol;
 	proto_event->is_ssl       = conn_info->is_ssl;
 
@@ -449,7 +447,6 @@ static void process_close(struct socket_ctx *ctx) {
 			close_event->c_key        = conn_info->c_key;
 			close_event->timestamp_ns = bpf_ktime_get_ns();
 			close_event->conn_pid_id  = conn_info->conn_pid_id;
-			close_event->cookie       = conn_info->cookie;
 			close_event->rd_bytes     = conn_info->rd_bytes;
 			close_event->wr_bytes     = conn_info->wr_bytes;
 			close_event->pid          = ctx->id->pid;
@@ -619,9 +616,8 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	}
 
 	if (capture_tls_client_hello(hello, &buf_info, bytes)) {
-		hello->type        = S_TLS_CLIENT_HELLO;
-		hello->attr.c_key  = conn_info->c_key;
-		hello->attr.cookie = conn_info->cookie;
+		hello->type       = S_TLS_CLIENT_HELLO;
+		hello->attr.c_key = conn_info->c_key;
 		// handshake.data now contains the complete ClientHello
 		// handshake.size contains the actual size of the data
 
@@ -791,7 +787,6 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	event->attr.timestamp_ns = bpf_ktime_get_ns();
 	event->attr.direction    = direction;
 	event->attr.conn_pid_id  = conn_info->conn_pid_id;
-	event->attr.cookie       = conn_info->cookie;
 	event->attr.pid          = ctx->id->pid;
 	event->attr.tgid         = (uint32_t)(ctx->pid_tgid & 0xFFFFFFFF);
 

@@ -127,7 +127,6 @@ func (m *SocketEventManager) handleSocketDataEvent(r *bytes.Reader) {
 
 	event := connection.DataEvent{
 		ConnKey:  attr.Key.buildConnKey(),
-		Cookie:   connection.Cookie(attr.Cookie),
 		Size:     int(attr.MsgSize),
 		Position: int(attr.Pos),
 		Data:     msg,
@@ -178,7 +177,6 @@ func (m *SocketEventManager) handleSocketHostnameEvent(r *bytes.Reader) {
 
 	m.eventHandler.HandleEvent(connection.HostnameEvent{
 		ConnKey: attr.Key.buildConnKey(),
-		Cookie:  connection.Cookie(attr.Cookie),
 		Name:    string(msg),
 	})
 }
@@ -207,7 +205,6 @@ func (m *SocketEventManager) handleSocketTLSClientHelloEvent(r *bytes.Reader) {
 
 	m.eventHandler.HandleEvent(connection.TLSClientHelloEvent{
 		ConnKey: attr.Key.buildConnKey(),
-		Cookie:  connection.Cookie(attr.Cookie),
 		Msg:     h,
 	})
 }

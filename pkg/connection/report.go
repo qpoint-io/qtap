@@ -17,7 +17,7 @@ func (c *Connection) logConnectionReport() {
 	var logFn func(msg string, fields ...zap.Field) = c.logger.Debug
 
 	fields := []zap.Field{
-		zap.Any("cookie", c.cookie),
+		zap.Any("conn_key", c.Key()),
 		zap.String("destinationProtocol", c.OpenEvent.SocketType.String()),
 		zap.Dict("report", c.report.reportFields()...),
 	}

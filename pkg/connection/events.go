@@ -32,7 +32,6 @@ import (
 
 type OpenEvent struct {
 	ConnKey
-	Cookie       Cookie
 	ConnPIDKey   ConnPIDKey
 	TimestampNS  uint64
 	PID          uint32
@@ -46,7 +45,6 @@ type OpenEvent struct {
 
 type CloseEvent struct {
 	ConnKey
-	Cookie      Cookie
 	TimestampNS uint64
 	WrBytes     int64 // Total number of bytes written on that connection
 	RdBytes     int64 // Total number of bytes read on that connection
@@ -58,7 +56,6 @@ func (e CloseEvent) QueuePriority() int {
 
 type DataEvent struct {
 	ConnKey
-	Cookie Cookie
 	Direction
 	Size     int
 	Position int
@@ -71,7 +68,6 @@ func (e DataEvent) QueuePriority() int {
 
 type ProtocolEvent struct {
 	ConnKey
-	Cookie      Cookie
 	TimestampNS uint64
 	Protocol    Protocol
 	IsTLS       bool
@@ -83,8 +79,7 @@ func (e ProtocolEvent) QueuePriority() int {
 
 type HostnameEvent struct {
 	ConnKey
-	Cookie Cookie
-	Name   string
+	Name string
 }
 
 func (e HostnameEvent) QueuePriority() int {
@@ -97,7 +92,6 @@ func (e HostnameEvent) String() string {
 
 type OriginalDestinationEvent struct {
 	ConnKey
-	Cookie      Cookie
 	Destination qnet.NetAddr
 }
 
@@ -114,7 +108,6 @@ var (
 
 type ErrorEvent struct {
 	ConnKey
-	Cookie  Cookie
 	Type    ErrorEventType
 	Message string
 }
@@ -125,8 +118,7 @@ func (e ErrorEvent) QueuePriority() int {
 
 type HandlerTypeEvent struct {
 	ConnKey
-	Cookie Cookie
-	Type   HandlerType
+	Type HandlerType
 }
 
 func (e HandlerTypeEvent) QueuePriority() int {
@@ -139,13 +131,11 @@ func (e HandlerTypeEvent) QueuePriority() int {
 // processed last.
 type DoneEvent struct {
 	ConnKey
-	Cookie Cookie
 }
 
 type TLSClientHelloEvent struct {
 	ConnKey
-	Cookie Cookie
-	Msg    *tlsutils.ClientHello
+	Msg *tlsutils.ClientHello
 }
 
 func (e TLSClientHelloEvent) QueuePriority() int {

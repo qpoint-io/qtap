@@ -139,8 +139,6 @@ struct socket_open_event {
 	uint64_t timestamp_ns;
 	// A unique ID for the connection
 	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
 	// Local address
 	struct net_addr local;
 	// Remote address
@@ -165,8 +163,6 @@ struct socket_close_event {
 	uint64_t timestamp_ns;
 	// The unique ID of the connection
 	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
 	// Total number of bytes written on that connection
 	int64_t wr_bytes;
 	// Total number of bytes read on that connection
@@ -189,8 +185,6 @@ struct socket_data_event {
 		uint64_t timestamp_ns;
 		// Connection identifier (PID, FD, etc.)
 		struct conn_pid_id conn_pid_id;
-		// Socket cookie
-		uint64_t cookie;
 		// The type of the actual data that the msg field encodes, which is used by the caller
 		// to determine how to interpret the data
 		enum DIRECTION direction;
@@ -219,8 +213,6 @@ struct socket_proto_event {
 	uint64_t timestamp_ns;
 	// Connection identifier (PID, FD, etc.)
 	struct conn_pid_id conn_pid_id;
-	// Socket cookie
-	uint64_t cookie;
 	// Detected protocol
 	enum PROTOCOL protocol;
 	// Is this an ssl connection?
@@ -251,8 +243,6 @@ struct socket_tls_client_hello_event {
 	struct socket_tls_client_hello_attr_t {
 		// Connection key
 		struct conn_key c_key;
-		// Socket cookie
-		uint64_t cookie;
 		// TLS handshake size
 		uint32_t size;
 	} attr;

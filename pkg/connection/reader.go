@@ -61,7 +61,6 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 		zap.Stringer("source", event.Source),
 		zap.Stringer("conn_pid_id", event.ConnPIDKey),
 		zap.Uint32("pid", event.PID),
-		zap.Any("cookie", event.Cookie),
 		zap.Stringer("address_family", event.Remote.Family),
 		zap.Stringer("socket_type", event.SocketType),
 		zap.Stringer("local", event.Local),
@@ -130,14 +129,14 @@ func (c *Connection) processProtocolEvent(event ProtocolEvent) {
 }
 
 func (c *Connection) processHostnameEvent(event HostnameEvent) {
-	c.logger.Debug("processing hostname event", zap.Any("cookie", event.Cookie), zap.String("hostname", event.Name))
+	c.logger.Debug("processing hostname event", zap.Any("conn_key", event.Key()), zap.String("hostname", event.Name))
 
 	c.SetDomain(event.String())
 }
 
 func (c *Connection) processDataEvent(event DataEvent) {
 	// note: this is very noisey
-	// c.logger.Debug("processing data event", zap.Uint64("cookie", event.Cookie), zap.Int("event_byte_count", len(event.Data)))
+	// c.logger.Debug("processing data event", zap.Uint64("conn_key", event.Key()), zap.Int("event_byte_count", len(event.Data)))
 
 	// process the data event
 	if c.streamProcessor != nil && !c.streamProcessor.Closed() && !c.skipStreamProcessing {
@@ -232,7 +231,7 @@ func (c *Connection) processDoneEvent(event DoneEvent) {
 
 func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {
 	c.logger.Debug("processing tls handshake event",
-		zap.Any("cookie", event.Cookie),
+		zap.Any("conn_key", event.Key()),
 		zap.Any("msg", event.Msg))
 
 	// set the domain

@@ -208,7 +208,6 @@ type socketOpenEvent struct {
 	Key          connKey    // Connection key
 	TimestampNS  uint64     // The time of the event in nanoseconds
 	ConnID       connPIDID  // A unique ID for the connection
-	Cookie       uint64     // Socket cookie
 	Local        netAddr    // the local address
 	Remote       netAddr    // the remote address
 	Pid          uint32     // Process PID
@@ -220,7 +219,6 @@ type socketOpenEvent struct {
 func (e socketOpenEvent) buildConnOpenEvent() connection.OpenEvent {
 	oe := connection.OpenEvent{
 		ConnKey:      e.Key.buildConnKey(),
-		Cookie:       connection.Cookie(e.Cookie),
 		ConnPIDKey:   e.ConnID.buildConnPIDKey(),
 		TimestampNS:  e.TimestampNS,
 		PID:          e.ConnID.PID,
@@ -261,7 +259,6 @@ type socketCloseEvent struct {
 	Key         connKey   // Connection key
 	TimestampNS uint64    // Timestamp of the close syscall
 	ConnID      connPIDID // The unique ID of the connection
-	Cookie      uint64    // Socket cookie
 	WrBytes     int64     // Total number of bytes written on that connection
 	RdBytes     int64     // Total number of bytes read on that connection
 	Pid         uint32    // Process PID
@@ -271,7 +268,6 @@ type socketCloseEvent struct {
 func (e socketCloseEvent) buildConnCloseEvent() connection.CloseEvent {
 	return connection.CloseEvent{
 		ConnKey:     e.Key.buildConnKey(),
-		Cookie:      connection.Cookie(e.Cookie),
 		TimestampNS: e.TimestampNS,
 		WrBytes:     e.WrBytes,
 		RdBytes:     e.RdBytes,
@@ -285,7 +281,6 @@ type attr struct {
 	Key         connKey   // Connection key
 	TimestampNS uint64    // The timestamp when syscall completed
 	ConnID      connPIDID // Connection identifier
-	Cookie      uint64    // Socket cookie
 	Direction   uint32    // The type of the actual data
 	MsgSize     uint32    // The size of the original message
 	Pos         uint64    // A 0-based position number for this event
@@ -298,7 +293,6 @@ type socketProtoEvent struct {
 	Key         connKey   // Connection key
 	TimestampNS uint64    // Timestamp when the protocol was detected
 	ConnID      connPIDID // Connection identifier
-	Cookie      uint64    // Socket cookie
 	Protocol    Protocol  // l7 protocol
 	IsTLS       bool      // is this ssl?
 }
@@ -323,7 +317,6 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 
 	return connection.ProtocolEvent{
 		ConnKey:     e.Key.buildConnKey(),
-		Cookie:      connection.Cookie(e.Cookie),
 		TimestampNS: e.TimestampNS,
 		Protocol:    p,
 		IsTLS:       e.IsTLS,
@@ -335,7 +328,6 @@ type socketHostnameAttr struct {
 	Key         connKey // Connection key
 	TimestampNs uint64
 	ConnID      connPIDID
-	Cookie      uint64 // Socket cookie
 	HostnameLen uint8
 	_           [7]byte
 }
@@ -355,8 +347,6 @@ func (e socketProtoEvent) ProtocolString() string {
 
 // socketTLSClientHelloAttr represents the attributes within the socket_tls_client_hello_attr_t struct.
 type socketTLSClientHelloAttr struct {
-	Key    connKey // Connection key
-	Cookie uint64  // 8 bytes
-	Size   uint32  // 4 bytes
-	_      [4]byte // 4 bytes padding to align to 8 bytes
+	Key  connKey // Connection key
+	Size uint32  // 4 bytes
 }

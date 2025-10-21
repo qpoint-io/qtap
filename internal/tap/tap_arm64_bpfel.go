@@ -117,7 +117,6 @@ type TapSocketDataEvent struct {
 			Function uint32
 			Tsid     uint64
 		}
-		Cookie    uint64
 		Direction uint32
 		MsgSize   uint32
 		Pos       uint64
@@ -148,11 +147,10 @@ type TapSocketTlsClientHelloEvent struct {
 			LocalPort  uint16
 			RemotePort uint16
 		}
-		Cookie uint64
-		Size   uint32
-		_      [4]byte
+		Size uint32
 	}
 	Data [30720]uint8
+	_    [4]byte
 }
 
 // LoadTap returns the embedded CollectionSpec for Tap.

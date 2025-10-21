@@ -311,12 +311,24 @@ func (c *TestContext) ProcessStarted(proc *process.Process) error {
 				//
 				// Check that this is the binary we expect
 				exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
+
+				var expectedExe string
 				containerCtx, err := r.container.Inspect(c.T.Context())
 				if err != nil {
 					return fmt.Errorf("inspecting container: %w", err)
 				}
-				if len(containerCtx.Config.Cmd) > 0 && containerCtx.Config.Cmd[0] != exeFilename {
-					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", containerCtx.Config.Cmd[0]))
+				switch {
+				case len(containerCtx.Config.Entrypoint) > 0:
+					expectedExe = containerCtx.Config.Entrypoint[0]
+				case len(containerCtx.Config.Cmd) > 0:
+					expectedExe = containerCtx.Config.Cmd[0]
+				default:
+					return errors.New("could not determine container entrypoint")
+				}
+				expectedExe = filepath.Base(expectedExe)
+
+				if expectedExe != exeFilename {
+					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", expectedExe))
 					return nil
 				}
 			}

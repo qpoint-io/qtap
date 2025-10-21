@@ -2,7 +2,29 @@ package connection
 
 import (
 	"fmt"
+	"net"
 )
+
+type ConnKey struct {
+	Pid        uint32
+	LocalIP    net.IP
+	RemoteIP   net.IP
+	LocalPort  uint16
+	RemotePort uint16
+}
+
+func (c ConnKey) String() string {
+	return fmt.Sprintf("PID:%d LOCAL_IP:%s REMOTE_IP:%s LOCAL_PORT:%d REMOTE_PORT:%d",
+		c.Pid,
+		c.LocalIP.String(),
+		c.RemoteIP.String(),
+		c.LocalPort,
+		c.RemotePort)
+}
+
+func (c ConnKey) Key() string {
+	return c.String()
+}
 
 type Cookie uint64
 

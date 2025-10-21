@@ -12,7 +12,7 @@ import (
 )
 
 func (m *Manager) processOpenEvent(event OpenEvent) {
-	if _, exists := m.connections.Load(event.Cookie); exists {
+	if _, exists := m.connections.Load(event.Key()); exists {
 		return
 	}
 
@@ -55,6 +55,7 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 	m.connections.Store(event.Key(), conn)
 
 	m.logger.Debug("socket open event",
+		zap.String("conn_key", event.Key()),
 		zap.String("conn_id", conn.ID()),
 		zap.Uint64("timestamp", event.TimestampNS),
 		zap.Stringer("source", event.Source),

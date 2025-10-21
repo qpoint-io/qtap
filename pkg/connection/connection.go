@@ -50,6 +50,10 @@ type ErrStreamUnrecoverable error
 type Connection struct {
 	mu     sync.Mutex
 	logger *zap.Logger
+
+	// connection key
+	ConnKey
+
 	// connecting reporting system
 	report
 
@@ -173,6 +177,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 
 	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
 	c := &Connection{
+		ConnKey: openEvent.ConnKey,
 		report: report{
 			ctx: ctx,
 		},

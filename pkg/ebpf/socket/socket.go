@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"encoding/binary"
 	"fmt"
 	"net"
 	"strconv"
@@ -87,6 +88,16 @@ type connKey struct {
 	RemoteIP   [16]uint8
 	LocalPort  uint16
 	RemotePort uint16
+}
+
+func (c connKey) buildConnKey() connection.ConnKey {
+	return connection.ConnKey{
+		Pid:        c.Pid,
+		LocalIP:    net.IP(c.LocalIP[:]),
+		RemoteIP:   net.IP(c.RemoteIP[:]),
+		LocalPort:  fixPortEndianness(binary.NativeEndian, c.LocalPort),
+		RemotePort: fixPortEndianness(binary.NativeEndian, c.RemotePort),
+	}
 }
 
 // connPIDID represents the C structure conn_pid_id_t in Go.
@@ -208,6 +219,7 @@ type socketOpenEvent struct {
 
 func (e socketOpenEvent) buildConnOpenEvent() connection.OpenEvent {
 	oe := connection.OpenEvent{
+		ConnKey:      e.Key.buildConnKey(),
 		Cookie:       connection.Cookie(e.Cookie),
 		ConnPIDKey:   e.ConnID.buildConnPIDKey(),
 		TimestampNS:  e.TimestampNS,
@@ -258,6 +270,7 @@ type socketCloseEvent struct {
 
 func (e socketCloseEvent) buildConnCloseEvent() connection.CloseEvent {
 	return connection.CloseEvent{
+		ConnKey:     e.Key.buildConnKey(),
 		Cookie:      connection.Cookie(e.Cookie),
 		TimestampNS: e.TimestampNS,
 		WrBytes:     e.WrBytes,
@@ -309,6 +322,7 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 	}
 
 	return connection.ProtocolEvent{
+		ConnKey:     e.Key.buildConnKey(),
 		Cookie:      connection.Cookie(e.Cookie),
 		TimestampNS: e.TimestampNS,
 		Protocol:    p,

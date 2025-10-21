@@ -11,7 +11,7 @@ import (
 )
 
 type Keyer interface {
-	Key() Cookie
+	Key() string
 }
 
 type ConnectionStreamer interface {
@@ -40,7 +40,7 @@ type Manager struct {
 	config *config.Config
 
 	// connections
-	connections *synq.Map[Cookie, *Connection]
+	connections *synq.Map[string, *Connection]
 }
 
 type ManagerOpt func(*Manager)
@@ -90,7 +90,7 @@ func SetControlManager(cm ControlManager) ManagerOpt {
 func NewManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 	m := &Manager{
 		logger:      logger,
-		connections: synq.NewMap[Cookie, *Connection](),
+		connections: synq.NewMap[string, *Connection](),
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -140,7 +140,7 @@ func (m *Manager) HandleEvent(event Keyer) {
 
 func (m *Manager) finalizeConnection(conn *Connection) {
 	conn.logger.Debug("deleting connection from manager map")
-	m.connections.Delete(conn.cookie)
+	m.connections.Delete(conn.Key())
 }
 
 func (m *Manager) createStreamer(conn *Connection) StreamProcessor {

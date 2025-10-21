@@ -297,7 +297,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 	// determine if this connections destination is a management address
 	// which means it has been redirected and it going to be handled
 	// by an external service such as a transparent proxy
-	open_event->is_redirected = is_management_address(&open_event->remote);
+	open_event->is_redirected = is_management_address(open_event->remote.addr, open_event->remote.port);
 
 	// get the capture direction from settings
 	enum DIRECTION capture_direction = get_direction_setting();
@@ -306,7 +306,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 	bool ignore_loopback = get_ignore_loopback_setting();
 
 	// determine if this is a loopback IP
-	bool is_loopback = is_local_ip(&open_event->remote);
+	bool is_loopback = is_local_ip(open_event->remote.addr);
 
 	// ignore local/loopback
 	if (is_loopback && ignore_loopback) {
@@ -324,7 +324,7 @@ static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_inf
 			conn_info->ignore = true;
 
 		// determine if this is an internal service
-		bool is_internal_service = is_private_ip(&open_event->remote);
+		bool is_internal_service = is_private_ip(open_event->remote.addr);
 
 		// ignore internal services when only looking for external
 		if (is_internal_service && capture_direction == D_EGRESS_EXTERNAL && !open_event->is_redirected)
@@ -992,8 +992,7 @@ int syscall__probe_ret_accept(struct trace_event_raw_sys_exit *ctx) {
 		id.fd = ret_val;
 
 		// trace
-		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept", TRACE_STRING("caller", "syscall/accept"),
-			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
+		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept", TRACE_STRING("caller", "syscall/accept"), TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1062,8 +1061,8 @@ int syscall__probe_ret_accept4(struct trace_event_raw_sys_exit *ctx) {
 		id.fd = ret_val;
 
 		// trace
-		TRACE_IF_ENABLED(QTAP_SOCKET, pid, "syscall/accept4", TRACE_STRING("caller", "syscall/accept4"),
-			TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
+		TRACE_IF_ENABLED(
+			QTAP_SOCKET, pid, "syscall/accept4", TRACE_STRING("caller", "syscall/accept4"), TRACE_INT("pid", pid), TRACE_INT("fd", id.fd));
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};

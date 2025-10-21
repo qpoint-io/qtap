@@ -52,12 +52,26 @@ struct net_addr {
 	uint16_t port;
 };
 
+// The prefix of an IPv4 address stored in an IPv6 address
+const uint8_t ip4_in_ip6_prefix[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
+
+// Helper function to check if an address is IPv4 mapped in IPv6
+static inline int is_ipv4_mapped(const uint8_t addr[16]) {
+	for (int i = 0; i < 12; i++) {
+		if (addr[i] != ip4_in_ip6_prefix[i]) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
 // determine if ip address is local (127.0.0.1 etc)
 // This function assumes the input address is in network byte order
-static inline int is_local_ip(struct net_addr *addr) {
-	if (addr->sa_family == AF_INET) {
-		// ipv4 address
-		__be32 ip = *(__be32 *)addr->addr;
+static inline int is_local_ip(const uint8_t addr[16]) {
+	// Determine address family based on prefix
+	if (is_ipv4_mapped(addr)) {
+		// IPv4 address - actual IPv4 data is in bytes 12-15
+		__be32 ip = *(__be32 *)(&addr[12]);
 
 		// check for loopback (127.0.0.0/8)
 		if ((ip & bpf_htonl(0xFF000000)) == bpf_htonl(0x7F000000)) {
@@ -74,25 +88,24 @@ static inline int is_local_ip(struct net_addr *addr) {
 			return 1;
 		}
 
-	} else if (addr->sa_family == AF_INET6) {
+	} else {
+		// IPv6 address
 		// check for ipv6 loopback (::1)
-		if (addr->addr[0] == 0 && addr->addr[1] == 0 && addr->addr[2] == 0 && addr->addr[3] == 0 && addr->addr[4] == 0 && addr->addr[5] == 0 &&
-			addr->addr[6] == 0 && addr->addr[7] == 0 && addr->addr[8] == 0 && addr->addr[9] == 0 && addr->addr[10] == 0 && addr->addr[11] == 0 &&
-			addr->addr[12] == 0 && addr->addr[13] == 0 && addr->addr[14] == 0 && addr->addr[15] == 1) {
+		if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 && addr[3] == 0 && addr[4] == 0 && addr[5] == 0 && addr[6] == 0 && addr[7] == 0 &&
+			addr[8] == 0 && addr[9] == 0 && addr[10] == 0 && addr[11] == 0 && addr[12] == 0 && addr[13] == 0 && addr[14] == 0 && addr[15] == 1) {
 			return 1;
 		}
 
 		// check for IPv6 unspecified address (::)
-		if (addr->addr[0] == 0 && addr->addr[1] == 0 && addr->addr[2] == 0 && addr->addr[3] == 0 && addr->addr[4] == 0 && addr->addr[5] == 0 &&
-			addr->addr[6] == 0 && addr->addr[7] == 0 && addr->addr[8] == 0 && addr->addr[9] == 0 && addr->addr[10] == 0 && addr->addr[11] == 0 &&
-			addr->addr[12] == 0 && addr->addr[13] == 0 && addr->addr[14] == 0 && addr->addr[15] == 0) {
+		if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 && addr[3] == 0 && addr[4] == 0 && addr[5] == 0 && addr[6] == 0 && addr[7] == 0 &&
+			addr[8] == 0 && addr[9] == 0 && addr[10] == 0 && addr[11] == 0 && addr[12] == 0 && addr[13] == 0 && addr[14] == 0 && addr[15] == 0) {
 			return 1;
 		}
 
-		// IPv4-mapped 127.0.0.0/8
-		if (addr->addr[0] == 0 && addr->addr[1] == 0 && addr->addr[2] == 0 && addr->addr[3] == 0 && addr->addr[4] == 0 && addr->addr[5] == 0 &&
-			addr->addr[6] == 0 && addr->addr[7] == 0 && addr->addr[8] == 0 && addr->addr[9] == 0 && addr->addr[10] == 0xff &&
-			addr->addr[11] == 0xff && addr->addr[12] == 0x7f) {
+		// IPv4-mapped 127.0.0.0/8 (already handled above when is_ipv4_mapped is true)
+		// Keeping this check for completeness if the data doesn't have the standard prefix
+		if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 && addr[3] == 0 && addr[4] == 0 && addr[5] == 0 && addr[6] == 0 && addr[7] == 0 &&
+			addr[8] == 0 && addr[9] == 0 && addr[10] == 0xff && addr[11] == 0xff && addr[12] == 0x7f) {
 			return 1;
 		}
 	}
@@ -103,10 +116,11 @@ static inline int is_local_ip(struct net_addr *addr) {
 
 // determine if ip address is public (external) or private
 // This function assumes the input address is in network byte order
-static inline int is_private_ip(struct net_addr *addr) {
-	if (addr->sa_family == AF_INET) {
-		// IPv4 checks
-		__be32 ip = *(__be32 *)addr->addr;
+static inline int is_private_ip(const uint8_t addr[16]) {
+	// Determine address family based on prefix
+	if (is_ipv4_mapped(addr)) {
+		// IPv4 checks - actual IPv4 data is in bytes 12-15
+		__be32 ip = *(__be32 *)(&addr[12]);
 
 		// check for 10.0.0.0/8
 		if ((ip & bpf_htonl(0xFF000000)) == bpf_htonl(0x0A000000)) {
@@ -123,22 +137,24 @@ static inline int is_private_ip(struct net_addr *addr) {
 			return 1;
 		}
 
-	} else if (addr->sa_family == AF_INET6) {
+	} else {
+		// IPv6 checks
 		// check for Unique Local Address (ULA)
-		if ((addr->addr[0] & 0xFE) == 0xFC) {
+		if ((addr[0] & 0xFE) == 0xFC) {
 			return 1;
 		}
 
 		// check for Link-Local Address
-		if (addr->addr[0] == 0xFE && (addr->addr[1] & 0xC0) == 0x80) {
+		if (addr[0] == 0xFE && (addr[1] & 0xC0) == 0x80) {
 			return 1;
 		}
 
-		// check for IPv4-mapped IPv6 address
-		if (addr->addr[0] == 0 && addr->addr[1] == 0 && addr->addr[2] == 0 && addr->addr[3] == 0 && addr->addr[4] == 0 && addr->addr[5] == 0 &&
-			addr->addr[6] == 0 && addr->addr[7] == 0 && addr->addr[8] == 0 && addr->addr[9] == 0 && addr->addr[10] == 0xFF &&
-			addr->addr[11] == 0xFF) {
-			__be32 ip = *(__be32 *)(&addr->addr[12]);
+		// check for IPv4-mapped IPv6 address with non-standard prefix
+		// (already handled above when is_ipv4_mapped is true)
+		// Keeping this check for completeness if the data doesn't have the standard prefix
+		if (addr[0] == 0 && addr[1] == 0 && addr[2] == 0 && addr[3] == 0 && addr[4] == 0 && addr[5] == 0 && addr[6] == 0 && addr[7] == 0 &&
+			addr[8] == 0 && addr[9] == 0 && addr[10] == 0xFF && addr[11] == 0xFF) {
+			__be32 ip = *(__be32 *)(&addr[12]);
 
 			// check for 10.0.0.0/8
 			if ((ip & bpf_htonl(0xFF000000)) == bpf_htonl(0x0A000000)) {

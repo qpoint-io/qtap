@@ -121,6 +121,10 @@ func (h *filterInstance) Destroy() {
 }
 
 func (h *filterInstance) scanForAuthTokens() (string, string, bool) {
+	if h.reqheaders == nil {
+		return "", "", false
+	}
+
 	// Check Authorization header
 	if authHeader, ok := h.reqheaders.Get("Authorization"); ok {
 		return "Authorization", authHeader.String(), true

@@ -841,21 +841,6 @@ static void respond_to_fd_request(uint64_t pid_tgid, uint32_t fd) {
 
 	// set the fd
 	fd_request->fd = fd;
-
-	// if the request is for ssl, lookup the connection info and set the ssl flag
-	if (fd_request->is_ssl) {
-		// init a pid_fd_key
-		struct pid_fd_key id = {};
-		id.pid               = pid_tgid;
-		id.fd                = fd;
-
-		// lookup the connection info
-		struct conn_info *conn_info = bpf_map_lookup_elem(&conn_info_map, &id);
-
-		// set ssl to prevent unecessary processing to detect the protocol
-		if (conn_info != NULL)
-			conn_info->is_ssl = true;
-	}
 }
 
 // hooks

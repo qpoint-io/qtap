@@ -21,7 +21,8 @@ const (
 
 type Container struct {
 	testcontainers.Container
-	resultCh chan ContainerResult
+	resultCh   chan ContainerResult
+	processPID chan int
 	// Request  *HTTPRequest
 }
 

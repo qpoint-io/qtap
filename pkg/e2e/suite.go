@@ -152,9 +152,9 @@ func (b *TestSuiteBuilder) WithStartupDelay(delay time.Duration) *TestSuiteBuild
 	return b
 }
 
-// Wait for file configuration
-func (b *TestSuiteBuilder) WithWaitForFile(file string, timeout time.Duration) *TestSuiteBuilder {
-	b.requestBuilder.WithWaitForFile(file, timeout)
+// Readiness handshake configuration
+func (b *TestSuiteBuilder) WithReadinessHandshake(file string, timeout time.Duration) *TestSuiteBuilder {
+	b.requestBuilder.WithReadinessHandshake(file, timeout)
 	return b
 }
 

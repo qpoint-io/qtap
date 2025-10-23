@@ -1,6 +1,7 @@
 package tls
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -67,9 +68,12 @@ func (m *TlsManager) Stop() error {
 }
 
 func (m *TlsManager) ProcessStarted(proc *process.Process) error {
-	// ensure only one scan process happening at a time per process
-	proc.ScanLock()
-	defer proc.ScanUnlock()
+	// start a new scan, cancelling any in-progress scan and waiting for it to finish
+	ctx, err := proc.StartScan(context.Background())
+	if err != nil {
+		return fmt.Errorf("starting scan: %w", err)
+	}
+	defer proc.FinishScan()
 
 	// check if process is still active
 	if proc.Exited() {
@@ -95,6 +99,13 @@ func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 
 	// inform all probes
 	for _, p := range m.probes {
+		// check if scan was cancelled
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		if proc.Exited() {
 			return nil
 		}
@@ -110,6 +121,13 @@ func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 	}
 
 	if m.final != nil {
+		// check if scan was cancelled before final observer
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
 		if err := m.final.ProcessStarted(proc); err != nil {
 			return fmt.Errorf("starting process on final observer: %w", err)
 		}
@@ -119,6 +137,14 @@ func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 }
 
 func (m *TlsManager) ProcessReplaced(proc *process.Process) error {
+	proc.CancelScan() // cancel any in-progress scan
+
+	if m.final != nil {
+		if err := m.final.ProcessReplaced(proc); err != nil {
+			return fmt.Errorf("replacing process on final observer: %w", err)
+		}
+	}
+
 	// inform all probes
 	for _, p := range m.probes {
 		if err := p.ProcessReplaced(proc); err != nil {
@@ -131,8 +157,8 @@ func (m *TlsManager) ProcessReplaced(proc *process.Process) error {
 }
 
 func (m *TlsManager) ProcessStopped(proc *process.Process) error {
-	proc.ScanLock()
-	defer proc.ScanUnlock()
+	// cancel any in-progress scan since the process is stopping
+	proc.CancelScan()
 
 	for _, p := range m.probes {
 		if err := p.ProcessStopped(proc); err != nil {

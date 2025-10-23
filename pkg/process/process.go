@@ -77,17 +77,20 @@ type Process struct {
 	Pod       resolvable.V[*Pod]
 
 	// internal
-	hostname  string
-	filter    uint8
-	elf       *binutils.Elf
-	exited    atomic.Bool
-	tlsOk     bool
-	startTime time.Time
-	mu        sync.Mutex
-	scanMu    sync.Mutex
-	tags      tags.List
-	envTags   []config.EnvTag
-	closers   []io.Closer
+	hostname   string
+	filter     uint8
+	elf        *binutils.Elf
+	exited     atomic.Bool
+	tlsOk      bool
+	startTime  time.Time
+	mu         sync.Mutex
+	scanMu     sync.Mutex
+	scanWg     sync.WaitGroup
+	scanCtx    context.Context
+	scanCancel context.CancelFunc
+	tags       tags.List
+	envTags    []config.EnvTag
+	closers    []io.Closer
 
 	// notifier is called when parts of the process change
 	// that are required to be updated by the eventer for
@@ -457,12 +460,44 @@ func (p *Process) Unlock() {
 	p.mu.Unlock()
 }
 
-func (p *Process) ScanLock() {
+// StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
+// The caller MUST defer FinishScan() to signal completion.
+func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
 	p.scanMu.Lock()
+	defer p.scanMu.Unlock()
+
+	// Cancel any existing scan
+	if p.scanCancel != nil {
+		p.scanCancel()
+	}
+
+	// Wait for the previous scan to fully exit
+	// Note: FinishScan() only calls Done(), which doesn't need the lock,
+	// so the cancelled goroutine can complete even though we hold the lock
+	p.scanWg.Wait()
+
+	// Now start the new scan
+	p.scanWg.Add(1)
+	p.scanCtx, p.scanCancel = context.WithCancel(ctx)
+	return p.scanCtx, nil
 }
 
-func (p *Process) ScanUnlock() {
-	p.scanMu.Unlock()
+// FinishScan signals that the current scan has completed.
+// Must be called (typically via defer) after StartScan.
+func (p *Process) FinishScan() {
+	p.scanWg.Done()
+}
+
+// CancelScan cancels any in-progress scan without waiting
+func (p *Process) CancelScan() {
+	p.scanMu.Lock()
+	defer p.scanMu.Unlock()
+
+	if p.scanCancel != nil {
+		p.scanCancel()
+		p.scanCancel = nil
+		p.scanCtx = nil
+	}
 }
 
 func (p *Process) Tags() tags.List {

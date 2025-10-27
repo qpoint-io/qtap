@@ -160,6 +160,22 @@ type TestContext struct {
 	L      *zap.Logger
 }
 
+func (c *TestContext) Err() error {
+	return c.e2ectx.ctx.Err()
+}
+
+func (c *TestContext) Value(key any) any {
+	return c.e2ectx.ctx.Value(key)
+}
+
+func (c *TestContext) Deadline() (deadline time.Time, ok bool) {
+	return c.e2ectx.ctx.Deadline()
+}
+
+func (c *TestContext) Done() <-chan struct{} {
+	return c.e2ectx.ctx.Done()
+}
+
 type processKey struct {
 	containerID string
 	pid         int

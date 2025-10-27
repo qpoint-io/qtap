@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +19,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"gopkg.in/yaml.v3"
 )
 
@@ -107,6 +111,66 @@ data: Event 2
 		assert.Equal(t, "GET", transaction.Request.Method)
 		assert.Equal(t, "text/event-stream", transaction.Response.ContentType)
 		assert.Equal(t, expectedBody, string(transaction.Response.Body))
+	})
+}
+
+func TestHTTP_Ingress(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_INGRESS
+	}, func(t *testing.T) {
+		// setup http server
+		server, err := testcontainers.Run(
+			ctx, "hashicorp/http-echo:latest",
+			testcontainers.WithCmd("-text=hello world"),
+			testcontainers.WithWaitStrategy(wait.ForListeningPort("5678/tcp").WithStartupTimeout(10*time.Second).SkipExternalCheck()),
+			testcontainers.WithEnv(map[string]string{
+				"QPOINT_TAGS": "ctxid:" + ctx.ID,
+			}),
+		)
+		defer testcontainers.TerminateContainer(server)
+		require.NoError(t, err)
+
+		containerIP, err := server.ContainerIP(ctx)
+		require.NoError(t, err)
+
+		serverURL := &url.URL{
+			Scheme: "http",
+			Host:   fmt.Sprintf("%s:5678", containerIP),
+			Path:   "/",
+		}
+		t.Logf("serverURL: %s", serverURL.String())
+
+		// curl
+		httpReq := curl(ctx, serverURL.String())
+		require.NoError(t, httpReq.Err)
+		require.Contains(t, httpReq.Output, "hello world")
+
+		// test connection
+		events := ctx.Events(1)
+		require.Len(t, events.Connections, 1)
+		assert.Equal(t, eventstore.Direction_Ingress, events.Connections[0].Direction)
+		assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+		src := events.Connections[0].Source.(*eventstore.ConnectionEndpointRemote)
+		dst := events.Connections[0].Destination.(*eventstore.ConnectionEndpointLocal)
+
+		assert.NotEqual(t, containerIP, src.Address.IP.String())
+		assert.NotZero(t, src.Address.Port)
+
+		assert.Equal(t, containerIP, dst.Address.IP.String())
+		assert.Equal(t, "5678", fmt.Sprint(dst.Address.Port))
+
+		// test request
+		require.Len(t, events.Requests, 1)
+		req := events.Requests[0]
+		assert.Equal(t, "GET", req.Method)
+		assert.Equal(t, "text/plain; charset=utf-8", req.ContentType)
+		assert.Equal(t,
+			strings.TrimRight(serverURL.String(), "/"),
+			strings.TrimRight(req.Url, "/"),
+		)
 	})
 }
 

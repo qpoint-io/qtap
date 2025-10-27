@@ -440,6 +440,8 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 
 	c.Container = cntnr
 	go func() {
+		ctx, cancel := context.WithTimeout(ctx, m.ReadinessTimeout)
+		defer cancel()
 		// Start the container
 		err := cntnr.Start(ctx)
 		if err != nil {
@@ -453,6 +455,11 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 		if m.ReadinessFile != "" {
 			var pid int
 			for {
+				if ctx.Err() != nil {
+					l.Warn("readiness handshake timed out", zap.Error(ctx.Err()))
+					return
+				}
+
 				pidFile, err := cntnr.CopyFileFromContainer(ctx, m.ReadinessFile+".pid")
 				if err == nil {
 					pidTxt, err := io.ReadAll(pidFile)

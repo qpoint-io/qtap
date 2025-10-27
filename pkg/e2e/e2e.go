@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -24,21 +23,22 @@ import (
 var AwaitEventsTimeout = 10 * time.Second
 
 type Context struct {
-	ctx          context.Context
-	closers      []func() error
-	machineIP    net.IP
-	Start        time.Time
-	EventStore   *EventStoreFactory
-	ConfProvider *ConfigProvider
-	L            *zap.Logger
-	TestConfig   func(mut func(*config.Config)) *config.Config
-	testContexts []*TestContext
+	ctx           context.Context
+	closers       []func() error
+	machineIP     net.IP
+	Start         time.Time
+	EventStore    *EventStoreFactory
+	ConfProvider  *ConfigProvider
+	L             *zap.Logger
+	TestConfig    func(mut func(*config.Config)) *config.Config
+	ProcessWaiter *ProcessWaiter
 }
 
 func NewContext(ctx context.Context) *Context {
 	return &Context{
-		ctx:        ctx,
-		TestConfig: DefaultTestConfig,
+		ctx:           ctx,
+		TestConfig:    DefaultTestConfig,
+		ProcessWaiter: NewProcessWaiter(),
 	}
 }
 
@@ -136,13 +136,11 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 func (c *Context) TestCtx(t *testing.T) *TestContext {
 	id := NewID()
 	ctx := &TestContext{
-		ID:       id,
-		e2ectx:   c,
-		T:        t,
-		L:        c.L.With(zap.String("ctxid", id)),
-		requests: make([]*HTTPRequest, 0),
+		ID:     id,
+		e2ectx: c,
+		T:      t,
+		L:      c.L.With(zap.String("ctxid", id)),
 	}
-	c.testContexts = append(c.testContexts, ctx)
 	ctx.L.Info("🔧 test context created")
 	return ctx
 }
@@ -156,12 +154,25 @@ func (c *Context) SetConfig(conf *config.Config) {
 }
 
 type TestContext struct {
-	e2ectx   *Context
-	ID       string
-	T        *testing.T
-	L        *zap.Logger
-	requests []*HTTPRequest
-	mu       sync.RWMutex // protects requests slice
+	e2ectx *Context
+	ID     string
+	T      *testing.T
+	L      *zap.Logger
+}
+
+type processKey struct {
+	containerID string
+	pid         int
+}
+
+func newProcessKey(containerID string, pid int) processKey {
+	if len(containerID) > 12 {
+		containerID = containerID[:12]
+	}
+	return processKey{
+		containerID: containerID,
+		pid:         pid,
+	}
 }
 
 type ExecResult struct {
@@ -224,13 +235,6 @@ func (c *TestContext) MachineIP() net.IP {
 	return c.e2ectx.MachineIP()
 }
 
-// RegisterRequest adds an HTTP request to the test context's request list
-func (c *TestContext) RegisterRequest(req *HTTPRequest) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.requests = append(c.requests, req)
-}
-
 func (c *Context) SetMachineIP(ip net.IP) {
 	c.machineIP = ip
 }
@@ -258,101 +262,83 @@ func NewLogger(start time.Time) *zap.Logger {
 }
 
 func (c *Context) ProcessStarted(proc *process.Process) error {
-	for _, testCtx := range c.testContexts {
-		if err := testCtx.ProcessStarted(proc); err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.ProcessWaiter.Signal(newProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessReplaced(proc *process.Process) error {
-	for _, testCtx := range c.testContexts {
-		if err := testCtx.ProcessReplaced(proc); err != nil {
-			return err
-		}
-	}
-	return nil
+	return c.ProcessWaiter.Reset(newProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessStopped(proc *process.Process) error {
-	for _, testCtx := range c.testContexts {
-		if err := testCtx.ProcessStopped(proc); err != nil {
-			return err
-		}
+	return c.ProcessWaiter.Reset(newProcessKey(proc.ContainerID, proc.Pid))
+}
+
+func (c *TestContext) WaitForProcess(key processKey, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(c.T.Context(), timeout)
+	defer cancel()
+	return c.e2ectx.ProcessWaiter.Wait(ctx, key)
+}
+
+// ProcessWaiter is used to track and wait for processes to become ready.
+type ProcessWaiter struct {
+	waiters map[processKey]chan struct{} // channel per process: open = not registered, closed = registered
+	mu      sync.RWMutex                 // protects waiters map
+}
+
+func NewProcessWaiter() *ProcessWaiter {
+	return &ProcessWaiter{
+		waiters: make(map[processKey]chan struct{}),
+		mu:      sync.RWMutex{},
 	}
+}
+
+// Signal signals that the process has started and is ready to be used
+func (w *ProcessWaiter) Signal(key processKey) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	waiter, exists := w.waiters[key]
+	if !exists {
+		// First time seeing this process - create already-closed channel
+		waiter = make(chan struct{})
+		w.waiters[key] = waiter
+		close(waiter)
+		return nil
+	}
+
+	// Check if channel is already closed by trying a non-blocking receive
+	select {
+	case <-waiter:
+		// Channel already closed, nothing to do
+		return nil
+	default:
+		// Channel is open, close it to notify waiters
+		close(waiter)
+		return nil
+	}
+}
+
+func (w *ProcessWaiter) Reset(key processKey) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.waiters[key] = make(chan struct{})
 	return nil
 }
 
-func (c *TestContext) ProcessStarted(proc *process.Process) error {
-	// c.L.Info("⭕ process started", zap.String("container_id", proc.ContainerID), zap.Int("pid", proc.Pid), zap.String("process_binary", proc.Binary), zap.String("exe", proc.Exe), zap.String("exe_filename", proc.ExeFilename))
-
-	// Find the container by searching through active requests
-	c.mu.RLock()
-	var req *HTTPRequest
-	for _, r := range c.requests {
-		if r.container != nil {
-			// Not our container
-			if !strings.HasPrefix(r.container.GetContainerID(), proc.ContainerID) {
-				return nil
-			}
-
-			{
-				// TODO(Jon): This a pretty bad hack to ensure we are creating the continuation file
-				// on binary processes that we expect, and not the creation processes.
-				//
-				// It's not uncommon to get several bin calls for an expected binary "php" shows
-				// up 4 or 5 times and we may or may not be finishing processing it before the first.
-				//
-				// This might indicate that we need to have a binary processing pipeline, I imagine that
-				// if a "php" binary is called 3 or 4 times really quickly, we might try and scan it multiple
-				// times concurrently because it's not in the cache yet. This could be a general resource
-				// improvement opportunity.
-				//
-				// Check that this is the binary we expect
-				exeFilename := filepath.Base(proc.ExeFilename) // We use this because it's the original binary path (could be a symlink)
-
-				var expectedExe string
-				containerCtx, err := r.container.Inspect(c.T.Context())
-				if err != nil {
-					return fmt.Errorf("inspecting container: %w", err)
-				}
-				switch {
-				case len(containerCtx.Config.Entrypoint) > 0:
-					expectedExe = containerCtx.Config.Entrypoint[0]
-				case len(containerCtx.Config.Cmd) > 0:
-					expectedExe = containerCtx.Config.Cmd[0]
-				default:
-					return errors.New("could not determine container entrypoint")
-				}
-				expectedExe = filepath.Base(expectedExe)
-
-				if expectedExe != exeFilename {
-					c.L.Info("🆕 process binary mismatch", zap.String("container_id", proc.ContainerID), zap.String("binary", proc.Binary), zap.String("expected", expectedExe))
-					return nil
-				}
-			}
-
-			req = r
-			break
-		}
+func (w *ProcessWaiter) Wait(ctx context.Context, key processKey) error {
+	w.mu.Lock()
+	waiter, exists := w.waiters[key]
+	if !exists {
+		// First time seeing this processID - create channel
+		waiter = make(chan struct{})
+		w.waiters[key] = waiter
 	}
-	c.mu.RUnlock()
+	w.mu.Unlock()
 
-	if req != nil && req.WaitForFile != "" {
-		c.L.Info("🆕 creating file in container", zap.String("binary", proc.Binary), zap.String("file", req.WaitForFile))
-		if err := req.container.CopyToContainer(c.T.Context(), []byte("Q"), req.WaitForFile, 0644); err != nil {
-			return fmt.Errorf("creating file in container: %w", err)
-		}
+	// Block on channel - returns immediately if already closed
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-waiter:
+		return nil
 	}
-
-	return nil
-}
-
-func (c *TestContext) ProcessReplaced(proc *process.Process) error {
-	return nil
-}
-
-func (c *TestContext) ProcessStopped(proc *process.Process) error {
-	return nil
 }

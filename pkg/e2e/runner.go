@@ -126,14 +126,37 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 	// Update request URL to point to test server
 	tc.Request.URL = server.URL + tc.Request.URL
 
-	// Register the request with the test context so ProcessStarted can find its container
-	tctx.RegisterRequest(tc.Request)
-
 	// Run the container
 	container := tc.Request.Run(ctx, r.Logger)
 
 	// Wait for any async operations
 	// time.Sleep(100 * time.Millisecond)
+
+	if tc.Request.ReadinessFile != "" {
+		containerID := container.GetContainerID()
+		if len(containerID) > 12 {
+			containerID = containerID[:12]
+		}
+
+		r.Logger.Info("Waiting for process information", zap.String("container_id", containerID))
+		var pid int
+		select {
+		case pid = <-container.processPID:
+		case <-ctx.Done():
+			t.Errorf("%v", ctx.Err())
+			return
+		}
+
+		r.Logger.Info("Waiting for process to be ready", zap.Int("pid", pid), zap.String("container_id", containerID))
+		if err := tctx.WaitForProcess(newProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
+			r.Logger.Warn("Failed to wait for process", zap.Error(err))
+		} else {
+			r.Logger.Info("🆕 creating readiness signal in container")
+			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
+				r.Logger.Warn("Failed to create file in container", zap.Error(err))
+			}
+		}
+	}
 
 	var containerResult ContainerResult = <-container.resultCh
 

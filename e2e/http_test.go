@@ -152,8 +152,7 @@ func TestLanguages(t *testing.T) {
 		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).
 		WithBothTLSAndPlaintext().
 		WithHeader("Content-Type", "application/json").
-		WithStartupDelay(1000*time.Millisecond). // TODO(Jon): this is a hack to ensure the process is started before we start the test
-		WithWaitForFile("/tmp/wait-for-file", 5*time.Second).
+		WithReadinessHandshake("/tmp/readiness-signal", 15*time.Second).
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)
@@ -233,7 +232,7 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		WithURL("/api/health").
 		WithHTTPProtocols(e2e.HTTPProtocolHTTP1_1, e2e.HTTPProtocolHTTP2_0).
 		WithTLSOnly().
-		WithStartupDelay(100 * time.Millisecond).
+		WithReadinessHandshake("/tmp/readiness-signal", 15*time.Second).
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)

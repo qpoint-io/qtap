@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"strconv"
 	"strings"
@@ -12,7 +13,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.uber.org/zap"
 )
 
@@ -118,9 +118,9 @@ func (m *HTTPRequestBuilder) WithOutputFormat(format string) *HTTPRequestBuilder
 	return m
 }
 
-func (m *HTTPRequestBuilder) WithWaitForFile(file string, timeout time.Duration) *HTTPRequestBuilder {
-	m.req.WaitForFile = file
-	m.req.WaitForFileTimeout = timeout
+func (m *HTTPRequestBuilder) WithReadinessHandshake(file string, timeout time.Duration) *HTTPRequestBuilder {
+	m.req.ReadinessFile = file
+	m.req.ReadinessTimeout = timeout
 	return m
 }
 
@@ -216,8 +216,8 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	if m.StartupDelay > 0 {
 		envVars["STARTUP_DELAY"] = strconv.FormatInt(m.StartupDelay.Milliseconds(), 10)
 	}
-	if m.WaitForFile != "" {
-		envVars["WAIT_FOR_FILE"] = fmt.Sprintf("%s:%d", m.WaitForFile, m.WaitForFileTimeout.Milliseconds())
+	if m.ReadinessFile != "" {
+		envVars["READINESS_HANDSHAKE"] = fmt.Sprintf("%s.ready:%s.pid:%d", m.ReadinessFile, m.ReadinessFile, m.ReadinessTimeout.Milliseconds())
 	}
 
 	// Output control
@@ -293,8 +293,8 @@ type HTTPRequest struct {
 	ConcurrentRequests   int
 	DelayBetweenRequests time.Duration
 	StartupDelay         time.Duration // Milliseconds
-	WaitForFile          string
-	WaitForFileTimeout   time.Duration
+	ReadinessFile        string
+	ReadinessTimeout     time.Duration
 
 	// Output control
 	OutputFormat string // "json" or other for human-readable
@@ -305,9 +305,6 @@ type HTTPRequest struct {
 
 	// Container configuration
 	ImageURL string
-
-	// Private field to store the running container
-	container *Container
 }
 
 type HTTPRequestBuilder struct {
@@ -340,8 +337,8 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 		ConcurrentRequests:   m.req.ConcurrentRequests,
 		DelayBetweenRequests: m.req.DelayBetweenRequests,
 		StartupDelay:         m.req.StartupDelay,
-		WaitForFile:          m.req.WaitForFile,
-		WaitForFileTimeout:   m.req.WaitForFileTimeout,
+		ReadinessFile:        m.req.ReadinessFile,
+		ReadinessTimeout:     m.req.ReadinessTimeout,
 
 		OutputFormat: m.req.OutputFormat,
 		Verbose:      m.req.Verbose,
@@ -397,7 +394,8 @@ func BuildHTTPRequest() *HTTPRequestBuilder {
 func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 	result := ContainerResult{}
 	c := &Container{
-		resultCh: make(chan ContainerResult),
+		resultCh:   make(chan ContainerResult),
+		processPID: make(chan int, 1),
 	}
 
 	envVars := m.toEnvVars()
@@ -409,15 +407,15 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 			Env:   envVars,
 			HostConfigModifier: func(hc *container.HostConfig) {
 				hc.NetworkMode = network.NetworkHost
+				// pid mode host is required for the readiness handshake
+				hc.PidMode = "host"
 			},
 			LogConsumerCfg: &testcontainers.LogConsumerConfig{
 				Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
 				Consumers: []testcontainers.LogConsumer{&result},
 			},
-			WaitingFor: wait.ForExit().WithPollInterval(10 * time.Millisecond),
 			AutoRemove: true, // Clean up container when it exits
 		},
-		// Started: true,
 	}
 
 	// TODO(Jon): test this
@@ -432,7 +430,7 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 
 	// Start the container
 	l.Info("🕹️ starting container", zap.String("image", m.ImageURL), zap.Any("env", envVars))
-	container, err := testcontainers.GenericContainer(ctx, req)
+	cntnr, err := testcontainers.GenericContainer(ctx, req)
 	if err != nil {
 		l.Error("start container error", zap.Error(err))
 		result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
@@ -440,14 +438,12 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 		return nil
 	}
 
-	c.Container = container
-
-	// Store the container reference on the request so ProcessStarted can find it
-	m.container = c
-
+	c.Container = cntnr
 	go func() {
+		ctx, cancel := context.WithTimeout(ctx, m.ReadinessTimeout)
+		defer cancel()
 		// Start the container
-		err := container.Start(ctx)
+		err := cntnr.Start(ctx)
 		if err != nil {
 			l.Error("start container error", zap.Error(err))
 			result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
@@ -456,13 +452,51 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 			return
 		}
 
-		state, err := container.State(ctx)
-		if err != nil {
-			l.Error("get container state error", zap.Error(err))
-			result.Error = fmt.Errorf("getting container state: %w", err)
-			result.ExitCode = -1
-			c.resultCh <- result
-			return
+		if m.ReadinessFile != "" {
+			var pid int
+			for {
+				if ctx.Err() != nil {
+					l.Warn("readiness handshake timed out", zap.Error(ctx.Err()))
+					return
+				}
+
+				pidFile, err := cntnr.CopyFileFromContainer(ctx, m.ReadinessFile+".pid")
+				if err == nil {
+					pidTxt, err := io.ReadAll(pidFile)
+					if err == nil {
+						pid, err = strconv.Atoi(string(pidTxt))
+						if err == nil {
+							break
+						}
+						l.Warn("failed to parse pid from file", zap.String("pid", string(pidTxt)), zap.Error(err))
+					} else {
+						l.Warn("read pid file error", zap.Error(err))
+					}
+				}
+				l.Warn("waiting for pid file", zap.Error(err))
+				time.Sleep(1 * time.Second)
+			}
+			l.Warn("got pid", zap.Int("pid", pid))
+			c.processPID <- pid
+		}
+
+		var state *container.State
+		for {
+			var err error
+			state, err = cntnr.State(ctx)
+			if err != nil {
+				l.Error("get container state error", zap.Error(err))
+				result.Error = fmt.Errorf("getting container state: %w", err)
+				result.ExitCode = -1
+				c.resultCh <- result
+				return
+			}
+
+			if state.Running {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			break
 		}
 
 		l.Debug("container state", zap.Any("state", state))

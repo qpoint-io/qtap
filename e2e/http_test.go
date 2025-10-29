@@ -121,25 +121,7 @@ func TestHTTP_Ingress(t *testing.T) {
 		c.Tap.Direction = config.TrafficDirection_INGRESS
 	}, func(t *testing.T) {
 		// setup http server
-		server, err := testcontainers.Run(
-			ctx, "hashicorp/http-echo:latest",
-			testcontainers.WithCmd("-text=hello world"),
-			testcontainers.WithWaitStrategy(wait.ForListeningPort("5678/tcp").WithStartupTimeout(10*time.Second).SkipExternalCheck()),
-			testcontainers.WithEnv(map[string]string{
-				"QPOINT_TAGS": "ctxid:" + ctx.ID,
-			}),
-		)
-		defer testcontainers.TerminateContainer(server)
-		require.NoError(t, err)
-
-		containerIP, err := server.ContainerIP(ctx)
-		require.NoError(t, err)
-
-		serverURL := &url.URL{
-			Scheme: "http",
-			Host:   fmt.Sprintf("%s:5678", containerIP),
-			Path:   "/",
-		}
+		serverURL := echoHTTPServer(ctx)
 		t.Logf("serverURL: %s", serverURL.String())
 
 		// curl
@@ -156,10 +138,10 @@ func TestHTTP_Ingress(t *testing.T) {
 		src := events.Connections[0].Source.(*eventstore.ConnectionEndpointRemote)
 		dst := events.Connections[0].Destination.(*eventstore.ConnectionEndpointLocal)
 
-		assert.NotEqual(t, containerIP, src.Address.IP.String())
+		assert.NotEqual(t, serverURL.Hostname(), src.Address.IP.String())
 		assert.NotZero(t, src.Address.Port)
 
-		assert.Equal(t, containerIP, dst.Address.IP.String())
+		assert.Equal(t, serverURL.Hostname(), dst.Address.IP.String())
 		assert.Equal(t, "5678", fmt.Sprint(dst.Address.Port))
 
 		// test request
@@ -174,8 +156,29 @@ func TestHTTP_Ingress(t *testing.T) {
 	})
 }
 
-func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
-	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
+func echoHTTPServer(ctx *e2e.TestContext) *url.URL {
+	t := ctx.T
+	t.Helper()
+	server, err := testcontainers.Run(
+		ctx, "hashicorp/http-echo:latest",
+		testcontainers.WithCmd("-text=hello world"),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort("5678/tcp").WithStartupTimeout(10*time.Second).SkipExternalCheck()),
+		testcontainers.WithEnv(map[string]string{
+			"QPOINT_TAGS": "ctxid:" + ctx.ID,
+		}),
+	)
+	t.Cleanup(func() {
+		testcontainers.TerminateContainer(server)
+	})
+	require.NoError(t, err)
+
+	containerIP, err := server.ContainerIP(ctx)
+	require.NoError(t, err)
+
+	return &url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("%s:5678", containerIP),
+	}
 }
 
 // This test verifies that we capture the connection and subsequent HTTP
@@ -315,4 +318,8 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		Logger: e2ectx.L,
 	}
 	runner.Run(t, e2ectx)
+}
+
+func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
+	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }

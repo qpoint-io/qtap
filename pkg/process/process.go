@@ -124,7 +124,6 @@ func NewProcess(pid int, exeFilename string) *Process {
 
 		return u, nil
 	}, resolvable.WithRetry()).WithBackgroundContext()
-
 	return p
 }
 

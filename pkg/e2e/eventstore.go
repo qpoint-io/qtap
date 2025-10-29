@@ -118,18 +118,27 @@ func (f *EventStoreFactory) AwaitByCtxID(id string, numConnections int, timeout 
 		return f.GetByCtxID(id), nil
 	}
 
+	ll := f.logger.With(zap.String("ctxid", id))
 	deadline := time.Now().Add(timeout)
+	first := true
 	for {
 		if timeout > 0 && time.Now().After(deadline) {
 			return nil, fmt.Errorf("exceeded %s timeout while waiting for %d connections for ctxid %s", timeout, numConnections, id)
 		}
 
-		f.logger.Info(fmt.Sprintf("waiting for %d connections", numConnections), zap.String("ctxid", id))
 		events := f.GetByCtxID(id)
+		if first {
+			ll.Info(fmt.Sprintf("waiting for %d connections", numConnections))
+		} else {
+			ll.Debug(fmt.Sprintf("waiting for %d connections (got %d)", numConnections, len(events.Connections)))
+		}
+
 		if len(events.Connections) >= numConnections {
+			ll.Info(fmt.Sprintf("found %d ≥ %d connections", len(events.Connections), numConnections))
 			return events, nil
 		}
 		time.Sleep(100 * time.Millisecond)
+		first = false
 	}
 }
 

@@ -176,16 +176,16 @@ func (c *TestContext) Done() <-chan struct{} {
 	return c.e2ectx.ctx.Done()
 }
 
-type processKey struct {
+type ProcessKey struct {
 	containerID string
 	pid         int
 }
 
-func newProcessKey(containerID string, pid int) processKey {
+func NewProcessKey(containerID string, pid int) ProcessKey {
 	if len(containerID) > 12 {
 		containerID = containerID[:12]
 	}
-	return processKey{
+	return ProcessKey{
 		containerID: containerID,
 		pid:         pid,
 	}
@@ -278,18 +278,18 @@ func NewLogger(start time.Time) *zap.Logger {
 }
 
 func (c *Context) ProcessStarted(proc *process.Process) error {
-	return c.ProcessWaiter.Signal(newProcessKey(proc.ContainerID, proc.Pid))
+	return c.ProcessWaiter.Signal(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessReplaced(proc *process.Process) error {
-	return c.ProcessWaiter.Reset(newProcessKey(proc.ContainerID, proc.Pid))
+	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessStopped(proc *process.Process) error {
-	return c.ProcessWaiter.Reset(newProcessKey(proc.ContainerID, proc.Pid))
+	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
-func (c *TestContext) WaitForProcess(key processKey, timeout time.Duration) error {
+func (c *TestContext) WaitForProcess(key ProcessKey, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(c.T.Context(), timeout)
 	defer cancel()
 	return c.e2ectx.ProcessWaiter.Wait(ctx, key)
@@ -297,19 +297,19 @@ func (c *TestContext) WaitForProcess(key processKey, timeout time.Duration) erro
 
 // ProcessWaiter is used to track and wait for processes to become ready.
 type ProcessWaiter struct {
-	waiters map[processKey]chan struct{} // channel per process: open = not registered, closed = registered
+	waiters map[ProcessKey]chan struct{} // channel per process: open = not registered, closed = registered
 	mu      sync.RWMutex                 // protects waiters map
 }
 
 func NewProcessWaiter() *ProcessWaiter {
 	return &ProcessWaiter{
-		waiters: make(map[processKey]chan struct{}),
+		waiters: make(map[ProcessKey]chan struct{}),
 		mu:      sync.RWMutex{},
 	}
 }
 
 // Signal signals that the process has started and is ready to be used
-func (w *ProcessWaiter) Signal(key processKey) error {
+func (w *ProcessWaiter) Signal(key ProcessKey) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	waiter, exists := w.waiters[key]
@@ -333,14 +333,14 @@ func (w *ProcessWaiter) Signal(key processKey) error {
 	}
 }
 
-func (w *ProcessWaiter) Reset(key processKey) error {
+func (w *ProcessWaiter) Reset(key ProcessKey) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.waiters[key] = make(chan struct{})
 	return nil
 }
 
-func (w *ProcessWaiter) Wait(ctx context.Context, key processKey) error {
+func (w *ProcessWaiter) Wait(ctx context.Context, key ProcessKey) error {
 	w.mu.Lock()
 	waiter, exists := w.waiters[key]
 	if !exists {
@@ -353,7 +353,7 @@ func (w *ProcessWaiter) Wait(ctx context.Context, key processKey) error {
 	// Block on channel - returns immediately if already closed
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("context cancelled while waiting for process %+v: %w", key, ctx.Err())
 	case <-waiter:
 		return nil
 	}

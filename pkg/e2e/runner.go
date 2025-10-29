@@ -148,7 +148,7 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 		}
 
 		r.Logger.Info("Waiting for process to be ready", zap.Int("pid", pid), zap.String("container_id", containerID))
-		if err := tctx.WaitForProcess(newProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
+		if err := tctx.WaitForProcess(NewProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
 			r.Logger.Warn("Failed to wait for process", zap.Error(err))
 		} else {
 			r.Logger.Info("🆕 creating readiness signal in container")

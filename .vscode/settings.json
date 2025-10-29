@@ -2,7 +2,7 @@
     "go.lintTool": "golangci-lint",
     "go.lintFlags": [
         "--fast",
-        "--config=.golangci.yaml"
+        "--config=${workspaceFolder}/.golangci.yaml"
     ],
     "go.buildTags": "e2e",
     "files.associations": {

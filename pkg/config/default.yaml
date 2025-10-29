@@ -14,7 +14,7 @@ stacks:
           format: console
       - type: report_usage
 tap:
-  direction: egress
+  direction: all
   ignore_loopback: true
   audit_include_dns: false
   http:

@@ -80,8 +80,15 @@ type Config struct {
 	Stacks   map[string]Stack `yaml:"stacks" validate:"dive"`
 	Tap      *TapConfig       `yaml:"tap"`
 	Services Services         `yaml:"services"`
+	Tags     []Tag            `yaml:"tags" validate:"omitempty,dive"`
 	Control  *Control         `yaml:"control"`
 	Rulekit  *Rulekit         `yaml:"rulekit"`
+}
+
+type Tag struct {
+	Key      string `yaml:"key" validate:"required"`
+	Source   string `yaml:"source" validate:"required,oneof=env k8s.label k8s.annotation container.label"`
+	Location string `yaml:"location" validate:"required"`
 }
 
 type Control struct {

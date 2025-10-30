@@ -140,7 +140,7 @@ func TestHandleExecArgvEvent(t *testing.T) {
 
 			// Setup process in cache if needed
 			if tt.setupPid {
-				p := process.NewProcess(int(tt.pid), "/test/exe")
+				p := process.NewProcess(int(tt.pid), "/test/exe", zap.NewNop())
 				p.Args = make([]string, 0) // Initialize Args slice
 				m.cache.Add(tt.pid, p)
 			}
@@ -226,7 +226,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 
 			// Setup process in cache if needed
 			if tt.setupPid {
-				m.cache.Add(tt.pid, process.NewProcess(int(tt.pid), "/test/exe"))
+				m.cache.Add(tt.pid, process.NewProcess(int(tt.pid), "/test/exe", zap.NewNop()))
 			}
 
 			// Test handler

@@ -40,12 +40,11 @@ type Manager struct {
 	// observers
 	Observers []Observer
 
-	// env mask
+	// env variable mask
 	envMask *synq.Map[string, bool]
 
-	// env tags maps env var keys to tags for setting those tags
-	// with the value of the env var
-	envTags []config.EnvTag
+	// custom tags pulled from the environment (env, k8s.label, k8s.annotation, container.label)
+	envTags []config.Tag
 
 	// internal
 	mu    sync.Mutex
@@ -159,17 +158,22 @@ func (m *Manager) SetConfig(cfg *config.Config) {
 	defer m.mu.Unlock()
 
 	// remove the old env tags from the env mask
-	for _, old := range m.envTags {
-		m.envMask.Delete(old.Env)
+	for _, tag := range m.envTags {
+		m.envMask.Delete(tag.Key)
 	}
 
-	if cfg != nil && cfg.Tap != nil {
-		m.envTags = cfg.Tap.EnvTags
+	// add the new env tags to the env mask
+	if cfg != nil && cfg.Tags != nil {
+		for _, tag := range cfg.Tags {
+			if tag.Source == "env" {
+				m.envTags = append(m.envTags, tag)
+			}
+		}
 	}
 
 	// set the env tags in the env mask
-	for _, envTag := range m.envTags {
-		m.envMask.Store(envTag.Env, true)
+	for _, tag := range m.envTags {
+		m.envMask.Store(tag.Key, true)
 	}
 
 	// update the filters
@@ -183,7 +187,7 @@ func (m *Manager) Stop() error {
 
 func (m *Manager) preloadProcs() error {
 	// load all of the procs
-	snap, err := AllProcesses()
+	snap, err := AllProcesses(m.Logger)
 	if err != nil {
 		return fmt.Errorf("reading processes: %w", err)
 	}

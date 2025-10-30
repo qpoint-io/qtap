@@ -13,6 +13,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/tlsutils"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -274,7 +275,7 @@ func TestValidatePort(t *testing.T) {
 }
 
 func TestConnection_ControlValues(t *testing.T) {
-	proc := process.NewProcess(0, "")
+	proc := process.NewProcess(0, "", zap.NewNop())
 
 	proc.SetUser(1000, "testuser")
 	proc.SetHostname("testhost")

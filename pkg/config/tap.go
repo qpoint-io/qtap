@@ -23,11 +23,6 @@ type TapEndpointConfig struct {
 	Http   TapHttpConfig `yaml:"http"`
 }
 
-type EnvTag struct {
-	Env string `yaml:"env"`
-	Key string `yaml:"key"`
-}
-
 type TapConfig struct {
 	Direction       TrafficDirection    `yaml:"direction"`
 	IgnoreLoopback  bool                `yaml:"ignore_loopback"`
@@ -35,7 +30,6 @@ type TapConfig struct {
 	Http            TapHttpConfig       `yaml:"http"`
 	Filters         TapFilters          `yaml:"filters,omitempty"`
 	Endpoints       []TapEndpointConfig `yaml:"endpoints" validate:"dive"`
-	EnvTags         []EnvTag            `yaml:"env_tags,omitempty"`
 }
 
 func (c *TapConfig) HasAnyStack() bool {

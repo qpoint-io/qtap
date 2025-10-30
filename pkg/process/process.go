@@ -77,6 +77,7 @@ type Process struct {
 	Pod       resolvable.V[*Pod]
 
 	// internal
+	logger     *zap.Logger
 	hostname   string
 	filter     uint8
 	elf        *binutils.Elf
@@ -89,7 +90,7 @@ type Process struct {
 	scanCtx    context.Context
 	scanCancel context.CancelFunc
 	tags       tags.List
-	envTags    []config.EnvTag
+	envTags    []config.Tag
 	closers    []io.Closer
 
 	// notifier is called when parts of the process change
@@ -101,15 +102,15 @@ type Process struct {
 	notifier func() error
 }
 
-func NewProcess(pid int, exeFilename string) *Process {
+func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 	p := &Process{
 		Pid:         pid,
 		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
 		ExeFilename: exeFilename,
 		startTime:   time.Now(),
-		tags:        tags.New(),
 		Container:   resolvable.Static[*Container](nil).WithBackgroundContext(),
 		Pod:         resolvable.Static[*Pod](nil).WithBackgroundContext(),
+		logger:      logger,
 	}
 	p.User = resolvable.New(func(context.Context) (*ProcessUser, error) {
 		return GetProcessUser(p.Pid)
@@ -127,7 +128,7 @@ func NewProcess(pid int, exeFilename string) *Process {
 	return p
 }
 
-func AllProcesses() ([]*Process, error) {
+func AllProcesses(logger *zap.Logger) ([]*Process, error) {
 	ps, err := AllProcs("/proc")
 	if err != nil {
 		return nil, fmt.Errorf("reading /proc: %w", err)
@@ -147,7 +148,7 @@ func AllProcesses() ([]*Process, error) {
 			continue
 		}
 
-		procs = append(procs, NewProcess(int(p), ""))
+		procs = append(procs, NewProcess(int(p), "", logger))
 	}
 
 	return procs, nil
@@ -254,22 +255,6 @@ func (p *Process) Discover(mountPoint string, envMask *synq.Map[string, bool]) e
 		strategy = StrategyObserve
 	}
 	p.Strategy = strategy
-
-	if v, ok := p.Env[QpointTagsEnvVar]; ok {
-		ts := strings.Split(v, ",")
-		for _, t := range ts {
-			if err := p.tags.AddString(t); err != nil {
-				zap.L().Warn("failed to add tag", zap.String("tag", t), zap.Error(err))
-			}
-		}
-	}
-
-	// check for env tags
-	for _, t := range p.envTags {
-		if v, ok := p.Env[t.Env]; ok {
-			p.tags.Add(t.Key, v)
-		}
-	}
 
 	// notify the eventer that the process has changed
 	if p.notifier != nil {
@@ -500,7 +485,66 @@ func (p *Process) CancelScan() {
 }
 
 func (p *Process) Tags() tags.List {
+	if p.tags == nil {
+		// initialize the tag list
+		p.tags = tags.New()
+
+		// discover the tags
+		if err := p.discoverTags(); err != nil {
+			p.logger.Error("failed to discover tags", zap.Error(err))
+		}
+	}
+
+	// return a clone of the tag list
 	return p.tags.Clone()
+}
+
+func (p *Process) discoverTags() error {
+	// look for any custom tags in the QPOINT_TAGS environment variable
+	if v, ok := p.Env[QpointTagsEnvVar]; ok {
+		ts := strings.Split(v, ",")
+		for _, t := range ts {
+			if err := p.tags.AddString(t); err != nil {
+				return fmt.Errorf("adding tag from QPOINT_TAGS environment variable: %w", err)
+			}
+		}
+	}
+
+	// check the environment for tags
+	for _, t := range p.envTags {
+		switch t.Source {
+		case "env":
+			if v, ok := p.Env[t.Location]; ok {
+				p.tags.Add(t.Key, v)
+			}
+		case "k8s.label":
+			if pod, _ := p.Pod(); pod != nil {
+				for k, v := range pod.Labels {
+					if k == t.Location {
+						p.tags.Add(t.Key, v)
+					}
+				}
+			}
+		case "k8s.annotation":
+			if pod, _ := p.Pod(); pod != nil {
+				for k, v := range pod.Annotations {
+					if k == t.Location {
+						p.tags.Add(t.Key, v)
+					}
+				}
+			}
+		case "container.label":
+			if container, _ := p.Container(); container != nil {
+				for k, v := range container.Labels {
+					if k == t.Location {
+						p.tags.Add(t.Key, v)
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // getRootID returns the unique identifier of the process' root filesystem

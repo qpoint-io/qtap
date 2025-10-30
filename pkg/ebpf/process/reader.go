@@ -65,7 +65,7 @@ func (m *Manager) handleExecStartEvent(r *bytes.Reader) error {
 
 	if m.reciever != nil {
 		// create process
-		p := process.NewProcess(int(e.Pid), exe)
+		p := process.NewProcess(int(e.Pid), exe, m.logger)
 
 		// set the notifier so the process can indicate when it's changed
 		// and when we should collect data for the ebpf meta map

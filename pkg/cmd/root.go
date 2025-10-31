@@ -7,8 +7,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -54,6 +56,9 @@ var (
 			runTapCmd(logger)
 		},
 	}
+
+	colorMuted = lipgloss.AdaptiveColor{Light: "#b0b0b0", Dark: "#737373"}
+	muteText   = lipgloss.NewStyle().Foreground(colorMuted).Render
 )
 
 func Execute() error {
@@ -138,7 +143,7 @@ func initLogger() *zap.Logger {
 
 	if strings.EqualFold(logEncoding, "console") {
 		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		cfg.EncoderConfig.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05.000")
+		cfg.EncoderConfig.EncodeTime = consoleTimeEncoder
 	}
 
 	if cfg.Level.Level() == zapcore.DebugLevel {
@@ -155,6 +160,10 @@ func initLogger() *zap.Logger {
 	zap.ReplaceGlobals(l)
 
 	return l
+}
+
+func consoleTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+	enc.AppendString(muteText(t.Format("2006-01-02 15:04:05.000")))
 }
 
 func syncLogger(logger *zap.Logger) {

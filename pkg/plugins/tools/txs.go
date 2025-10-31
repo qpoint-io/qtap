@@ -121,6 +121,10 @@ func (h HeaderMap) URL() (string, bool) {
 	return buildAuthorityURL(s, a, p)
 }
 
+func (h HeaderMap) All() map[string]string {
+	return h.headers.All()
+}
+
 func (h HeaderMap) RulePairs() map[string]any {
 	if h.headers == nil {
 		return nil

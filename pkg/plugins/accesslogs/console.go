@@ -27,7 +27,6 @@ var (
 	labelStyle      = lipgloss.NewStyle().Foreground(colorMuted)
 	valueStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	subsectionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117")).Bold(true)
-	boldStyle       = lipgloss.NewStyle().Bold(true)
 )
 
 // ConsolePrinter implements the Printer interface for console output
@@ -413,10 +412,6 @@ func bulletPoint(key, value string) string {
 		key += ": "
 	}
 	return labelStyle.Render("  • "+key) + valueStyle.Render(value) + "\n"
-}
-
-func joinPath(host, path string) string {
-	return strings.TrimSuffix(host, "/") + "/" + strings.TrimPrefix(path, "/")
 }
 
 func highlightCode(language, code string) (string, error) {

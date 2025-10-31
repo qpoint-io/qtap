@@ -40,8 +40,12 @@ func NewContainerdAccessor(logger *zap.Logger, endpoint string) (*Containerd, er
 	}
 
 	// check if the endpoint exists and is a socket
-	if _, err := os.Stat(endpoint); err != nil {
-		return nil, fmt.Errorf("endpoint %s does not exist or is not a socket: %w", endpoint, err)
+	info, err := os.Stat(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("endpoint %s does not exist: %w", endpoint, err)
+	}
+	if info.Mode()&os.ModeSocket == 0 {
+		return nil, fmt.Errorf("endpoint %s is not a socket", endpoint)
 	}
 
 	// create global client

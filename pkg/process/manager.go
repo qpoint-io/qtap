@@ -60,6 +60,7 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 		procs:          synq.NewMap[int, *Process](),
 		envMask:        synq.NewMap[string, bool](),
 		processWaiters: make(map[int][]chan *Process),
+		envTags:        make([]config.Tag, 0),
 	}
 
 	if procEventer != nil {
@@ -162,19 +163,21 @@ func (m *Manager) SetConfig(cfg *config.Config) {
 		m.envMask.Delete(tag.Key)
 	}
 
+	// nothing to do if we don't have any tag configs
+	if cfg == nil || cfg.Tags == nil {
+		m.envTags = make([]config.Tag, 0)
+		return
+	}
+
 	// add the new env tags to the env mask
-	if cfg != nil && cfg.Tags != nil {
-		for _, tag := range cfg.Tags {
-			if tag.Source == "env" {
-				m.envTags = append(m.envTags, tag)
-			}
+	for _, tag := range cfg.Tags {
+		if tag.Source == "env" {
+			m.envMask.Store(tag.Location, true)
 		}
 	}
 
-	// set the env tags in the env mask
-	for _, tag := range m.envTags {
-		m.envMask.Store(tag.Key, true)
-	}
+	// set the new env tags
+	m.envTags = cfg.Tags
 
 	// update the filters
 	m.updateFilters(cfg)

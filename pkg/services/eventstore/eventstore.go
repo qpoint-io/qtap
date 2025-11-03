@@ -335,3 +335,24 @@ type Pod struct {
 	Name      string `json:"name,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
 }
+
+type Group struct {
+	stores []EventStore
+}
+
+func NewGroup(stores ...EventStore) *Group {
+	return &Group{
+		stores: stores,
+	}
+}
+
+func (g *Group) Save(ctx context.Context, item any) {
+	for _, store := range g.stores {
+		go store.Save(ctx, item)
+	}
+}
+
+// ServiceType returns the service type
+func (g *Group) ServiceType() services.ServiceType {
+	return TypeEventStore
+}

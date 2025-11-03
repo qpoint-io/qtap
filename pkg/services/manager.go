@@ -48,6 +48,8 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 	// add core services
 	svcs["rulekit"] = config.Rulekit
 	svcs["connmeta"] = nil
+	// TODO: loop over event stores, object stores, and qscan services separately
+	// add all event stores to an *evenstore.Group instance
 	for key, svcConfig := range svcs {
 		fn, exists := sm.factories[ServiceType(key)]
 		if !exists {

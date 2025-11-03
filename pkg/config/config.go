@@ -23,57 +23,26 @@ type Stack struct {
 type Services struct {
 	EventStores  []ServiceEventStore  `yaml:"event_stores"`
 	ObjectStores []ServiceObjectStore `yaml:"object_stores"`
-	QscanClient  *ServiceQscan        `yaml:"qscan"`
+	Qscan        *ServiceQscan        `yaml:"qscan"`
 }
 
-func (s Services) ToMap() map[string]any {
-	m := make(map[string]any)
-
-	m[s.FirstEventStore().ServiceType()] = s.FirstEventStore()
-
-	m[s.FirstObjectStore().ServiceType()] = s.FirstObjectStore()
-
-	m[s.Qscan().ServiceType()] = s.Qscan()
-
-	return m
+func (s Services) GetEventStore(typ EventStoreType) *ServiceEventStore {
+	for _, store := range s.EventStores {
+		if store.Type == typ {
+			return &store
+		}
+	}
+	return nil
 }
 
-func (s Services) Qscan() ServiceQscan {
-	if s.QscanClient == nil {
-		return ServiceQscan{
+func (s Services) GetQscan() *ServiceQscan {
+	if s.Qscan == nil {
+		return &ServiceQscan{
 			Type: QscanType_DISABLED,
 		}
 	}
 
-	return *s.QscanClient
-}
-
-func (s Services) HasAnyEventStores() bool {
-	return len(s.EventStores) > 0
-}
-
-func (s Services) FirstEventStore() ServiceEventStore {
-	if len(s.EventStores) == 0 {
-		return ServiceEventStore{
-			Type: EventStoreType_DISABLED,
-		}
-	}
-
-	return s.EventStores[0]
-}
-
-func (s Services) HasAnyObjectStores() bool {
-	return len(s.ObjectStores) > 0
-}
-
-func (s Services) FirstObjectStore() ServiceObjectStore {
-	if len(s.ObjectStores) == 0 {
-		return ServiceObjectStore{
-			Type: ObjectStoreType_DISABLED,
-		}
-	}
-
-	return s.ObjectStores[0]
+	return s.Qscan
 }
 
 type Config struct {

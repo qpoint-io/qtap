@@ -42,7 +42,7 @@ func (m *Manager) generateAuditLog(conn *Connection) {
 
 	// audit logs are disabled, nothing to do
 	if m.config != nil {
-		if !m.config.Services.HasAnyEventStores() {
+		if len(m.config.Services.EventStores) == 0 {
 			m.logger.Debug("generateAuditLog: audit logs disabled",
 				zap.String("conn_pid_id", conn.connPIDKey.String()),
 				zap.String("local_addr", conn.OpenEvent.Local.String()),

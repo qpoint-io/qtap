@@ -106,14 +106,14 @@ func NewContainerEnricher(containerManager *container.Manager) *ContainerEnriche
 	}
 }
 
-func (e *ContainerEnricher) ProcessStarted(p *Process) error {
+func (e *ContainerEnricher) ProcessStarted(ctx context.Context, p *Process) error {
 	// discover the container metadata if it exists
 	if e.containerManager == nil || p.ContainerID == "" || p.ContainerID == "root" {
 		return nil
 	}
 
 	// Set up Container resolvable
-	p.Container = resolvable.New(func(context.Context) (*Container, error) {
+	p.Container = resolvable.New(func(_ context.Context) (*Container, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
 			return nil, nil
@@ -129,10 +129,10 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	},
 		resolvable.WithRetry(),
 		resolvable.WithGraceful(),
-	).WithBackgroundContext()
+	).WithContext(ctx)
 
 	// Set up Pod resolvable
-	p.Pod = resolvable.New(func(context.Context) (*Pod, error) {
+	p.Pod = resolvable.New(func(_ context.Context) (*Pod, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
 			return nil, nil
@@ -151,7 +151,7 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 		resolvable.WithRetry(),
 		resolvable.WithGraceful(),
 		resolvable.WithCacheTTL(5*time.Second),
-	).WithBackgroundContext()
+	).WithContext(ctx)
 
 	return nil
 }

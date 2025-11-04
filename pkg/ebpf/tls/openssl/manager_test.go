@@ -16,5 +16,5 @@ func TestOpenSSLManager(t *testing.T) {
 			common.NewUprobe("SSL_write", nil),
 		}
 	})
-	require.NoError(t, m.Start())
+	require.NoError(t, m.Start(t.Context()))
 }

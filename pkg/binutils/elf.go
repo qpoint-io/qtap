@@ -2,6 +2,7 @@ package binutils
 
 import (
 	"bytes"
+	"context"
 	"debug/elf"
 	"encoding/binary"
 	"errors"
@@ -11,7 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 )
+
+var tracer = telemetry.Tracer()
 
 var (
 	ErrNotELF       = errors.New("file is not an ELF")
@@ -64,7 +69,10 @@ type Elf struct {
 // NewElf creates a new Elf instance
 // Returns ErrNotELF if the file is not an ELF
 // Remember to call Close() when done
-func NewElf(exe string, root string, isContainer bool) (*Elf, error) {
+func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*Elf, error) {
+	_, span := tracer.Start(ctx, "NewElf")
+	defer span.End()
+
 	e := &Elf{
 		exe:         exe,
 		root:        root,
@@ -130,7 +138,7 @@ func (e Elf) isELF() (bool, error) {
 	return true, nil
 }
 
-func (p *Elf) Elf() (*elf.File, error) {
+func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
 	if p.isClosed {
 		return nil, ErrFileClosed
 	}
@@ -138,6 +146,9 @@ func (p *Elf) Elf() (*elf.File, error) {
 		return nil, ErrNoFileLoaded
 	}
 	if p.ef == nil {
+		_, span := tracer.Start(ctx, "Elf.NewFile")
+		defer span.End()
+
 		var err error
 		p.ef, err = elf.NewFile(p.file)
 		if err != nil {
@@ -148,12 +159,14 @@ func (p *Elf) Elf() (*elf.File, error) {
 	return p.ef, nil
 }
 
-func (p *Elf) SearchSymbols(targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
+func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
+	ctx, span := tracer.Start(ctx, "Elf.SearchSymbols")
+	defer span.End()
 	if p.file == nil {
 		return nil, ErrNoFileLoaded
 	}
 
-	f, err := p.Elf()
+	f, err := p.Elf(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -166,9 +179,9 @@ func (p *Elf) SearchSymbols(targets []SymbolSearch, sectionTypes ...elf.SectionT
 
 		switch f.Class {
 		case elf.ELFCLASS64:
-			matches, err = p.getSymbols64(f, targets, sectionType)
+			matches, err = p.getSymbols64(ctx, f, targets, sectionType)
 		case elf.ELFCLASS32:
-			matches, err = p.getSymbols32(f, targets, sectionType)
+			matches, err = p.getSymbols32(ctx, f, targets, sectionType)
 		default:
 			return nil, errors.New("unsupported ELF class")
 		}
@@ -191,7 +204,9 @@ func (p *Elf) SearchSymbols(targets []SymbolSearch, sectionTypes ...elf.SectionT
 	return allMatches, nil
 }
 
-func (p *Elf) getSymbols32(f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
+func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
+	_, span := tracer.Start(ctx, "Elf.getSymbols32")
+	defer span.End()
 	matches := []elf.Symbol{}
 
 	symtabSection := f.SectionByType(typ)
@@ -251,7 +266,9 @@ func (p *Elf) getSymbols32(f *elf.File, targets []SymbolSearch, typ elf.SectionT
 	return matches, nil
 }
 
-func (p *Elf) getSymbols64(f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
+func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
+	_, span := tracer.Start(ctx, "Elf.getSymbols64")
+	defer span.End()
 	matches := []elf.Symbol{}
 
 	symtabSection := f.SectionByType(typ)
@@ -335,8 +352,11 @@ func readString(r io.ReadSeeker, offset int64) (string, error) {
 	return string(buf[:end]), nil
 }
 
-func (p *Elf) ContainsAnySymbols(targetSymbols []SymbolSearch, typ ...elf.SectionType) (bool, error) {
-	f, err := p.Elf()
+func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSearch, typ ...elf.SectionType) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Elf.ContainsAnySymbols")
+	defer span.End()
+
+	f, err := p.Elf(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -349,7 +369,7 @@ func (p *Elf) ContainsAnySymbols(targetSymbols []SymbolSearch, typ ...elf.Sectio
 			if matched {
 				return matched, nil
 			}
-			m, err := p.containsAnySymbols(f, t, targetSymbols)
+			m, err := p.containsAnySymbols(ctx, f, t, targetSymbols)
 			if err != nil {
 				if errors.Is(err, ErrNoSymbols) {
 					continue
@@ -361,7 +381,7 @@ func (p *Elf) ContainsAnySymbols(targetSymbols []SymbolSearch, typ ...elf.Sectio
 			if matched {
 				return matched, nil
 			}
-			m, err := p.containsAnySymbols(f, t, targetSymbols)
+			m, err := p.containsAnySymbols(ctx, f, t, targetSymbols)
 			if err != nil {
 				if errors.Is(err, ErrNoSymbols) {
 					continue
@@ -377,7 +397,10 @@ func (p *Elf) ContainsAnySymbols(targetSymbols []SymbolSearch, typ ...elf.Sectio
 	return matched, nil
 }
 
-func (p *Elf) containsAnySymbols(f *elf.File, typ elf.SectionType, targetSymbols []SymbolSearch) (bool, error) {
+func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.SectionType, targetSymbols []SymbolSearch) (bool, error) {
+	_, span := tracer.Start(ctx, "Elf.containsAnySymbols")
+	defer span.End()
+
 	var recordSize int64
 	var nameOffset, nameSize int
 	switch f.Class {
@@ -528,12 +551,15 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 }
 
 // CalculateUprobeAddresses calculates the loaded address of a symbol (needed for uprobes)
-func (p *Elf) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Symbol {
+func (p *Elf) CalculateUprobeAddresses(ctx context.Context, symbols []elf.Symbol) []elf.Symbol {
+	_, span := tracer.Start(ctx, "Elf.CalculateUprobeAddresses")
+	defer span.End()
+
 	// create a copy of the input symbols to modify .Value
 	results := make([]elf.Symbol, len(symbols))
 	copy(results, symbols)
 
-	file, err := p.Elf()
+	file, err := p.Elf(ctx)
 	if err != nil {
 		return results
 	}
@@ -564,16 +590,16 @@ func (p *Elf) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Symbol {
 	return results
 }
 
-func (p *Elf) GetSections() []*elf.Section {
-	file, err := p.Elf()
+func (p *Elf) GetSections(ctx context.Context) []*elf.Section {
+	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil
 	}
 	return file.Sections
 }
 
-func (p *Elf) Ldd() ([]string, error) {
-	file, err := p.Elf()
+func (p *Elf) Ldd(ctx context.Context) ([]string, error) {
+	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil, err
 	}

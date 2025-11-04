@@ -277,15 +277,15 @@ func NewLogger(start time.Time) *zap.Logger {
 	return ll
 }
 
-func (c *Context) ProcessStarted(ctx context.Context, proc *process.Process) error {
+func (c *Context) ProcessStarted(proc *process.Process) error {
 	return c.ProcessWaiter.Signal(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
-func (c *Context) ProcessReplaced(ctx context.Context, proc *process.Process) error {
+func (c *Context) ProcessReplaced(proc *process.Process) error {
 	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
-func (c *Context) ProcessStopped(ctx context.Context, proc *process.Process) error {
+func (c *Context) ProcessStopped(proc *process.Process) error {
 	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 

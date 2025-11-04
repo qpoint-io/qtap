@@ -10,11 +10,8 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"github.com/sourcegraph/conc"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -22,15 +19,15 @@ import (
 //
 //go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/receiver.go -package mocks . Receiver
 type Receiver interface {
-	RegisterProcess(ctx context.Context, p *Process) error
-	UnregisterProcess(ctx context.Context, pid, exitCode int) error
+	RegisterProcess(p *Process) error
+	UnregisterProcess(pid, exitCode int) error
 }
 
 // Eventer is the interface for the process eventer
 //
 //go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/eventer.go -package mocks . Eventer
 type Eventer interface {
-	Start(ctx context.Context) error
+	Start() error
 	Stop() error
 	Register(Receiver)
 	SetMeta(p *Process) error
@@ -56,8 +53,6 @@ type Manager struct {
 	processWaiters map[int][]chan *Process
 }
 
-var tracer = telemetry.Tracer()
-
 func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 	pm := &Manager{
 		Logger:         logger,
@@ -81,11 +76,11 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 	return pm
 }
 
-func (m *Manager) RegisterProcess(ctx context.Context, p *Process) error {
-	return m.addProc(ctx, p)
+func (m *Manager) RegisterProcess(p *Process) error {
+	return m.addProc(p)
 }
 
-func (m *Manager) UnregisterProcess(ctx context.Context, pid, exitCode int) error {
+func (m *Manager) UnregisterProcess(pid, exitCode int) error {
 	proc, exists := m.procs.Load(pid)
 	if !exists {
 		return nil
@@ -93,7 +88,7 @@ func (m *Manager) UnregisterProcess(ctx context.Context, pid, exitCode int) erro
 
 	proc.ExitCode = exitCode
 
-	return m.removeProc(ctx, proc)
+	return m.removeProc(proc)
 }
 
 func (m *Manager) Get(pid int) *Process {
@@ -141,20 +136,17 @@ func (m *Manager) MaskEnvVars(envVars []string) {
 }
 
 func (m *Manager) Start() error {
-	ctx, span := tracer.Start(context.Background(), "Manager.Start")
-	defer span.End()
-
 	// add QPOINT_STRATEGY to the env mask
 	m.envMask.Store(QpointStrategyEnvVar, true)
 	m.envMask.Store(QpointTagsEnvVar, true)
 
 	// sync with /proc
-	if err := m.preloadProcs(ctx); err != nil {
+	if err := m.preloadProcs(); err != nil {
 		return fmt.Errorf("syncing with /proc: %w", err)
 	}
 
 	// start ebpf eventer
-	err := m.procEventer.Start(ctx)
+	err := m.procEventer.Start()
 	if err != nil {
 		return fmt.Errorf("starting process eventer: %w", err)
 	}
@@ -196,12 +188,9 @@ func (m *Manager) Stop() error {
 	return m.procEventer.Stop()
 }
 
-func (m *Manager) preloadProcs(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "Manager.preloadProcs")
-	defer span.End()
-
+func (m *Manager) preloadProcs() error {
 	// load all of the procs
-	snap, err := AllProcesses(ctx, m.Logger)
+	snap, err := AllProcesses(m.Logger)
 	if err != nil {
 		return fmt.Errorf("reading processes: %w", err)
 	}
@@ -213,7 +202,7 @@ func (m *Manager) preloadProcs(ctx context.Context) error {
 			// was not scanned by qpoint before
 			proc.PredatesQpoint = true
 
-			if err := m.addProc(ctx, proc); err != nil {
+			if err := m.addProc(proc); err != nil {
 				return fmt.Errorf("adding process: %w", err)
 			}
 			if err := m.procEventer.SetMeta(proc); err != nil {
@@ -225,11 +214,7 @@ func (m *Manager) preloadProcs(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) addProc(ctx context.Context, p *Process) error {
-	ctx, span := tracer.Start(ctx, "Manager.addProc")
-	span.SetAttributes(attribute.Int("pid", p.Pid))
-	defer span.End()
-
+func (m *Manager) addProc(p *Process) error {
 	p.envTags = m.envTags
 
 	var procChanged bool
@@ -251,7 +236,7 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 	}
 
 	// discover the process
-	if err := p.Discover(ctx, "/proc", m.envMask); err != nil {
+	if err := p.Discover("/proc", m.envMask); err != nil {
 		if _, ok := p.checkProcessError(err); ok {
 			// this happens when processes are exiting quickly, we can ignore
 			return nil
@@ -289,22 +274,12 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 	}
 
 	// initialize the observers
-	go m.initProcObservers(context.WithoutCancel(ctx), p, procChanged)
+	go m.initProcObservers(p, procChanged)
 
 	return nil
 }
 
-func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool) {
-	ctx, span := tracer.Start(ctx, "Manager.initProcObservers",
-		trace.WithLinks(trace.LinkFromContext(ctx)),
-		trace.WithNewRoot(),
-	)
-	span.SetAttributes(
-		attribute.Int("pid", p.Pid),
-		attribute.String("exe", p.Exe),
-		attribute.Bool("replace", replace),
-	)
-	defer span.End()
+func (m *Manager) initProcObservers(p *Process, replace bool) {
 	// if the process has already exited, ignore
 	if p.Exited() {
 		return
@@ -323,9 +298,9 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 
 			var err error
 			if replace {
-				err = observer.ProcessReplaced(ctx, p)
+				err = observer.ProcessReplaced(p)
 			} else {
-				err = observer.ProcessStarted(ctx, p)
+				err = observer.ProcessStarted(p)
 			}
 
 			if err != nil {
@@ -345,11 +320,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 	}
 }
 
-func (m *Manager) removeProc(ctx context.Context, p *Process) error {
-	ctx, span := tracer.Start(ctx, "Manager.removeProc")
-	span.SetAttributes(attribute.Int("pid", p.Pid), attribute.Int("exit_code", p.ExitCode))
-	defer span.End()
-
+func (m *Manager) removeProc(p *Process) error {
 	// report metrics
 	labels := getProcessLabels(p)
 	processCloseTotal.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Inc()
@@ -368,7 +339,7 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 	// inform the observers
 	for _, observer := range m.Observers {
 		go func() {
-			if err := observer.ProcessStopped(ctx, p); err != nil {
+			if err := observer.ProcessStopped(p); err != nil {
 				m.Logger.Error("notifying observer of process stop", zap.Error(err))
 			}
 		}()

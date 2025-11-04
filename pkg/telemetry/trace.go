@@ -20,22 +20,6 @@ func Tracer() trace.Tracer {
 	return otel.Tracer(pkg)
 }
 
-func TraceFn(
-	tracer trace.Tracer,
-	ctx context.Context,
-	name string,
-	fn func(ctx context.Context, span trace.Span) error,
-	opts ...trace.SpanStartOption,
-) error {
-	ctx, span := tracer.Start(ctx, name, opts...)
-	defer span.End()
-	err := fn(ctx, span)
-	if err != nil {
-		span.RecordError(err)
-	}
-	return err
-}
-
 func callerInfo(skip int) (pkg, fn string) {
 	pc, _, _, _ := runtime.Caller(1 + skip)
 	funcName := runtime.FuncForPC(pc).Name()

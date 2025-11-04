@@ -10,7 +10,6 @@
 package mocks
 
 import (
-	context "context"
 	reflect "reflect"
 
 	process "github.com/qpoint-io/qtap/pkg/process"
@@ -68,17 +67,17 @@ func (mr *MockEventerMockRecorder) SetMeta(p any) *gomock.Call {
 }
 
 // Start mocks base method.
-func (m *MockEventer) Start(ctx context.Context) error {
+func (m *MockEventer) Start() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Start", ctx)
+	ret := m.ctrl.Call(m, "Start")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Start indicates an expected call of Start.
-func (mr *MockEventerMockRecorder) Start(ctx any) *gomock.Call {
+func (mr *MockEventerMockRecorder) Start() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockEventer)(nil).Start), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Start", reflect.TypeOf((*MockEventer)(nil).Start))
 }
 
 // Stop mocks base method.

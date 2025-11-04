@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/moby/moby/pkg/parsers/kernel"
@@ -94,8 +93,6 @@ var (
 	}
 )
 
-var tracer = telemetry.Tracer()
-
 func init() {
 	// Common options
 	rootCmd.Flags().StringVar(&qpointConfig, "config",
@@ -159,16 +156,13 @@ func init() {
 // This skeleton version of runrootCmd provides the basic structure
 // but will need to be fleshed out with actual implementation
 func runTapCmd(logger *zap.Logger) {
-	ctx, cancelRoot := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancelRoot()
+	ctx := context.Background()
 
 	shutdownTelemetry, err := setupTelemetry(ctx, "tap")
 	if err != nil {
 		logger.Fatal("unable to setup telemetry", zap.Error(err))
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 		if err := shutdownTelemetry(ctx); err != nil {
 			logger.Error("unable to shutdown tracer provider", zap.Error(err))
 		}
@@ -437,7 +431,10 @@ func runTapCmd(logger *zap.Logger) {
 	logger.Info("eBPF program loaded and listening")
 
 	// trap int/term signals
-	<-ctx.Done()
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
 	logger.Info("shutting down")
 }
 
@@ -473,9 +470,6 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 }
 
 func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
-	ctx, span := tracer.Start(context.Background(), "InitTLSProbes")
-	defer span.End()
-
 	// Split the string and trim whitespace
 	tlsProbesList := strings.Split(tlsProbesStr, ",")
 	for i, probe := range tlsProbesList {
@@ -502,7 +496,7 @@ func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 		ssl := tls.NewTlsManager(logger, probes...)
 
 		// start the tls probes manager
-		if err := ssl.Start(ctx); err != nil {
+		if err := ssl.Start(); err != nil {
 			logger.Fatal("failed to start tls probes manager", zap.Error(err))
 		}
 

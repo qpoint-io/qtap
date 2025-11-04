@@ -22,7 +22,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
-	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -129,10 +128,7 @@ func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 	return p
 }
 
-func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
-	_, span := tracer.Start(ctx, "AllProcesses")
-	defer span.End()
-
+func AllProcesses(logger *zap.Logger) ([]*Process, error) {
 	ps, err := AllProcs("/proc")
 	if err != nil {
 		return nil, fmt.Errorf("reading /proc: %w", err)
@@ -145,7 +141,7 @@ func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
 		isKernel, err := IsKernelProcess(p)
 		if err != nil {
 			// Log the error and continue with the next process
-			logger.Error("error checking process", zap.Int("pid", p), zap.Error(err))
+			fmt.Printf("Error checking process %d: %v\n", p, err)
 			continue
 		}
 		if isKernel {
@@ -155,17 +151,10 @@ func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
 		procs = append(procs, NewProcess(int(p), "", logger))
 	}
 
-	span.SetAttributes(attribute.Int("process_count", len(procs)))
 	return procs, nil
 }
 
-func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq.Map[string, bool]) error {
-	ctx, span := tracer.Start(ctx, "Process.Discover")
-	span.SetAttributes(
-		attribute.Int("pid", p.Pid),
-		attribute.String("mountPoint", mountPoint),
-	)
-	defer span.End()
+func (p *Process) Discover(mountPoint string, envMask *synq.Map[string, bool]) error {
 	// extract the executable
 	exe, err := Executable(p.Pid)
 	if err != nil {
@@ -228,7 +217,7 @@ func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq
 
 	// get the root ID
 	if p.RootID == 0 {
-		rootID, err := p.getRootID(ctx)
+		rootID, err := p.getRootID()
 		if err != nil {
 			return fmt.Errorf("getting root ID: %w", err)
 		}
@@ -338,11 +327,7 @@ func (p *Process) RootFS() string {
 	return fmt.Sprintf("/proc/%d/root", p.Pid)
 }
 
-func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
-	_, span := tracer.Start(ctx, "Process.FindSharedLibrary")
-	span.SetAttributes(attribute.String("prefix", libNamePrefix))
-	defer span.End()
-
+func (p *Process) FindSharedLibrary(libNamePrefix string) ([]string, error) {
 	// there might be multiple matches
 	var matches []string
 
@@ -426,10 +411,10 @@ func (p *Process) Exited() bool {
 }
 
 // Elf returns the elf file
-func (p *Process) Elf(ctx context.Context) (*binutils.Elf, error) {
+func (p *Process) Elf() (*binutils.Elf, error) {
 	if p.elf == nil {
 		var err error
-		p.elf, err = binutils.NewElf(ctx, p.PidExe, "/", false)
+		p.elf, err = binutils.NewElf(p.PidExe, "/", false)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create elf: %w", err)
 		}
@@ -462,9 +447,6 @@ func (p *Process) Unlock() {
 // StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
 // The caller MUST defer FinishScan() to signal completion.
 func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
-	ctx, span := tracer.Start(ctx, "Process.StartScan")
-	defer span.End()
-
 	p.scanMu.Lock()
 	defer p.scanMu.Unlock()
 
@@ -566,10 +548,7 @@ func (p *Process) discoverTags() error {
 }
 
 // getRootID returns the unique identifier of the process' root filesystem
-func (p *Process) getRootID(ctx context.Context) (uint64, error) {
-	_, span := tracer.Start(ctx, "Process.getRootID")
-	defer span.End()
-
+func (p *Process) getRootID() (uint64, error) {
 	rootInfo, err := os.Stat(p.Root)
 	if err != nil {
 		return 0, fmt.Errorf("failed to stat %s: %w", p.Root, err)

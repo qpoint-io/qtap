@@ -1,11 +1,15 @@
 package common
 
 import (
+	"context"
 	"errors"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 )
+
+var tracer = telemetry.Tracer()
 
 type Uprobe struct {
 	// meta
@@ -32,7 +36,9 @@ func NewUretprobe(function string, prog *ebpf.Program) *Uprobe {
 	}
 }
 
-func (k *Uprobe) Attach(exe *link.Executable, addr uint64) error {
+func (k *Uprobe) Attach(ctx context.Context, exe *link.Executable, addr uint64) error {
+	_, span := tracer.Start(ctx, "Uprobe.Attach")
+	defer span.End()
 	if exe == nil {
 		return errors.New("executable is nil")
 	}

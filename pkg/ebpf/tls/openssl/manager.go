@@ -1,6 +1,7 @@
 package openssl
 
 import (
+	"context"
 	"debug/elf"
 	"errors"
 	"fmt"
@@ -11,7 +12,9 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -65,6 +68,8 @@ type OpenSSLManager struct {
 	process.DefaultObserver
 }
 
+var tracer = telemetry.Tracer()
+
 func NewOpenSSLManager(logger *zap.Logger, probeFn func() []*common.Uprobe) *OpenSSLManager {
 	return &OpenSSLManager{
 		logger:         logger,
@@ -76,7 +81,7 @@ func NewOpenSSLManager(logger *zap.Logger, probeFn func() []*common.Uprobe) *Ope
 	}
 }
 
-func (m *OpenSSLManager) Start() error {
+func (m *OpenSSLManager) Start(ctx context.Context) error {
 	metrics.NewSystemGaugeFunc("containers_tracked", "The number of containers currently being tracked",
 		func() float64 {
 			return float64(m.containers.Len())
@@ -119,7 +124,10 @@ func (m *OpenSSLManager) Stop() (err error) {
 	return err
 }
 
-func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
+func (m *OpenSSLManager) ProcessStarted(ctx context.Context, p *process.Process) error {
+	ctx, span := tracer.Start(ctx, "OpenSSLManager.ProcessStarted")
+	defer span.End()
+
 	// get the cache key
 	cacheKey := p.CacheKey()
 
@@ -138,7 +146,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 
 		// initialize the container
 		go func() {
-			if err := container.Init(p); err != nil {
+			if err := container.Init(ctx, p); err != nil {
 				m.logger.Error("initializing container", zap.Error(err))
 			}
 		}()
@@ -150,6 +158,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 	// if the container has OpenSSL libraries, add as detected
 	if container.HasOpenSSL() {
 		p.AddDetectedTLSProbeType("openssl")
+		span.SetAttributes(attribute.String("openssl_detected", "true"))
 	}
 
 	// determine if this process has statically linked libssl
@@ -172,7 +181,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 
 	if !staticOpenSSL {
 		// detect if this process has statically linked libssl
-		staticOpenSSL, err = m.detectStaticallyLinkedLibssl(p)
+		staticOpenSSL, err = m.detectStaticallyLinkedLibssl(ctx, p)
 		if err != nil {
 			return fmt.Errorf("detecting statically linked libssl: %w", err)
 		}
@@ -190,7 +199,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 			m.cache.Store(cacheKey, cache)
 		}
 
-		ef, err := p.Elf()
+		ef, err := p.Elf(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get elf: %w", err)
 		}
@@ -199,7 +208,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 		target := NewOpenSSLTarget(m.logger, p.Exe, p.ContainerID, p.PidExe, ef, TargetTypeStatic, m.probeFn(), cache)
 
 		// start the target
-		if err := target.Start(); err != nil {
+		if err := target.Start(ctx); err != nil {
 			return fmt.Errorf("starting openssl target: %w", err)
 		}
 
@@ -226,6 +235,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 
 		// register that the process has been detected to contain openssl probe endpoints
 		p.AddDetectedTLSProbeType("openssl")
+		span.SetAttributes(attribute.String("openssl_detected", "true"))
 
 		// debug
 		m.logger.Info("OpenSSL static symbols detected",
@@ -243,7 +253,13 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 	return nil
 }
 
-func (m *OpenSSLManager) ProcessReplaced(p *process.Process) error {
+func (m *OpenSSLManager) ProcessReplaced(ctx context.Context, p *process.Process) error {
+	_, span := tracer.Start(ctx, "OpenSSLManager.ProcessReplaced")
+	span.SetAttributes(
+		attribute.Int("pid", p.Pid),
+		attribute.String("exe", p.Exe),
+	)
+	defer span.End()
 	// do we have a target version for this process?
 	version, versionExists := m.targetVersions.Load(p.Pid)
 
@@ -273,7 +289,9 @@ func (m *OpenSSLManager) ProcessReplaced(p *process.Process) error {
 	return nil
 }
 
-func (m *OpenSSLManager) ProcessStopped(p *process.Process) error {
+func (m *OpenSSLManager) ProcessStopped(ctx context.Context, p *process.Process) error {
+	_, span := tracer.Start(ctx, "OpenSSLManager.ProcessStopped")
+	defer span.End()
 	// fetch the container
 	container, exists := m.containers.Load(p.ContainerID)
 
@@ -314,7 +332,10 @@ func (m *OpenSSLManager) ProcessStopped(p *process.Process) error {
 	return nil
 }
 
-func (m *OpenSSLManager) detectStaticallyLinkedLibssl(proc *process.Process) (bool, error) {
+func (m *OpenSSLManager) detectStaticallyLinkedLibssl(ctx context.Context, proc *process.Process) (bool, error) {
+	ctx, span := tracer.Start(ctx, "OpenSSLManager.detectStaticallyLinkedLibssl")
+	span.SetAttributes(attribute.Int("pid", proc.Pid), attribute.String("exe", proc.Exe))
+	defer span.End()
 	// get the pid of this running process
 	if os.Getpid() == proc.Pid {
 		return false, nil
@@ -326,13 +347,13 @@ func (m *OpenSSLManager) detectStaticallyLinkedLibssl(proc *process.Process) (bo
 	}
 
 	// get the elf file
-	e, err := proc.Elf()
+	e, err := proc.Elf(ctx)
 	if err != nil {
 		return false, fmt.Errorf("failed to get elf: %w", err)
 	}
 
 	// find the symbols
-	matches, err := e.SearchSymbols(symbolScan, elf.SHT_SYMTAB)
+	matches, err := e.SearchSymbols(ctx, symbolScan, elf.SHT_SYMTAB)
 	if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
 		m.logger.Debug("failed to search for SSL symbols",
 			zap.String("exe", proc.Exe),

@@ -1,6 +1,7 @@
 package openssl
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -8,6 +9,9 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -47,7 +51,13 @@ func NewContainer(logger *zap.Logger, probeFn func() []*common.Uprobe) *Containe
 	}
 }
 
-func (c *Container) Init(p *process.Process) error {
+func (c *Container) Init(ctx context.Context, p *process.Process) error {
+	ctx, span := tracer.Start(ctx, "Container.Init",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithNewRoot(),
+	)
+	span.SetAttributes(attribute.String("container_id", p.ContainerID))
+	defer span.End()
 	// acquire lock
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -58,38 +68,47 @@ func (c *Container) Init(p *process.Process) error {
 	}
 
 	// find all of the libssl.o targets on the container
-	libs, err := p.FindSharedLibrary(LibSSL)
+	libs, err := p.FindSharedLibrary(ctx, LibSSL)
 	if err != nil {
 		return fmt.Errorf("finding %s: %w", LibSSL, err)
 	}
 
 	// initialize targets for the libs
 	for _, lib := range libs {
-		// create name by stripping off the p.Root
-		name := strings.TrimPrefix(lib, p.Root)
+		err := telemetry.TraceFn(tracer, ctx, "AttachSharedTarget", func(ctx context.Context, span trace.Span) error {
+			span.SetAttributes(attribute.String("lib", lib))
+			// create name by stripping off the p.Root
+			name := strings.TrimPrefix(lib, p.Root)
 
-		// create a target
-		target := NewOpenSSLTarget(c.logger, name, p.ContainerID, lib, nil, TargetTypeShared, c.probeFn(), nil)
+			// create a target
+			target := NewOpenSSLTarget(c.logger, name, p.ContainerID, lib, nil, TargetTypeShared, c.probeFn(), nil)
 
-		// start the target
-		if err := target.Start(); err != nil {
-			return fmt.Errorf("starting openssl target: %w", err)
+			// start the target
+			if err := target.Start(ctx); err != nil {
+				return err
+			}
+			span.SetAttributes(attribute.String("target", name))
+
+			// add the target to the container
+			c.targets[lib] = target
+
+			// mark that this container has OpenSSL
+			c.hasOpenSSL = true
+
+			// debug
+			c.logger.Info("detected OpenSSL shared library",
+				zap.String("path", name),
+				zap.String("container_id", p.ContainerID),
+			)
+
+			// register that the process has been detected to contain openssl probe endpoints
+			p.AddDetectedTLSProbeType("openssl")
+			span.SetAttributes(attribute.String("openssl_detected", "true"))
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("attaching shared target: %w", err)
 		}
-
-		// add the target to the container
-		c.targets[lib] = target
-
-		// mark that this container has OpenSSL
-		c.hasOpenSSL = true
-
-		// debug
-		c.logger.Info("detected OpenSSL shared library",
-			zap.String("path", name),
-			zap.String("container_id", p.ContainerID),
-		)
-
-		// register that the process has been detected to contain openssl probe endpoints
-		p.AddDetectedTLSProbeType("openssl")
 	}
 
 	// set initialized

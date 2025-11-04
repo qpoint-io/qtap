@@ -120,7 +120,7 @@ func (m *TraceManager) Stop() error {
 }
 
 func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(ctx, "TraceManager.ProcessStarted")
+	_, span := tracer.Start(ctx, "TraceManager.ProcessStarted")
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles
@@ -155,7 +155,7 @@ func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process
 }
 
 func (m *TraceManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(ctx, "TraceManager.ProcessStopped")
+	_, span := tracer.Start(ctx, "TraceManager.ProcessStopped")
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles

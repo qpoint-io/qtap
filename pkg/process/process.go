@@ -130,7 +130,7 @@ func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 }
 
 func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
-	ctx, span := tracer.Start(ctx, "AllProcesses")
+	_, span := tracer.Start(ctx, "AllProcesses")
 	defer span.End()
 
 	ps, err := AllProcs("/proc")

@@ -10,7 +10,6 @@
 package mocks
 
 import (
-	context "context"
 	reflect "reflect"
 
 	process "github.com/qpoint-io/qtap/pkg/process"
@@ -42,29 +41,29 @@ func (m *MockReceiver) EXPECT() *MockReceiverMockRecorder {
 }
 
 // RegisterProcess mocks base method.
-func (m *MockReceiver) RegisterProcess(ctx context.Context, p *process.Process) error {
+func (m *MockReceiver) RegisterProcess(p *process.Process) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterProcess", ctx, p)
+	ret := m.ctrl.Call(m, "RegisterProcess", p)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // RegisterProcess indicates an expected call of RegisterProcess.
-func (mr *MockReceiverMockRecorder) RegisterProcess(ctx, p any) *gomock.Call {
+func (mr *MockReceiverMockRecorder) RegisterProcess(p any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterProcess", reflect.TypeOf((*MockReceiver)(nil).RegisterProcess), ctx, p)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterProcess", reflect.TypeOf((*MockReceiver)(nil).RegisterProcess), p)
 }
 
 // UnregisterProcess mocks base method.
-func (m *MockReceiver) UnregisterProcess(ctx context.Context, pid, exitCode int) error {
+func (m *MockReceiver) UnregisterProcess(pid, exitCode int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnregisterProcess", ctx, pid, exitCode)
+	ret := m.ctrl.Call(m, "UnregisterProcess", pid, exitCode)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnregisterProcess indicates an expected call of UnregisterProcess.
-func (mr *MockReceiverMockRecorder) UnregisterProcess(ctx, pid, exitCode any) *gomock.Call {
+func (mr *MockReceiverMockRecorder) UnregisterProcess(pid, exitCode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterProcess", reflect.TypeOf((*MockReceiver)(nil).UnregisterProcess), ctx, pid, exitCode)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnregisterProcess", reflect.TypeOf((*MockReceiver)(nil).UnregisterProcess), pid, exitCode)
 }

@@ -7,13 +7,12 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
 type TlsProbe interface {
-	Start(ctx context.Context) error
+	Start() error
 	Stop() error
 	process.Observer
 }
@@ -28,8 +27,6 @@ type TlsManager struct {
 	final process.Observer
 }
 
-var tracer = telemetry.Tracer()
-
 func NewTlsManager(logger *zap.Logger, probes ...TlsProbe) *TlsManager {
 	return &TlsManager{
 		// logger
@@ -40,9 +37,9 @@ func NewTlsManager(logger *zap.Logger, probes ...TlsProbe) *TlsManager {
 	}
 }
 
-func (m *TlsManager) Start(ctx context.Context) error {
+func (m *TlsManager) Start() error {
 	for _, p := range m.probes {
-		if err := p.Start(ctx); err != nil {
+		if err := p.Start(); err != nil {
 			return fmt.Errorf("starting tls probe: %w", err)
 		}
 	}
@@ -70,12 +67,9 @@ func (m *TlsManager) Stop() error {
 	return nil
 }
 
-func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(ctx, "TlsManager.ProcessStarted")
-	defer span.End()
-
+func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 	// start a new scan, cancelling any in-progress scan and waiting for it to finish
-	ctx, err := proc.StartScan(ctx)
+	ctx, err := proc.StartScan(context.Background())
 	if err != nil {
 		return fmt.Errorf("starting scan: %w", err)
 	}
@@ -106,24 +100,35 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	// inform all probes
 	for _, p := range m.probes {
 		// check if scan was cancelled
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if proc.Exited() {
-			continue
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
 		}
 
-		if err := p.ProcessStarted(ctx, proc); err != nil {
+		if proc.Exited() {
+			return nil
+		}
+
+		if err := p.ProcessStarted(proc); err != nil {
 			// if the process was replaced mid scan, just return and let the next one try
 			if errors.Is(err, process.ErrProcessReplaced) {
-				continue
+				return nil
 			}
+
 			return fmt.Errorf("starting process on tls probe: %w", err)
 		}
 	}
 
 	if m.final != nil {
-		if err := m.final.ProcessStarted(ctx, proc); err != nil {
+		// check if scan was cancelled before final observer
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		if err := m.final.ProcessStarted(proc); err != nil {
 			return fmt.Errorf("starting process on final observer: %w", err)
 		}
 	}
@@ -131,44 +136,38 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	return nil
 }
 
-func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(ctx, "TlsManager.ProcessReplaced")
-	defer span.End()
-
+func (m *TlsManager) ProcessReplaced(proc *process.Process) error {
 	proc.CancelScan() // cancel any in-progress scan
 
 	if m.final != nil {
-		if err := m.final.ProcessReplaced(ctx, proc); err != nil {
+		if err := m.final.ProcessReplaced(proc); err != nil {
 			return fmt.Errorf("replacing process on final observer: %w", err)
 		}
 	}
 
 	// inform all probes
 	for _, p := range m.probes {
-		if err := p.ProcessReplaced(ctx, proc); err != nil {
+		if err := p.ProcessReplaced(proc); err != nil {
 			return fmt.Errorf("replacing process on tls probe: %w", err)
 		}
 	}
 
 	// run process started again
-	return m.ProcessStarted(ctx, proc)
+	return m.ProcessStarted(proc)
 }
 
-func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(ctx, "TlsManager.ProcessStopped")
-	defer span.End()
-
+func (m *TlsManager) ProcessStopped(proc *process.Process) error {
 	// cancel any in-progress scan since the process is stopping
 	proc.CancelScan()
 
 	for _, p := range m.probes {
-		if err := p.ProcessStopped(ctx, proc); err != nil {
+		if err := p.ProcessStopped(proc); err != nil {
 			return fmt.Errorf("stopping process on tls probe: %w", err)
 		}
 	}
 
 	if m.final != nil {
-		if err := m.final.ProcessStopped(ctx, proc); err != nil {
+		if err := m.final.ProcessStopped(proc); err != nil {
 			return fmt.Errorf("stopping process on final observer: %w", err)
 		}
 	}

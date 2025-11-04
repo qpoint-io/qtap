@@ -69,7 +69,7 @@ func TestHandleExecStartEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err = m.handleExecStartEvent(t.Context(), bytes.NewReader(buf.Bytes()))
+			err = m.handleExecStartEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -146,7 +146,7 @@ func TestHandleExecArgvEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err = m.handleExecArgvEvent(t.Context(), bytes.NewReader(buf.Bytes()))
+			err = m.handleExecArgvEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -214,7 +214,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 			// Create mock receiver
 			mockRcv := mocks.NewMockReceiver(ctrl)
 			if tt.setupPid {
-				mockRcv.EXPECT().RegisterProcess(gomock.Any(), gomock.Any()).Return(tt.addProcErr)
+				mockRcv.EXPECT().RegisterProcess(gomock.Any()).Return(tt.addProcErr)
 			}
 
 			// Create manager
@@ -230,7 +230,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err = m.handleExecEndEvent(t.Context(), bytes.NewReader(buf.Bytes()))
+			err = m.handleExecEndEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -287,7 +287,7 @@ func TestHandleExitEvent(t *testing.T) {
 
 			// Create mock receiver
 			mockRcv := mocks.NewMockReceiver(ctrl)
-			mockRcv.EXPECT().UnregisterProcess(gomock.Any(), int(tt.pid), 0).Return(tt.endProcErr)
+			mockRcv.EXPECT().UnregisterProcess(int(tt.pid), 0).Return(tt.endProcErr)
 
 			// Create manager
 			m := &Manager{
@@ -297,7 +297,7 @@ func TestHandleExitEvent(t *testing.T) {
 			}
 
 			// Test handler
-			err = m.handleExitEvent(t.Context(), bytes.NewReader(buf.Bytes()))
+			err = m.handleExitEvent(bytes.NewReader(buf.Bytes()))
 			if tt.wantErr {
 				require.Error(t, err)
 				return

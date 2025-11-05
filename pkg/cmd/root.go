@@ -26,7 +26,7 @@ var (
 	logLevel              string
 	logEncoding           string
 	logCaller             bool
-	statusListen          string
+	httpdListen           string
 	bpfTraceQuery         string
 	certInjectionStrategy string
 	tlsOkStrategy         string

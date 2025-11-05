@@ -21,23 +21,29 @@ type BaseStatusServer struct {
 	logger     *zap.Logger
 	server     *http.Server
 	readyCheck func() bool
+	mux        *http.ServeMux
 }
 
 func NewBaseStatusServer(listen string, logger *zap.Logger, readyCheck func() bool) *BaseStatusServer {
-	return &BaseStatusServer{
+	s := &BaseStatusServer{
 		listen:     listen,
 		logger:     logger,
 		readyCheck: readyCheck,
+		mux:        http.NewServeMux(),
 	}
+
+	s.setupRoutes()
+	return s
+}
+
+func (s *BaseStatusServer) Mux() *http.ServeMux {
+	return s.mux
 }
 
 func (s *BaseStatusServer) Start() error {
-	mux := http.DefaultServeMux
-	s.setupRoutes(mux)
-
 	s.server = &http.Server{
 		Addr:    s.listen,
-		Handler: mux,
+		Handler: s.mux,
 	}
 
 	go func() {
@@ -60,8 +66,8 @@ func (s *BaseStatusServer) IsReady() bool {
 	return s.readyCheck()
 }
 
-func (s *BaseStatusServer) setupRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+func (s *BaseStatusServer) setupRoutes() {
+	s.mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		if s.IsReady() {
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write([]byte("ready")); err != nil {
@@ -75,17 +81,17 @@ func (s *BaseStatusServer) setupRoutes(mux *http.ServeMux) {
 		}
 	})
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write([]byte("healthy")); err != nil {
 			s.logger.Error("failed to write response", zap.Error(err))
 		}
 	})
 
 	if m := metrics.ProductHandler(); m != nil {
-		mux.Handle("GET /metrics", m)
+		s.mux.Handle("GET /metrics", m)
 	}
 
 	if m := metrics.SystemHandler(); m != nil {
-		mux.Handle("GET /system/metrics", m)
+		s.mux.Handle("GET /system/metrics", m)
 	}
 }

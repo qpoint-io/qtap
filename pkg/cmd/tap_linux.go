@@ -147,10 +147,15 @@ func init() {
 		getEnvOr("CRI_RUNTIME_SOCKET", ""),
 		"CRI runtime socket endpoint")
 
-	// Status options
-	rootCmd.Flags().StringVar(&statusListen, "status-listen",
+	// http server options
+	rootCmd.Flags().StringVar(&httpdListen, "status-listen",
 		getEnvOr("STATUS_LISTEN", "0.0.0.0:10001"),
 		"IP:PORT of status server to listen on")
+	_ = rootCmd.Flags().MarkDeprecated("status-listen", "use --httpd-listen instead")
+
+	rootCmd.Flags().StringVar(&httpdListen, "httpd-listen",
+		getEnvOr("HTTPD_LISTEN", "0.0.0.0:10001"),
+		"IP:PORT of qtap http server to listen on")
 }
 
 // This skeleton version of runrootCmd provides the basic structure
@@ -416,7 +421,7 @@ func runTapCmd(logger *zap.Logger) {
 	}()
 
 	// Initialize status server with product metrics endpoint
-	s := status.NewBaseStatusServer(statusListen, logger, func() bool {
+	s := status.NewBaseStatusServer(httpdListen, logger, func() bool {
 		return true
 	})
 	if err := s.Start(); err != nil {

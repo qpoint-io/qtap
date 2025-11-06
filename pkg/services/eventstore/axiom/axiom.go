@@ -32,29 +32,11 @@ type EventStore struct {
 	objectStore objectstore.ObjectStore
 }
 
-type connidable interface {
-	SetConnectionID(id string)
-}
-
-type taggable interface {
-	AddTags(tag ...string)
-}
-
 // Save submits an event to Axiom
 func (s *EventStore) Save(_ context.Context, item any) {
 	ctx := context.Background()
 	ctx, span := tracer.Start(ctx, "Axiom.Save", trace.WithSpanKind(trace.SpanKindProducer))
 	defer span.End()
-
-	if s.conn != nil {
-		if c, ok := item.(connidable); ok {
-			c.SetConnectionID(s.conn.ID())
-		}
-
-		if t, ok := item.(taggable); ok {
-			t.AddTags(s.conn.Tags().List()...)
-		}
-	}
 
 	switch i := item.(type) {
 	case *eventstore.Request, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord, *eventstore.Connection:

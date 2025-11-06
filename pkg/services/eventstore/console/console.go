@@ -16,14 +16,6 @@ const (
 	TypeConsoleEventStore services.ServiceType = "console"
 )
 
-type connidable interface {
-	SetConnectionID(id string)
-}
-
-type taggable interface {
-	AddTags(tag ...string)
-}
-
 type Factory struct {
 	eventstore.BaseEventStore
 }
@@ -71,16 +63,6 @@ func (s *EventStore) SetConnection(conn *connection.Connection) {
 func (s *EventStore) Save(ctx context.Context, item any) {
 	if l, ok := s.objectStore.(services.LoggerAdapter); ok {
 		l.SetLogger(s.Log())
-	}
-
-	if s.conn != nil {
-		if c, ok := item.(connidable); ok {
-			c.SetConnectionID(s.conn.ID())
-		}
-
-		if t, ok := item.(taggable); ok {
-			t.AddTags(s.conn.Tags().List()...)
-		}
 	}
 
 	switch i := item.(type) {

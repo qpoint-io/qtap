@@ -55,14 +55,6 @@ func (f *EventStoreFactory) save(conn *connection.Connection, item any) {
 	defer f.mu.Unlock()
 
 	if conn != nil {
-		if c, ok := item.(connidable); ok {
-			c.SetConnectionID(conn.ID())
-		}
-
-		if t, ok := item.(taggable); ok {
-			t.AddTags(conn.Tags().List()...)
-		}
-
 		if f.eventsByConn[conn.ID()] == nil {
 			f.eventsByConn[conn.ID()] = &Events{}
 		}
@@ -140,14 +132,6 @@ func (f *EventStoreFactory) AwaitByCtxID(id string, numConnections int, timeout 
 		time.Sleep(100 * time.Millisecond)
 		first = false
 	}
-}
-
-type connidable interface {
-	SetConnectionID(id string)
-}
-
-type taggable interface {
-	AddTags(tag ...string)
 }
 
 type EventStore struct {

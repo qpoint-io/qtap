@@ -30,26 +30,8 @@ type EventStore struct {
 	environment string
 }
 
-type connidable interface {
-	SetConnectionID(id string)
-}
-
-type taggable interface {
-	AddTags(tag ...string)
-}
-
 // Save submits an event to OpenTelemetry
 func (s *EventStore) Save(ctx context.Context, item any) {
-	// Add connection metadata if available
-	if s.conn != nil {
-		if c, ok := item.(connidable); ok {
-			c.SetConnectionID(s.conn.ID())
-		}
-		if t, ok := item.(taggable); ok {
-			t.AddTags(s.conn.Tags().List()...)
-		}
-	}
-
 	switch i := item.(type) {
 	case *eventstore.Request:
 		s.logEvent(ctx, i, log.SeverityInfo, fmt.Sprintf("HTTP %s (%d) %s", i.Method, i.Status, i.Url))

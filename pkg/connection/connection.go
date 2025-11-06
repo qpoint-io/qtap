@@ -194,28 +194,48 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		opt(c)
 	}
 
-	if c.serviceRegistry != nil {
-		factory := c.serviceRegistry.Get(eventstore.TypeEventStore)
-		if factory != nil {
-			instance, err := factory.Create(ctx)
-			if err != nil {
-				c.logger.Error("failed to create event store", zap.Error(err))
-			}
-			if l, ok := instance.(servicespkg.LoggerAdapter); ok {
-				l.SetLogger(c.logger)
-			}
-			if ca, ok := instance.(ConnectionAdapter); ok {
-				ca.SetConnection(c)
-			}
-			if es, ok := instance.(eventstore.EventStore); ok {
-				c.eventStore = es
-			} else {
-				c.logger.DPanic("event store factory returned non-eventstore instance")
-			}
-		}
+	c.assignEventStore(ctx)
+	return c
+}
+
+func (c *Connection) assignEventStore(ctx context.Context) {
+	if c.serviceRegistry == nil {
+		return
 	}
 
-	return c
+	factory := c.serviceRegistry.Get(eventstore.TypeEventStore)
+	if factory == nil {
+		return
+	}
+
+	instance, err := factory.Create(ctx)
+	if err != nil {
+		c.logger.Error("failed to create event store", zap.Error(err))
+		return
+	}
+
+	es, ok := instance.(eventstore.EventStore)
+	if !ok {
+		c.logger.DPanic("event store factory returned non-eventstore instance")
+		return
+	}
+
+	// setup adapters
+	if l, ok := instance.(servicespkg.LoggerAdapter); ok {
+		l.SetLogger(c.logger)
+	}
+	if ca, ok := instance.(ConnectionAdapter); ok {
+		ca.SetConnection(c)
+	}
+
+	// setup meta injector
+	injector := &eventMetaInjector{
+		conn:       c,
+		eventStore: es,
+	}
+
+	// set event store
+	c.eventStore = injector
 }
 
 func (c *Connection) SetProcess(process *process.Process) {
@@ -689,4 +709,37 @@ func isAlphanumeric(ch rune) bool {
 
 type ConnectionAdapter interface {
 	SetConnection(*Connection)
+}
+
+// eventMetaInjector implements the event store interface and adds connection metadata to events
+// before they are submitted to the event store.
+type eventMetaInjector struct {
+	conn       *Connection
+	eventStore eventstore.EventStore
+}
+
+func (e *eventMetaInjector) Save(ctx context.Context, item any) {
+	if e.conn != nil {
+		if c, ok := item.(connidable); ok {
+			c.SetConnectionID(e.conn.ID())
+		}
+
+		if t, ok := item.(taggable); ok {
+			t.AddTags(e.conn.Tags().List()...)
+		}
+	}
+
+	e.eventStore.Save(ctx, item)
+}
+
+func (e *eventMetaInjector) ServiceType() servicespkg.ServiceType {
+	return eventstore.TypeEventStore
+}
+
+type connidable interface {
+	SetConnectionID(id string)
+}
+
+type taggable interface {
+	AddTags(tag ...string)
 }

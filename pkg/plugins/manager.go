@@ -10,6 +10,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
@@ -263,6 +264,14 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 		}
 		if c, ok := svcInstance.(ConnectionAdapter); ok {
 			c.SetConnection(conn)
+		}
+
+		if es, ok := svcInstance.(eventstore.EventStore); ok {
+			// if this is an event store, wrap it with the meta injector
+			svcInstance = &connection.EventStoreMetaInjector{
+				Conn:       conn,
+				EventStore: es,
+			}
 		}
 
 		svcs = append(svcs, svcInstance)

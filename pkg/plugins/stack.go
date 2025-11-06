@@ -12,14 +12,11 @@ import (
 // Stack manages the lifecycle of a StackDeployment
 // which contains a list of plugins.
 type Stack struct {
-	// name
+	logger            *zap.Logger
+	pluginAccessor    PluginAccessor
+	persistentPlugins []config.Plugin
+
 	name string
-
-	// logger
-	logger *zap.Logger
-
-	// plugin accessor
-	pluginAccessor PluginAccessor
 
 	// activeDeployment
 	activeDeployment   *StackDeployment
@@ -56,6 +53,7 @@ func (s *Stack) SetConfig(conf *config.Stack) error {
 
 	// iniialize deployment
 	deployment := NewStackDeployment(s.logger, s.name, s.pluginAccessor)
+	deployment.SetPersistentPlugins(s.persistentPlugins)
 	err = deployment.Setup(conf)
 	if err != nil {
 		return fmt.Errorf("setting up deployment: %w", err)
@@ -73,6 +71,10 @@ func (s *Stack) SetConfig(conf *config.Stack) error {
 	s.activeDeployment = deployment
 
 	return nil
+}
+
+func (s *Stack) SetPersistentPlugins(plugins []config.Plugin) {
+	s.persistentPlugins = plugins
 }
 
 func (s *Stack) GetActiveDeployment() *StackDeployment {

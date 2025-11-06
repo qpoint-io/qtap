@@ -229,9 +229,9 @@ func (c *Connection) assignEventStore(ctx context.Context) {
 	}
 
 	// setup meta injector
-	injector := &eventMetaInjector{
-		conn:       c,
-		eventStore: es,
+	injector := &EventStoreMetaInjector{
+		Conn:       c,
+		EventStore: es,
 	}
 
 	// set event store
@@ -711,28 +711,28 @@ type ConnectionAdapter interface {
 	SetConnection(*Connection)
 }
 
-// eventMetaInjector implements the event store interface and adds connection metadata to events
+// EventStoreMetaInjector implements the event store interface and adds connection metadata to events
 // before they are submitted to the event store.
-type eventMetaInjector struct {
-	conn       *Connection
-	eventStore eventstore.EventStore
+type EventStoreMetaInjector struct {
+	Conn       *Connection
+	EventStore eventstore.EventStore
 }
 
-func (e *eventMetaInjector) Save(ctx context.Context, item any) {
-	if e.conn != nil {
+func (e *EventStoreMetaInjector) Save(ctx context.Context, item any) {
+	if item != nil && e.Conn != nil {
 		if c, ok := item.(connidable); ok {
-			c.SetConnectionID(e.conn.ID())
+			c.SetConnectionID(e.Conn.ID())
 		}
 
 		if t, ok := item.(taggable); ok {
-			t.AddTags(e.conn.Tags().List()...)
+			t.AddTags(e.Conn.Tags().List()...)
 		}
 	}
 
-	e.eventStore.Save(ctx, item)
+	e.EventStore.Save(ctx, item)
 }
 
-func (e *eventMetaInjector) ServiceType() servicespkg.ServiceType {
+func (e *EventStoreMetaInjector) ServiceType() servicespkg.ServiceType {
 	return eventstore.TypeEventStore
 }
 

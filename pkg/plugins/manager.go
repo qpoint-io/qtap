@@ -69,6 +69,9 @@ type Manager struct {
 
 	// mutex
 	mu sync.Mutex
+
+	// persistent plugins are always included in all stacks
+	persistentPlugins []config.Plugin
 }
 
 type ManagerOpt func(*Manager)
@@ -88,6 +91,12 @@ func SetServiceRegistry(registry *services.ServiceRegistry) ManagerOpt {
 func SetPluginRegistry(registry *PluginRegistry) ManagerOpt {
 	return func(m *Manager) {
 		m.pluginRegistry = registry
+	}
+}
+
+func AddPersistentPlugins(plugins ...config.Plugin) ManagerOpt {
+	return func(m *Manager) {
+		m.persistentPlugins = append(m.persistentPlugins, plugins...)
 	}
 }
 
@@ -273,6 +282,7 @@ func (m *Manager) reconcileStacks(conf *config.Config) error {
 		} else {
 			// create a stack
 			s := NewStack(name, m.logger, m.pluginRegistry)
+			s.SetPersistentPlugins(m.persistentPlugins)
 
 			// setup
 			if err := s.SetConfig(&stack); err != nil {

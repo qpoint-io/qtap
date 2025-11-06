@@ -13,20 +13,13 @@ type StackInstance []HttpPluginInstance
 // and plugin instances. This is a one off deployment and does not
 // support configuration changes.
 type StackDeployment struct {
-	// logger
-	logger *zap.Logger
-
-	// name
-	name string
-
-	// plugins
-	plugins []HttpPlugin
-
-	// required services
-	requiredServices []services.ServiceType
-
-	// plugin accessor
+	logger         *zap.Logger
 	pluginAccessor PluginAccessor
+
+	name              string
+	requiredServices  []services.ServiceType
+	plugins           []HttpPlugin
+	persistentPlugins []config.Plugin
 }
 
 func NewStackDeployment(logger *zap.Logger, name string, pluginAccessor PluginAccessor) *StackDeployment {
@@ -37,9 +30,20 @@ func NewStackDeployment(logger *zap.Logger, name string, pluginAccessor PluginAc
 	}
 }
 
+func (d *StackDeployment) SetPersistentPlugins(plugins []config.Plugin) {
+	d.persistentPlugins = plugins
+}
+
 func (d *StackDeployment) Setup(conf *config.Stack) error {
+	plugins := conf.Plugins
+	if len(d.persistentPlugins) > 0 {
+		plugins = make([]config.Plugin, 0, len(plugins)+len(d.persistentPlugins))
+		plugins = append(plugins, conf.Plugins...)
+		plugins = append(plugins, d.persistentPlugins...)
+	}
+
 	// initilize the plugins
-	for _, cp := range conf.Plugins {
+	for _, cp := range plugins {
 		// create an plugin
 		plugin := d.pluginAccessor.Get(PluginType(cp.Type))
 		if plugin == nil {

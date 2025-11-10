@@ -339,7 +339,7 @@ func runTapCmd(logger *zap.Logger) {
 				Type: connmeta.Type.String(),
 			}
 		},
-		// report connections to the deafault event store
+		// report connections to the default event store
 		func(cfg *config.Config) *config.ServiceConfig {
 			return &config.ServiceConfig{
 				Type: reporter.Type.String(),

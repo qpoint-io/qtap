@@ -92,7 +92,7 @@ func (s *service) report() {
 
 	// debug log
 	if s.logToConsole {
-		s.logger.Debug("audit log", zap.Any("connection", connection))
+		s.logger.Debug("connection report", zap.Any("connection", connection))
 	}
 
 	// increment report count for next report

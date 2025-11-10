@@ -400,7 +400,7 @@ func (c *Connection) Close() {
 	}
 
 	// close all connection services
-	// this will also send a final report to the event store
+	// this will also close the reporter service, sending a final report to the event store
 	if err := c.svcRegistry.Close(); err != nil {
 		c.logger.Error("error closing service registry", zap.Error(err))
 	}

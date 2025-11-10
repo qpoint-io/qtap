@@ -207,8 +207,9 @@ func mainSetup() error {
 			return &config.ServiceConfig{
 				Type: reporter.Type.String(),
 				Config: &reporter.Config{
-					FirstReportDeadline: 500 * time.Millisecond,
-					ReportInterval:      0, // no recurring reports
+					// only report connections once they are closed
+					FirstReportDeadline: 0,
+					ReportInterval:      0,
 				},
 			}
 		},

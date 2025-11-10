@@ -26,12 +26,12 @@ type StreamProcessor interface {
 
 type Manager struct {
 	// internal components
-	logger          *zap.Logger
-	processManager  *process.Manager
-	dnsManager      *dns.DNSManager
-	streamFactory   ConnectionStreamer
-	controlManager  ControlManager
-	serviceRegistry *servicespkg.ServiceRegistry
+	logger             *zap.Logger
+	processManager     *process.Manager
+	dnsManager         *dns.DNSManager
+	streamFactory      ConnectionStreamer
+	controlManager     ControlManager
+	svcFactoryRegistry *servicespkg.FactoryRegistry
 
 	// deployment tags
 	deploymentTags tags.List
@@ -63,9 +63,9 @@ func SetStreamFactory(sf ConnectionStreamer) ManagerOpt {
 	}
 }
 
-func SetServiceRegistry(sr *servicespkg.ServiceRegistry) ManagerOpt {
+func SetServiceFactoryRegistry(fr *servicespkg.FactoryRegistry) ManagerOpt {
 	return func(m *Manager) {
-		m.serviceRegistry = sr
+		m.svcFactoryRegistry = fr
 	}
 }
 

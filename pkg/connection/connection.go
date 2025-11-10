@@ -58,12 +58,12 @@ type Connection struct {
 	startOnce sync.Once
 
 	// dependencies
-	services        services
-	serviceRegistry *servicespkg.ServiceRegistry
-	eventStore      eventstore.EventStore
-	controlManager  ControlManager
-	streamProcessor StreamProcessor
-	dnsRecord       *dns.Record
+	services           services
+	svcFactoryRegistry *servicespkg.FactoryRegistry
+	eventStore         eventstore.EventStore
+	controlManager     ControlManager
+	streamProcessor    StreamProcessor
+	dnsRecord          *dns.Record
 
 	// connection properties
 	id string
@@ -147,9 +147,9 @@ func WithControlManager(controlManager ControlManager) ConnOpt {
 	}
 }
 
-func WithServiceRegistry(serviceRegistry *servicespkg.ServiceRegistry) ConnOpt {
+func WithServiceFactoryRegistry(fr *servicespkg.FactoryRegistry) ConnOpt {
 	return func(c *Connection) {
-		c.serviceRegistry = serviceRegistry
+		c.svcFactoryRegistry = fr
 	}
 }
 
@@ -199,16 +199,11 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 }
 
 func (c *Connection) assignEventStore(ctx context.Context) {
-	if c.serviceRegistry == nil {
+	if c.svcFactoryRegistry == nil {
 		return
 	}
 
-	factory := c.serviceRegistry.Get(eventstore.TypeEventStore)
-	if factory == nil {
-		return
-	}
-
-	instance, err := factory.Create(ctx)
+	instance, err := c.svcFactoryRegistry.CreateService(ctx, eventstore.TypeEventStore)
 	if err != nil {
 		c.logger.Error("failed to create event store", zap.Error(err))
 		return

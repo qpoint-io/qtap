@@ -34,17 +34,15 @@ type ServiceFactory interface {
 	ServiceType() ServiceType
 }
 
-// SetRegistry sets the registry for the service
-type SetRegistry interface {
-	SetRegistry(registry RegistryAccessor)
+// SetFactoryRegistry sets the factory registry for the service
+type SetFactoryRegistry interface {
+	SetFactoryRegistry(registry FactoryRegistryAccessor)
 }
 
-// RegistryAccessor is a type that can access the service registry
-//
-//go:generate go tool go.uber.org/mock/mockgen -destination ./mocks/registry_accessor.go -package mocks . RegistryAccessor
-type RegistryAccessor interface {
-	// Get retrieves a service factory by type
-	Get(serviceType ServiceType) ServiceFactory
+// FactoryRegistryAccessor is a type that can access the service registry
+type FactoryRegistryAccessor interface {
+	// CreateService creates a service by type
+	CreateService(ctx context.Context, serviceType ServiceType) (Service, error)
 }
 
 // NextFactory indicates that a factory will handle graceful replacements

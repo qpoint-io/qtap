@@ -97,7 +97,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 		zap.Int("rules", len(cfg.Rules)))
 }
 
-func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Service) plugins.HttpPluginInstance {
+func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	ctx, _ := tracer.Start(conn.Context(), "Plugin[http_capture]")
 	// this span is destroyed by the instance.Destroy() method
 
@@ -111,14 +111,11 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs ...services.Servi
 		rules:  f.config.Rules,
 	}
 
-	// Get the eventstore service
-	for _, s := range svcs {
-		switch i := s.(type) {
-		case eventstore.EventStore:
-			fi.eventstore = i
-		case rulekitsvc.Service:
-			fi.rulekit = i
-		}
+	if es, ok := svcs.Get(eventstore.TypeEventStore).(eventstore.EventStore); ok {
+		fi.eventstore = es
+	}
+	if rk, ok := svcs.Get(rulekitsvc.TypeRulekit).(rulekitsvc.Service); ok {
+		fi.rulekit = rk
 	}
 
 	return fi

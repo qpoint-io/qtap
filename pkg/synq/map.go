@@ -13,8 +13,13 @@ type Map[K comparable, V any] struct {
 
 // NewMap creates a new ConcurrentMap.
 func NewMap[K comparable, V any]() *Map[K, V] {
+	return NewMapSize[K, V](0)
+}
+
+// NewMapSize creates a new ConcurrentMap with a given size.
+func NewMapSize[K comparable, V any](size int) *Map[K, V] {
 	return &Map[K, V]{
-		m: make(map[K]V),
+		m: make(map[K]V, size),
 	}
 }
 
@@ -61,7 +66,21 @@ func (cm *Map[K, V]) Len() int {
 	return len(cm.m)
 }
 
-// Copy returns a copy of the map's contents.
+// Clone returns a copy of the map's contents as a new *synq.Map.
+// Use with caution, as this function copies the entire map.
+func (cm *Map[K, V]) Clone() *Map[K, V] {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
+	dest := NewMapSize[K, V](len(cm.m))
+	for k, v := range cm.m {
+		dest.Store(k, v)
+	}
+
+	return dest
+}
+
+// Copy returns a copy of the map's contents as a native map[K]V.
 // Use with caution, as this function copies the entire map.
 func (cm *Map[K, V]) Copy() map[K]V {
 	cm.mu.RLock()

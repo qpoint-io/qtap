@@ -182,7 +182,7 @@ func mainSetup() error {
 	e2ectx.RegisterErrCloser(resolv.Stop)
 
 	// Initialize service and plugin systems
-	svcRegistry := services.NewServiceRegistry()
+	svcRegistry := services.NewFactoryRegistry()
 	svcManager := services.NewServiceManager(e2ectx, logger, svcRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
 	confManager.SubscribeSetter(svcManager)
@@ -191,7 +191,7 @@ func mainSetup() error {
 	pluginManager := plugins.NewPluginManager(
 		logger,
 		plugins.SetBufferSize(2*1<<20), // 2MB
-		plugins.SetServiceRegistry(svcRegistry),
+		plugins.SetServiceFactoryRegistry(svcRegistry),
 		plugins.SetPluginRegistry(pluginRegistry),
 	)
 	confManager.SubscribeSetter(pluginManager)
@@ -213,7 +213,7 @@ func mainSetup() error {
 		connection.SetProcessManager(pm),
 		connection.SetDnsManager(resolv),
 		connection.SetStreamFactory(ds),
-		connection.SetServiceRegistry(svcRegistry),
+		connection.SetServiceFactoryRegistry(svcRegistry),
 		connection.SetConfig(confManager.GetConfig()),
 		connection.SetDeploymentTags(tags.FromValues(map[string]string{"e2e": "true"})),
 	)

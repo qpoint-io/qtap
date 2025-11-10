@@ -5,12 +5,9 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/mocks"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
@@ -154,7 +151,6 @@ func TestFactory_Init_InvalidConfig(t *testing.T) {
 }
 
 func TestFactory_Create(t *testing.T) {
-	ctrl := gomock.NewController(t)
 	f := &Factory{}
 
 	// Initialize with valid config first
@@ -172,10 +168,9 @@ func TestFactory_Create(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory
-	mockRegistry := mocks.NewMockRegistryAccessor(ctrl)
 	noopFactory := &noop.Factory{}
-	mockRegistry.EXPECT().Get(objectstore.TypeObjectStore).Return(noopFactory)
-	f.SetRegistry(mockRegistry)
+	mockRegistry := services.NewFactoryRegistry(noopFactory)
+	f.SetFactoryRegistry(mockRegistry)
 
 	// Now test Create
 	svc, err := f.Create(t.Context())

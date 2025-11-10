@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/services"
-	serviceRegistrar "github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"go.opentelemetry.io/otel/attribute"
@@ -50,7 +49,7 @@ type Connection struct {
 	reqBody      *synq.LinkedBuffer
 	resBody      *synq.LinkedBuffer
 
-	services      []serviceRegistrar.Service
+	services      *services.ServiceRegistry
 	stackInstance StackInstance
 	controlValues map[string]any
 	bufferSize    int
@@ -61,18 +60,9 @@ type Connection struct {
 	shutdownOnce sync.Once
 }
 
-func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bufferSize int, connectionType ConnectionType, stack *StackDeployment, svcs []services.Service) *Connection {
+func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bufferSize int, connectionType ConnectionType, stack *StackDeployment, svcs *services.ServiceRegistry) *Connection {
 	ctx, span := tracer.Start(ctx, "plugin.Connection")
 	span.SetAttributes(attribute.String("connection.type", string(connectionType)))
-
-	// TODO(kamal): this will be cleaned up in a follow-up PR
-	var connmetaService connmeta.Service
-	for _, svc := range svcs {
-		if ca, ok := svc.(connmeta.Service); ok {
-			connmetaService = ca
-			break
-		}
-	}
 
 	c := &Connection{
 		ctx:        ctx,
@@ -80,7 +70,6 @@ func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bu
 		Type:       connectionType,
 		bufferSize: bufferSize,
 		meta: &meta{
-			Service:   connmetaService,
 			requestID: requestID,
 		},
 		reqBody:  synq.NewLinkedBuffer(bufferSize),
@@ -89,6 +78,10 @@ func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bu
 
 		commandQueue: make(chan command, commandQueueSize),
 		workerDone:   make(chan struct{}),
+	}
+
+	if svc, ok := svcs.Get(connmeta.Type).(connmeta.Service); ok {
+		c.meta.Service = svc
 	}
 
 	// set the deployment

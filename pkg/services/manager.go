@@ -12,17 +12,17 @@ import (
 type ServiceManager struct {
 	ctx       context.Context
 	logger    *zap.Logger
-	registry  *ServiceRegistry
-	factories map[ServiceType]FactoryFactory
+	registry  *FactoryRegistry
+	factories *Registry[ServiceType, FactoryFactory]
 }
 
 // NewServiceManager creates a new service manager
-func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *ServiceRegistry) *ServiceManager {
+func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *FactoryRegistry) *ServiceManager {
 	return &ServiceManager{
 		ctx:       ctx,
 		logger:    logger,
 		registry:  registry,
-		factories: make(map[ServiceType]FactoryFactory),
+		factories: NewRegistry[ServiceType, FactoryFactory](),
 	}
 }
 
@@ -30,9 +30,9 @@ func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *Servic
 func (sm *ServiceManager) RegisterFactory(fns ...FactoryFactory) {
 	for _, fn := range fns {
 		factory := fn()
-		if _, exists := sm.factories[factory.FactoryType()]; !exists {
+		if _, exists := sm.factories.Load(factory.FactoryType()); !exists {
 			sm.logger.Debug("registering factory", zap.String("factory_type", factory.FactoryType().String()))
-			sm.factories[factory.FactoryType()] = fn
+			sm.factories.Register(factory.FactoryType(), fn)
 		}
 	}
 }
@@ -49,8 +49,8 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 	svcs["rulekit"] = config.Rulekit
 	svcs["connmeta"] = nil
 	for key, svcConfig := range svcs {
-		fn, exists := sm.factories[ServiceType(key)]
-		if !exists {
+		fn := sm.factories.Get(ServiceType(key))
+		if fn == nil {
 			sm.logger.Debug("no factory registered for service type", zap.String("service_type", key))
 			continue
 		}
@@ -75,8 +75,8 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 		}
 
 		// Set the registry for the factory if it implements the SetRegistry interface
-		if sr, ok := factory.(SetRegistry); ok {
-			sr.SetRegistry(sm.registry)
+		if sr, ok := factory.(SetFactoryRegistry); ok {
+			sr.SetFactoryRegistry(sm.registry)
 		}
 
 		sm.logger.Info("initializing service factory", zap.String("factory_type", key))

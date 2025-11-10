@@ -93,7 +93,7 @@ func (f *factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.config = &cfg
 }
 
-func (f *factory) NewInstance(ctx plugins.PluginContext, svcs ...services.Service) plugins.HttpPluginInstance {
+func (f *factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	f.logger.Debug("new plugin instance created")
 	i := &filterInstance{
 		ctx: ctx,
@@ -106,10 +106,8 @@ func (f *factory) NewInstance(ctx plugins.PluginContext, svcs ...services.Servic
 		rules:  f.config.Rules,
 	}
 
-	for _, svc := range svcs {
-		if rk, ok := svc.(rulekitsvc.Service); ok {
-			i.rulekit = rk
-		}
+	if rk, ok := svcs.Get(rulekitsvc.TypeRulekit).(rulekitsvc.Service); ok {
+		i.rulekit = rk
 	}
 
 	return i
@@ -120,7 +118,7 @@ func (f *factory) RequiredServices() []services.ServiceType {
 }
 
 func (f *factory) Destroy() {
-	f.logger.Debug("filter destroyed")
+	f.logger.Debug("plugin destroyed")
 }
 
 func createWriter(writer io.Writer) *zap.Logger {

@@ -153,7 +153,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context) (services.Service, error) {
-	svc, err := f.FactoryRegistry.CreateService(ctx, objectstore.TypeObjectStore)
+	svc, err := f.FactoryRegistry.CreateService(ctx, objectstore.TypeObjectStore, "")
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}

@@ -194,11 +194,11 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		opt(c)
 	}
 
-	c.assignEventStore(ctx)
+	c.assignEventStore()
 	return c
 }
 
-func (c *Connection) assignEventStore(ctx context.Context) {
+func (c *Connection) assignEventStore() {
 	if c.svcFactoryRegistry == nil {
 		return
 	}
@@ -225,14 +225,14 @@ func (c *Connection) assignEventStore(ctx context.Context) {
 }
 
 func (c *Connection) createService(serviceType servicespkg.ServiceType) (servicespkg.Service, error) {
-	instance, err := c.svcFactoryRegistry.CreateService(c.ctx, serviceType)
+	instance, err := c.svcFactoryRegistry.CreateService(c.ctx, serviceType, "")
 	if err != nil {
 		return nil, fmt.Errorf("creating service %q: %w", serviceType, err)
 	}
 
 	// setup adapters
 	if l, ok := instance.(servicespkg.LoggerAdapter); ok {
-		l.SetLogger(c.logger)
+		l.SetLogger(c.logger.With(zap.Stringer("service", serviceType)))
 	}
 	if ca, ok := instance.(ConnectionAdapter); ok {
 		ca.SetConnection(c)

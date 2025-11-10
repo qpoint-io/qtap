@@ -339,7 +339,7 @@ func runTapCmd(logger *zap.Logger) {
 				Type: connmeta.Type.String(),
 			}
 		},
-		// report connections to pulse
+		// report connections to the deafault event store
 		func(cfg *config.Config) *config.ServiceConfig {
 			return &config.ServiceConfig{
 				Type: reporter.Type.String(),

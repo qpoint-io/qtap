@@ -54,26 +54,16 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context) (services.Service, error) {
-	var factory services.ServiceFactory
-	if f.config.EventStoreID == "" {
-		// get default event store factory
-		factory = f.factoryRegistry.Get(eventstore.TypeEventStore)
-	} else {
-		// get named event store factory
-		factory, _ = f.factoryRegistry.Load(eventstore.TypeEventStore, f.config.EventStoreID)
-	}
-
-	if factory == nil {
-		return nil, errors.New("event store factory not found")
-	}
-
-	svc, err := factory.Create(ctx)
+	svc, err := f.factoryRegistry.CreateService(ctx, eventstore.TypeEventStore, f.config.EventStoreID)
 	if err != nil {
 		return nil, fmt.Errorf("creating event store: %w", err)
 	}
 	es, ok := svc.(eventstore.EventStore)
 	if !ok {
 		return nil, errors.New("service is not an eventstore.EventStore")
+	}
+	if l, ok := es.(services.LoggerAdapter); ok {
+		l.SetLogger(f.logger)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -83,6 +73,6 @@ func (f *Factory) Create(ctx context.Context) (services.Service, error) {
 		firstReportDeadline: f.config.FirstReportDeadline,
 		reportInterval:      f.config.ReportInterval,
 		eventStore:          es,
-		// logToConsole:        f.config.EventStoreID == "", // log to the console only if this is the default reporter
+		logToConsole:        f.config.EventStoreID == "", // log to the console only if this is the default reporter
 	}, nil
 }

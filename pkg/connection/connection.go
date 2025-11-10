@@ -320,7 +320,7 @@ func (c *Connection) Open() {
 	})
 }
 
-func (c *Connection) SetupReporters() {
+func (c *Connection) setupReporters() {
 	// create reporter services
 	r, err := c.createService("reporter")
 	if err != nil {

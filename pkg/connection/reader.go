@@ -76,7 +76,7 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 
 	// setup reporters
 	if m.shouldReport(conn) {
-		conn.SetupReporters()
+		conn.setupReporters()
 	}
 }
 

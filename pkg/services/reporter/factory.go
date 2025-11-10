@@ -25,7 +25,7 @@ type Config struct {
 	// FirstReportDeadline ensures that a report is sent after a connection has been open for at least this duration.
 	FirstReportDeadline time.Duration
 
-	// ReportInterval sets an optional reporting interval meant for long-running connections.
+	// ReportInterval sets an optional interval for recurring reports following the first report.
 	ReportInterval time.Duration
 }
 

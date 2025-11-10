@@ -34,7 +34,7 @@ func (s *service) SetConnection(conn *connection.Connection) {
 	s.conn = conn
 
 	// now that we have the connection, we can kick off the loop
-	s.start()
+	go s.start()
 }
 
 // SetLogger implements the LoggerAdapter interface.
@@ -43,29 +43,34 @@ func (s *service) SetLogger(logger *zap.Logger) {
 }
 
 func (s *service) start() {
-	if s.firstReportDeadline > 0 && s.firstReportDeadline < s.reportInterval {
-		go func() {
-			select {
-			case <-s.ctx.Done():
-				return
-			case <-time.After(s.firstReportDeadline):
-				s.report()
-			}
-		}()
+	// kick off the first report
+	if s.firstReportDeadline > 0 {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-time.After(s.firstReportDeadline):
+			// send the first report
+			s.report()
+		}
 	}
 
-	if s.reportInterval > 0 {
-		go func() {
-			tick := time.Tick(s.reportInterval)
-			for {
-				select {
-				case <-s.ctx.Done():
-					return
-				case <-tick:
-					s.report()
-				}
-			}
-		}()
+	// start the recurring reports
+	s.startRecurringReports()
+}
+
+func (s *service) startRecurringReports() {
+	if s.reportInterval == 0 || s.ctx.Err() != nil {
+		return
+	}
+
+	tick := time.Tick(s.reportInterval)
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-tick:
+			s.report()
+		}
 	}
 }
 

@@ -51,15 +51,6 @@ func TestEventStore_Save_UnsupportedType(t *testing.T) {
 	es.Save(t.Context(), "unsupported type")
 	// Since we can't easily test the log output, we just ensure it doesn't panic
 }
-
-func TestEventStore_SetConnection(t *testing.T) {
-	es := &EventStore{}
-
-	// Test that SetConnection doesn't panic
-	es.SetConnection(nil)
-	assert.Nil(t, es.conn)
-}
-
 func TestEventStore_ServiceType(t *testing.T) {
 	es := &EventStore{}
 	assert.Equal(t, eventstore.TypeEventStore, es.ServiceType())

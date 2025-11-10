@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/moby/moby/pkg/parsers/kernel"
@@ -41,6 +42,7 @@ import (
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
+	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/status"
 	"github.com/qpoint-io/qtap/pkg/stream"
@@ -79,6 +81,7 @@ var (
 		// Add more services here...
 		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
 		func() services.ServiceFactory { return &connmeta.Factory{} },
+		func() services.ServiceFactory { return &reporter.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{
@@ -321,6 +324,32 @@ func runTapCmd(logger *zap.Logger) {
 	svcFactoryRegistry := services.NewFactoryRegistry()
 	svcManager := services.NewServiceManager(ctx, logger, svcFactoryRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
+	// register core services that must always be included
+	svcManager.AddExtraServices(
+		// rulekit
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type:   rulekitsvc.TypeRulekit.String(),
+				Config: cfg.Rulekit,
+			}
+		},
+		// connmeta
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type: connmeta.Type.String(),
+			}
+		},
+		// report connections to the default event store
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type: reporter.Type.String(),
+				Config: &reporter.Config{
+					FirstReportDeadline: 500 * time.Millisecond,
+					ReportInterval:      10 * time.Second,
+				},
+			}
+		},
+	)
 	configManager.Subscribe(func(cfg *config.Config) {
 		svcManager.SetConfig(cfg)
 	})

@@ -13,9 +13,70 @@ import (
 	Convenience types
 */
 
+// FactoryRegistry is a convenience type for a registry of service factories.
+// Factory registries are keyed by ServiceType() and not FactoryType() so this wrapper exists to avoid any confusion by users.
+type FactoryRegistry struct {
+	r *Registry[ServiceType, ServiceFactory]
+}
+
+func NewFactoryRegistry(factories ...ServiceFactory) *FactoryRegistry {
+	fr := NewRegistrySize[ServiceType, ServiceFactory](len(factories))
+	for _, factory := range factories {
+		fr.Register(factory.ServiceType(), factory)
+	}
+	return &FactoryRegistry{fr}
+}
+
+// Register registers a default service factory by type and optional ID.
+// If the ID is empty, the factory is registered as the default for the type.
+func (fr *FactoryRegistry) Register(value ServiceFactory, id string) {
+	key := value.ServiceType()
+	if id != "" {
+		key = ServiceType(fmt.Sprintf("%s:%s", key.String(), id))
+	}
+	fr.r.Register(key, value)
+}
+
+// Load retrieves a service factory by type and optional ID.
+// If the ID is empty, the default factory for the type is returned.
+func (fr *FactoryRegistry) Load(serviceType ServiceType, id string) (ServiceFactory, bool) {
+	key := serviceType
+	if id != "" {
+		key = ServiceType(fmt.Sprintf("%s:%s", serviceType.String(), id))
+	}
+	return fr.r.Load(key)
+}
+
+// Get retrieves a service factory by type and optional ID.
+// If the ID is empty, the default factory for the type is returned.
+func (fr *FactoryRegistry) Get(serviceType ServiceType, id string) ServiceFactory {
+	f, ok := fr.Load(serviceType, id)
+	if !ok {
+		return nil
+	}
+	return f
+}
+
+func (fr *FactoryRegistry) Copy() *FactoryRegistry {
+	return &FactoryRegistry{fr.r.Copy()}
+}
+
+// CreateService creates a new service instance from the default factory for the given type.
+func (fr *FactoryRegistry) CreateService(ctx context.Context, serviceType ServiceType, id string) (Service, error) {
+	factory, ok := fr.Load(serviceType, id)
+	if !ok {
+		key := serviceType.String()
+		if id != "" {
+			key = fmt.Sprintf("%s:%s", key, id)
+		}
+		return nil, fmt.Errorf("factory not found for service %s", key)
+	}
+	return factory.Create(ctx)
+}
+
 // ServiceRegistry is a convenience type for a registry of services
 type ServiceRegistry struct {
-	*Registry[ServiceType, Service]
+	r *Registry[ServiceType, Service]
 }
 
 func NewServiceRegistry(services ...Service) *ServiceRegistry {
@@ -27,41 +88,19 @@ func NewServiceRegistry(services ...Service) *ServiceRegistry {
 }
 
 func (sr *ServiceRegistry) Register(value Service) {
-	sr.Registry.Register(value.ServiceType(), value)
+	sr.r.Register(value.ServiceType(), value)
+}
+
+func (sr *ServiceRegistry) Get(serviceType ServiceType) Service {
+	return sr.r.Get(serviceType)
 }
 
 func (sr *ServiceRegistry) Copy() *ServiceRegistry {
-	return &ServiceRegistry{sr.Registry.Copy()}
+	return &ServiceRegistry{sr.r.Copy()}
 }
 
-// FactoryRegistry is a convenience type for a registry of service factories.
-// Factory registries are keyed by ServiceType() and not FactoryType() so this wrapper exists to avoid any confusion by users.
-type FactoryRegistry struct {
-	*Registry[ServiceType, ServiceFactory]
-}
-
-func NewFactoryRegistry(factories ...ServiceFactory) *FactoryRegistry {
-	fr := NewRegistrySize[ServiceType, ServiceFactory](len(factories))
-	for _, factory := range factories {
-		fr.Register(factory.ServiceType(), factory)
-	}
-	return &FactoryRegistry{fr}
-}
-
-func (fr *FactoryRegistry) Register(value ServiceFactory) {
-	fr.Registry.Register(value.ServiceType(), value)
-}
-
-func (fr *FactoryRegistry) Copy() *FactoryRegistry {
-	return &FactoryRegistry{fr.Registry.Copy()}
-}
-
-func (fr *FactoryRegistry) CreateService(ctx context.Context, serviceType ServiceType) (Service, error) {
-	factory := fr.Get(serviceType)
-	if factory == nil {
-		return nil, fmt.Errorf("factory not found for service %s", serviceType)
-	}
-	return factory.Create(ctx)
+func (sr *ServiceRegistry) Close() error {
+	return sr.r.Close()
 }
 
 /*

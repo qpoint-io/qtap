@@ -608,7 +608,7 @@ func (p *Process) ControlValues() map[string]any {
 
 	// user
 	user := map[string]any{}
-	if u, err := p.User(); err == nil {
+	if u, _ := p.User(); u != nil {
 		user["id"] = u.UID
 		user["name"] = u.Username
 	}

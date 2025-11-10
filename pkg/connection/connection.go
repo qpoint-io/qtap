@@ -28,14 +28,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const (
-	WarmupTimeout = 10 * time.Second
-)
-
 var tracer = telemetry.Tracer()
 
 type services interface {
-	generateAuditLog(conn *Connection)
 	finalizeConnection(conn *Connection)
 	createStreamer(conn *Connection) StreamProcessor
 }
@@ -60,10 +55,11 @@ type Connection struct {
 	// dependencies
 	services           services
 	svcFactoryRegistry *servicespkg.FactoryRegistry
-	eventStore         eventstore.EventStore
-	controlManager     ControlManager
-	streamProcessor    StreamProcessor
-	dnsRecord          *dns.Record
+	svcRegistry        *servicespkg.ServiceRegistry
+
+	controlManager  ControlManager
+	streamProcessor StreamProcessor
+	dnsRecord       *dns.Record
 
 	// connection properties
 	id string
@@ -102,9 +98,6 @@ type Connection struct {
 	// tags & labels
 	tags   tags.List
 	labels labels.Set
-
-	// auditCount is the number of times a connection audit log as been reported
-	auditCount uint32
 }
 
 type ConnOpt func(c *Connection)
@@ -169,6 +162,12 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	)
 
 	t := tags.New()
+	// TODO: is this what we actually want here?
+	// if openEvent.Source == Client {
+	// 	t.Add("ip", openEvent.Local.IP.String())
+	// } else {
+	// 	t.Add("ip", openEvent.Remote.IP.String())
+	// }
 	t.Add("ip", openEvent.Local.IP.String())
 
 	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
@@ -187,6 +186,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		HandlerType: handlerType,
 		tags:        t,
 		labels:      labels.New(),
+		svcRegistry: servicespkg.NewServiceRegistry(),
 	}
 
 	// apply options
@@ -194,16 +194,16 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		opt(c)
 	}
 
-	c.assignEventStore(ctx)
+	c.assignEventStore()
 	return c
 }
 
-func (c *Connection) assignEventStore(ctx context.Context) {
+func (c *Connection) assignEventStore() {
 	if c.svcFactoryRegistry == nil {
 		return
 	}
 
-	instance, err := c.svcFactoryRegistry.CreateService(ctx, eventstore.TypeEventStore)
+	instance, err := c.createService(eventstore.TypeEventStore)
 	if err != nil {
 		c.logger.Error("failed to create event store", zap.Error(err))
 		return
@@ -215,22 +215,30 @@ func (c *Connection) assignEventStore(ctx context.Context) {
 		return
 	}
 
-	// setup adapters
-	if l, ok := instance.(servicespkg.LoggerAdapter); ok {
-		l.SetLogger(c.logger)
-	}
-	if ca, ok := instance.(ConnectionAdapter); ok {
-		ca.SetConnection(c)
-	}
-
 	// setup meta injector
 	injector := &EventStoreMetaInjector{
 		Conn:       c,
 		EventStore: es,
 	}
 
-	// set event store
-	c.eventStore = injector
+	c.svcRegistry.Register(injector)
+}
+
+func (c *Connection) createService(serviceType servicespkg.ServiceType) (servicespkg.Service, error) {
+	instance, err := c.svcFactoryRegistry.CreateService(c.ctx, serviceType, "")
+	if err != nil {
+		return nil, fmt.Errorf("creating service %q: %w", serviceType, err)
+	}
+
+	// setup adapters
+	if l, ok := instance.(servicespkg.LoggerAdapter); ok {
+		l.SetLogger(c.logger.With(zap.Stringer("service", serviceType)))
+	}
+	if ca, ok := instance.(ConnectionAdapter); ok {
+		ca.SetConnection(c)
+	}
+
+	return instance, nil
 }
 
 func (c *Connection) SetProcess(process *process.Process) {
@@ -309,22 +317,22 @@ func (c *Connection) Open() {
 
 		// Start monitoring
 		go c.watch()
-		go c.warmup()
 	})
+}
+
+func (c *Connection) setupReporters() {
+	// create reporter services
+	r, err := c.createService("reporter")
+	if err != nil {
+		c.logger.Error("failed to create reporter service", zap.Error(err))
+		return
+	}
+
+	c.svcRegistry.Register(r)
 }
 
 func (c *Connection) ID() string {
 	return c.id
-}
-
-func (c *Connection) warmup() {
-	// Start goroutine to wait for timeout
-	select {
-	case <-c.ctx.Done():
-		return
-	case <-time.After(WarmupTimeout):
-		c.services.generateAuditLog(c)
-	}
 }
 
 func (c *Connection) watch() {
@@ -391,12 +399,13 @@ func (c *Connection) Close() {
 		}
 	}
 
-	// generate an audit log
-	c.services.generateAuditLog(c)
+	// close all connection services
+	// this will also close the reporter service, sending a final report to the event store
+	if err := c.svcRegistry.Close(); err != nil {
+		c.logger.Error("error closing service registry", zap.Error(err))
+	}
 
-	// log connection report
-	// if the connection is expected this will be a debug level log
-	// otherwise it will be a warning or an error
+	// print a debug log line with the report
 	c.logConnectionReport()
 }
 
@@ -524,6 +533,10 @@ func (c *Connection) Tags() tags.List {
 	return c.tags
 }
 
+func (c *Connection) Labels() labels.Set {
+	return c.labels
+}
+
 func (c *Connection) Context() context.Context {
 	if c.ctx == nil {
 		return context.Background()
@@ -589,7 +602,7 @@ func (c *Connection) ControlValues() map[string]any {
 		maps.Copy(dst, d.ControlValues())
 	}
 
-	if h := c.Domain(); h != "" && h != "<nil>" && !c.domainIsIP {
+	if h := c.Domain(); h != "" && !c.domainIsIP {
 		dst["domain"] = h
 	}
 

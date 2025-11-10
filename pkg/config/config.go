@@ -26,16 +26,40 @@ type Services struct {
 	QscanClient  *ServiceQscan        `yaml:"qscan"`
 }
 
-func (s Services) ToMap() map[string]any {
-	m := make(map[string]any)
+func (s Services) AllConfigs() []*ServiceConfig {
+	es := s.FirstEventStore()
+	os := s.FirstObjectStore()
+	qc := s.Qscan()
 
-	m[s.FirstEventStore().ServiceType()] = s.FirstEventStore()
+	return []*ServiceConfig{
+		{
+			ID:      es.ID,
+			Type:    es.ServiceType(),
+			Config:  es,
+			Default: true,
+		},
+		{
+			ID:      os.ID,
+			Type:    os.ServiceType(),
+			Config:  os,
+			Default: true,
+		},
+		{
+			Type:    qc.ServiceType(),
+			Config:  qc,
+			Default: true,
+		},
+	}
+}
 
-	m[s.FirstObjectStore().ServiceType()] = s.FirstObjectStore()
+type ServiceConfig struct {
+	ID     string
+	Type   string
+	Config any
 
-	m[s.Qscan().ServiceType()] = s.Qscan()
-
-	return m
+	// Default indicates that this service should be used if its service type is requested
+	// without specifying an ID
+	Default bool
 }
 
 func (s Services) Qscan() ServiceQscan {

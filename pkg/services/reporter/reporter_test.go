@@ -1,4 +1,4 @@
-package connection
+package reporter
 
 import (
 	"crypto/tls"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kamaln7/resolvable"
+	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
@@ -28,6 +29,7 @@ func Test_toEventStoreConnection(t *testing.T) {
 			Name:      "pod-name",
 			Namespace: "pod-namespace",
 		}).WithBackgroundContext(),
+		UserShell: resolvable.Static(true).WithBackgroundContext(),
 	}
 	process.SetHostname("local-hostname")
 	process.SetUser(1000, "test-user")
@@ -35,7 +37,7 @@ func Test_toEventStoreConnection(t *testing.T) {
 	t.Run("ingress connection", func(t *testing.T) {
 		conn := &eventstore.Connection{
 			Direction: eventstore.Direction_Ingress,
-			Part:      1,
+			Part:      0,
 			Finalized: true,
 			System: &eventstore.ConnectionSystem{
 				Hostname:      telemetry.Hostname(),
@@ -43,8 +45,14 @@ func Test_toEventStoreConnection(t *testing.T) {
 				AgentInstance: telemetry.InstanceID(),
 			},
 			Tags: map[string][]string{
-				"tag1": {"value1", "value2"},
-				"tag2": {"value"},
+				"tag1":     {"value1", "value2"},
+				"tag2":     {"value"},
+				"strategy": {"observe"},
+				"host":     {"local-hostname"},
+				"ip":       {"5.6.7.8"},
+			},
+			Labels: []string{
+				"user-shell",
 			},
 			Source: &eventstore.ConnectionEndpointRemote{
 				Address: qnet.NetAddr{
@@ -77,50 +85,46 @@ func Test_toEventStoreConnection(t *testing.T) {
 			SocketProtocol: eventstore.SocketProtocol_TCP,
 			L7Protocol:     eventstore.L7Protocol_HTTP1,
 		}
-		conn.SetConnectionID("test-conn-id")
 		conn.SetEndpointID("example.com")
 
-		assert.Equal(t,
-			conn,
-			toEventStoreConnection(&Connection{
-				logger:     zaptest.NewLogger(t),
-				id:         "test-conn-id",
-				domain:     "example.com",
-				auditCount: 1,
-				tags: tags.FromMultiValues(map[string][]string{
-					"tag1": {"value1", "value2"},
-					"tag2": {"value"},
-				}),
-				TLSClientHello: &tlsutils.ClientHello{
-					Version: tls.VersionTLS13,
+		origConn := connection.NewConnection(
+			t.Context(),
+			zaptest.NewLogger(t),
+			&connection.OpenEvent{
+				Local: qnet.NetAddr{
+					IP:   net.ParseIP("5.6.7.8"),
+					Port: 5678,
 				},
-				Protocol: Protocol_HTTP1,
-				OpenEvent: &OpenEvent{
-					Local: qnet.NetAddr{
-						IP:   net.ParseIP("5.6.7.8"),
-						Port: 5678,
-					},
-					Remote: qnet.NetAddr{
-						IP:   net.ParseIP("1.2.3.4"),
-						Port: 1234,
-					},
-					Source:       Server,
-					SocketType:   SocketType_TCP,
-					IsRedirected: false,
+				Remote: qnet.NetAddr{
+					IP:   net.ParseIP("1.2.3.4"),
+					Port: 1234,
 				},
-				CloseEvent: &CloseEvent{
-					WrBytes: 2000,
-					RdBytes: 1000,
-				},
-				process: process,
-			}),
+				Source:       connection.Server,
+				SocketType:   connection.SocketType_TCP,
+				IsRedirected: false,
+			},
+			connection.WithProcess(process),
+			connection.WithTags(tags.FromMultiValues(map[string][]string{
+				"tag1": {"value1", "value2"},
+				"tag2": {"value"},
+			})),
 		)
+		origConn.SetDomain("example.com")
+		origConn.TLSClientHello = &tlsutils.ClientHello{
+			Version: tls.VersionTLS13,
+		}
+		origConn.Protocol = connection.Protocol_HTTP1
+		origConn.CloseEvent = &connection.CloseEvent{WrBytes: 2000, RdBytes: 1000}
+
+		// sync up the randomly generated connection ID
+		conn.SetConnectionID(origConn.ID())
+		assert.Equal(t, conn, toEventStoreConnection(origConn))
 	})
 
 	t.Run("egress connection", func(t *testing.T) {
 		conn := &eventstore.Connection{
 			Direction: eventstore.Direction_EgressExternal,
-			Part:      1,
+			Part:      0,
 			Finalized: true,
 			System: &eventstore.ConnectionSystem{
 				Hostname:      telemetry.Hostname(),
@@ -128,8 +132,14 @@ func Test_toEventStoreConnection(t *testing.T) {
 				AgentInstance: telemetry.InstanceID(),
 			},
 			Tags: map[string][]string{
-				"tag1": {"value1", "value2"},
-				"tag2": {"value"},
+				"tag1":     {"value1", "value2"},
+				"tag2":     {"value"},
+				"strategy": {"observe"},
+				"host":     {"local-hostname"},
+				"ip":       {"5.6.7.8"},
+			},
+			Labels: []string{
+				"user-shell",
 			},
 			Source: &eventstore.ConnectionEndpointLocal{
 				Address: qnet.NetAddr{
@@ -162,43 +172,39 @@ func Test_toEventStoreConnection(t *testing.T) {
 			SocketProtocol: eventstore.SocketProtocol_UDP,
 			L7Protocol:     eventstore.L7Protocol_HTTP2,
 		}
-		conn.SetConnectionID("test-conn-id")
 		conn.SetEndpointID("example.com")
 
-		assert.Equal(t,
-			conn,
-			toEventStoreConnection(&Connection{
-				logger:     zaptest.NewLogger(t),
-				id:         "test-conn-id",
-				domain:     "example.com",
-				auditCount: 1,
-				tags: tags.FromMultiValues(map[string][]string{
-					"tag1": {"value1", "value2"},
-					"tag2": {"value"},
-				}),
-				TLSClientHello: &tlsutils.ClientHello{
-					Version: tls.VersionTLS13,
+		origConn := connection.NewConnection(
+			t.Context(),
+			zaptest.NewLogger(t),
+			&connection.OpenEvent{
+				Local: qnet.NetAddr{
+					IP:   net.ParseIP("5.6.7.8"),
+					Port: 5678,
 				},
-				OpenEvent: &OpenEvent{
-					Local: qnet.NetAddr{
-						IP:   net.ParseIP("5.6.7.8"),
-						Port: 5678,
-					},
-					Remote: qnet.NetAddr{
-						IP:   net.ParseIP("1.2.3.4"),
-						Port: 1234,
-					},
-					Source:       Client,
-					SocketType:   SocketType_UDP,
-					IsRedirected: false,
+				Remote: qnet.NetAddr{
+					IP:   net.ParseIP("1.2.3.4"),
+					Port: 1234,
 				},
-				CloseEvent: &CloseEvent{
-					WrBytes: 2000,
-					RdBytes: 1000,
-				},
-				process:  process,
-				Protocol: Protocol_HTTP2,
-			}),
+				Source:       connection.Client,
+				SocketType:   connection.SocketType_UDP,
+				IsRedirected: false,
+			},
+			connection.WithProcess(process),
+			connection.WithTags(tags.FromMultiValues(map[string][]string{
+				"tag1": {"value1", "value2"},
+				"tag2": {"value"},
+			})),
 		)
+		origConn.SetDomain("example.com")
+		origConn.TLSClientHello = &tlsutils.ClientHello{
+			Version: tls.VersionTLS13,
+		}
+		origConn.CloseEvent = &connection.CloseEvent{WrBytes: 2000, RdBytes: 1000}
+		origConn.Protocol = connection.Protocol_HTTP2
+
+		// sync up the randomly generated connection ID
+		conn.SetConnectionID(origConn.ID())
+		assert.Equal(t, conn, toEventStoreConnection(origConn))
 	})
 }

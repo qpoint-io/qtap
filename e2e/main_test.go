@@ -28,6 +28,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
+	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -98,6 +99,7 @@ func mainSetup() error {
 		// Add more services here...
 		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
 		func() services.ServiceFactory { return &connmeta.Factory{} },
+		func() services.ServiceFactory { return &reporter.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{
@@ -185,6 +187,33 @@ func mainSetup() error {
 	svcRegistry := services.NewFactoryRegistry()
 	svcManager := services.NewServiceManager(e2ectx, logger, svcRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
+	// register core services that must always be included
+	svcManager.AddExtraServices(
+		// rulekit
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type:   rulekitsvc.TypeRulekit.String(),
+				Config: cfg.Rulekit,
+			}
+		},
+		// connmeta
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type: connmeta.Type.String(),
+			}
+		},
+		// report connections to the default event store
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type: reporter.Type.String(),
+				Config: &reporter.Config{
+					// only report connections once they are closed
+					FirstReportDeadline: 0,
+					ReportInterval:      0,
+				},
+			}
+		},
+	)
 	confManager.SubscribeSetter(svcManager)
 
 	pluginRegistry := plugins.NewRegistry(pluginFactories...)

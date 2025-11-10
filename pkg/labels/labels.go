@@ -9,7 +9,7 @@ import (
 type Set set.Set[string]
 
 func New(items ...string) Set {
-	s := make(Set)
+	s := make(Set, len(items))
 	s.Add(items...)
 	return s
 }

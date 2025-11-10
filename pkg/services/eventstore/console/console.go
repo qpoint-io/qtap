@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
@@ -25,7 +24,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context) (services.Service, error) {
-	svc, err := f.FactoryRegistry.CreateService(ctx, objectstore.TypeObjectStore)
+	svc, err := f.FactoryRegistry.CreateService(ctx, objectstore.TypeObjectStore, "")
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
@@ -49,12 +48,7 @@ type EventStore struct {
 	services.LogHelper
 	eventstore.BaseEventStore
 
-	conn        *connection.Connection
 	objectStore objectstore.ObjectStore
-}
-
-func (s *EventStore) SetConnection(conn *connection.Connection) {
-	s.conn = conn
 }
 
 // Save stores an event

@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/axiomhq/axiom-go/axiom"
-	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
@@ -25,7 +24,6 @@ var (
 type EventStore struct {
 	services.LogHelper
 	eventstore.BaseEventStore
-	conn        *connection.Connection
 	axiomClient *axiom.Client
 	dataset     string
 
@@ -116,11 +114,6 @@ func (s *EventStore) convertToAxiomEvent(item any) (axiom.Event, error) {
 	}
 
 	return event, nil
-}
-
-// SetConnection sets the connection context for events
-func (s *EventStore) SetConnection(conn *connection.Connection) {
-	s.conn = conn
 }
 
 func toMap(v any) (map[string]any, error) {

@@ -88,3 +88,7 @@ func (r *report) reportFields() []zap.Field {
 		zap.Uint64("dataEventCount", r.dataEventCount),
 	}
 }
+
+func (r *report) DataEventCount() uint64 {
+	return r.dataEventCount
+}

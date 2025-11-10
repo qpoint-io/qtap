@@ -247,7 +247,7 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 
 	svcs := services.NewServiceRegistry()
 	for _, s := range requiredSvcs.Items() {
-		factory := m.serviceFactoryRegistry.Get(s)
+		factory := m.serviceFactoryRegistry.Get(s, "")
 		if factory == nil {
 			return nil, fmt.Errorf("service %s not found", s)
 		}

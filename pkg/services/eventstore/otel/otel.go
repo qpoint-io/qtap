@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
@@ -23,7 +22,6 @@ type EventStore struct {
 	services.LogHelper
 	eventstore.BaseEventStore
 
-	conn        *connection.Connection
 	logger      log.Logger
 	objectStore objectstore.ObjectStore
 	serviceName string
@@ -227,9 +225,4 @@ func (s *EventStore) extractTimestamp(item any) time.Time {
 	default:
 		return time.Now()
 	}
-}
-
-// SetConnection sets the connection context for events
-func (s *EventStore) SetConnection(conn *connection.Connection) {
-	s.conn = conn
 }

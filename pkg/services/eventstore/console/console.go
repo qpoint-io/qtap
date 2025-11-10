@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
@@ -49,12 +48,7 @@ type EventStore struct {
 	services.LogHelper
 	eventstore.BaseEventStore
 
-	conn        *connection.Connection
 	objectStore objectstore.ObjectStore
-}
-
-func (s *EventStore) SetConnection(conn *connection.Connection) {
-	s.conn = conn
 }
 
 // Save stores an event

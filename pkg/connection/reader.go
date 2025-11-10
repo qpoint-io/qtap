@@ -48,7 +48,7 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 		WithServices(m),
 		WithTags(m.deploymentTags),
 		WithControlManager(m.controlManager),
-		WithServiceRegistry(m.serviceRegistry),
+		WithServiceFactoryRegistry(m.svcFactoryRegistry),
 	)
 
 	// store connection

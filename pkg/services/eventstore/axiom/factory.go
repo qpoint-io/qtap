@@ -67,12 +67,11 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 
 // Create creates a new Axiom EventStore service instance
 func (f *Factory) Create(ctx context.Context) (services.Service, error) {
-	of := f.Registry.Get(objectstore.TypeObjectStore)
-	s, err := of.Create(ctx)
+	svc, err := f.FactoryRegistry.CreateService(ctx, objectstore.TypeObjectStore)
 	if err != nil {
 		return nil, fmt.Errorf("creating object store: %w", err)
 	}
-	o, ok := s.(objectstore.ObjectStore)
+	os, ok := svc.(objectstore.ObjectStore)
 	if !ok {
 		return nil, errors.New("object store service is not an objectstore.ObjectStore")
 	}
@@ -80,7 +79,7 @@ func (f *Factory) Create(ctx context.Context) (services.Service, error) {
 	return &EventStore{
 		axiomClient: f.axiomClient,
 		dataset:     f.dataset,
-		objectStore: o,
+		objectStore: os,
 	}, nil
 }
 

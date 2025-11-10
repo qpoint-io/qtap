@@ -28,7 +28,7 @@ func (s *PanicCatcher) Init(logger *zap.Logger, config yaml.Node) {
 }
 
 // NewInstance implements the HttpFilter interface
-func (s *PanicCatcher) NewInstance(ctx plugins.PluginContext, svcs ...services.Service) plugins.HttpPluginInstance {
+func (s *PanicCatcher) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	defer func() {
 		if r := recover(); r != nil {
 			s.logger.Error("Panic in NewInstance",
@@ -37,7 +37,7 @@ func (s *PanicCatcher) NewInstance(ctx plugins.PluginContext, svcs ...services.S
 		}
 	}()
 
-	return NewSafeHttpFilterInstance(s.logger, s.p.NewInstance(ctx, svcs...))
+	return NewSafeHttpFilterInstance(s.logger, s.p.NewInstance(ctx, svcs))
 }
 
 func (s *PanicCatcher) RequiredServices() []services.ServiceType {

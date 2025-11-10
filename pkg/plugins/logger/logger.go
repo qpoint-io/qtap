@@ -29,7 +29,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.prefix = "🧬"
 }
 
-func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs ...services.Service) plugins.HttpPluginInstance {
+func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	instances := f.instancesCreated.Add(1)
 	f.logger.Info(f.prefix+": new instance created.", zap.Uint64("instances created", instances))
 
@@ -50,7 +50,7 @@ func (f *Factory) Destroy() {
 	instances := f.instancesCreated.Load()
 	totalEgressReqBodySize := f.egressReqBodySize.Load()
 	totalEgressResBodySize := f.egressResBodySize.Load()
-	f.logger.Info(f.prefix+": filter destroyed",
+	f.logger.Info(f.prefix+": plugin destroyed",
 		zap.Uint64("instances created", instances),
 		zap.Uint64("total egress request body size", totalEgressReqBodySize),
 		zap.Uint64("total egress response body size", totalEgressResBodySize))
@@ -96,7 +96,7 @@ func (h *filterInstance) ResponseBody(body plugins.BodyBuffer, endStream bool) p
 }
 
 func (h *filterInstance) Destroy() {
-	h.logger.Info(h.prefix + ": filter instance destroyed")
+	h.logger.Info(h.prefix + ": plugin instance destroyed")
 }
 
 func (f *Factory) PluginType() plugins.PluginType {

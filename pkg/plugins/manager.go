@@ -62,8 +62,8 @@ type Manager struct {
 	// default stack
 	defaultStackConfig config.TapHttpConfig
 
-	// service registry
-	serviceRegistry *services.ServiceRegistry
+	// service factory registry
+	serviceFactoryRegistry *services.FactoryRegistry
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -83,9 +83,9 @@ func SetBufferSize(bufferSize int) ManagerOpt {
 	}
 }
 
-func SetServiceRegistry(registry *services.ServiceRegistry) ManagerOpt {
+func SetServiceFactoryRegistry(registry *services.FactoryRegistry) ManagerOpt {
 	return func(m *Manager) {
-		m.serviceRegistry = registry
+		m.serviceFactoryRegistry = registry
 	}
 }
 
@@ -242,39 +242,38 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 		return nil, nil
 	}
 
-	requiredSvcs := set.NewSet(stack.requiredServices...)
 	// ensure core services are included
-	requiredSvcs.Add(coreServices...)
+	requiredSvcs := set.Union(stack.requiredServices, set.NewSet(coreServices...))
 
-	svcs := make([]services.Service, 0, requiredSvcs.Len())
+	svcs := services.NewServiceRegistry()
 	for _, s := range requiredSvcs.Items() {
-		svc := m.serviceRegistry.Get(s)
-		if svc == nil {
+		factory := m.serviceFactoryRegistry.Get(s)
+		if factory == nil {
 			return nil, fmt.Errorf("service %s not found", s)
 		}
 
-		svcInstance, err := svc.Create(ctx)
+		svc, err := factory.Create(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("creating service: %w", err)
 		}
 
 		// check for adapters
-		if l, ok := svcInstance.(services.LoggerAdapter); ok {
+		if l, ok := svc.(services.LoggerAdapter); ok {
 			l.SetLogger(conn.Logger())
 		}
-		if c, ok := svcInstance.(ConnectionAdapter); ok {
+		if c, ok := svc.(ConnectionAdapter); ok {
 			c.SetConnection(conn)
 		}
 
-		if es, ok := svcInstance.(eventstore.EventStore); ok {
+		if es, ok := svc.(eventstore.EventStore); ok {
 			// if this is an event store, wrap it with the meta injector
-			svcInstance = &connection.EventStoreMetaInjector{
+			svc = &connection.EventStoreMetaInjector{
 				Conn:       conn,
 				EventStore: es,
 			}
 		}
 
-		svcs = append(svcs, svcInstance)
+		svcs.Register(svc)
 	}
 
 	return NewConnection(ctx, conn.Logger(), requestID, m.bufferSize, connectionType, stack, svcs), nil

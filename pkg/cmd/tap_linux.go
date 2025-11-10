@@ -318,8 +318,8 @@ func runTapCmd(logger *zap.Logger) {
 	}
 
 	// Initialize service and plugin systems
-	svcRegistry := services.NewServiceRegistry()
-	svcManager := services.NewServiceManager(ctx, logger, svcRegistry)
+	svcFactoryRegistry := services.NewFactoryRegistry()
+	svcManager := services.NewServiceManager(ctx, logger, svcFactoryRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
 	configManager.Subscribe(func(cfg *config.Config) {
 		svcManager.SetConfig(cfg)
@@ -329,7 +329,7 @@ func runTapCmd(logger *zap.Logger) {
 	pluginManager := plugins.NewPluginManager(
 		logger,
 		plugins.SetBufferSize(int(httpBufsize)),
-		plugins.SetServiceRegistry(svcRegistry),
+		plugins.SetServiceFactoryRegistry(svcFactoryRegistry),
 		plugins.SetPluginRegistry(pluginRegistry),
 	)
 	configManager.Subscribe(func(cfg *config.Config) {
@@ -355,7 +355,7 @@ func runTapCmd(logger *zap.Logger) {
 		connection.SetProcessManager(pm),
 		connection.SetDnsManager(resolv),
 		connection.SetStreamFactory(ds),
-		connection.SetServiceRegistry(svcRegistry),
+		connection.SetServiceFactoryRegistry(svcFactoryRegistry),
 		connection.SetConfig(configManager.GetConfig()),
 		connection.SetDeploymentTags(dTags),
 	)

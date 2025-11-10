@@ -185,7 +185,6 @@ func TestHttpCapturePlugin(t *testing.T) {
 	factory.Init(logger, pluginConfYaml)
 
 	// dependencies
-	var svcs []services.Service
 	rulekit := &rulekitsvc.Factory{
 		Macros: map[string]rulekit.Rule{
 			"success_response": rulekit.MustParse("http.res.status >= 200 && http.res.status < 300"),
@@ -197,7 +196,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 	rulekitSvc, err := rulekit.Create(ctx)
 	require.NoError(t, err)
 	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
-	svcs = append(svcs, rulekitSvc)
+	svcs := services.NewServiceRegistry(rulekitSvc)
 
 	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup
@@ -213,6 +212,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 			},
 		}
 
+		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
 		mockES.EXPECT().Save(gomock.Any(), gomock.All(
 			gomock.Cond(func(a *eventstore.Artifact) bool {
 				return a.Type == eventstore.ArtifactType_HTTPTransaction && a.ContentType == "application/json"
@@ -225,7 +225,9 @@ func TestHttpCapturePlugin(t *testing.T) {
 		)).Return()
 
 		// simulate http tx
-		plugin := factory.NewInstance(ctx, append([]services.Service{mockES}, svcs...)...)
+		svcs := svcs.Copy()
+		svcs.Register(mockES)
+		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 200 should trigger
@@ -241,9 +243,12 @@ func TestHttpCapturePlugin(t *testing.T) {
 		ctx := &plugintest.Context{
 			T: t,
 		}
+		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
 
 		// simulate http tx
-		plugin := factory.NewInstance(ctx, append([]services.Service{mockES}, svcs...)...)
+		svcs := svcs.Copy()
+		svcs.Register(mockES)
+		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 403 should NOT trigger

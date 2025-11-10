@@ -36,13 +36,7 @@ type ServiceFactory interface {
 
 // SetFactoryRegistry sets the factory registry for the service
 type SetFactoryRegistry interface {
-	SetFactoryRegistry(registry FactoryRegistryAccessor)
-}
-
-// FactoryRegistryAccessor is a type that can access the service registry
-type FactoryRegistryAccessor interface {
-	// CreateService creates a service by type
-	CreateService(ctx context.Context, serviceType ServiceType) (Service, error)
+	SetFactoryRegistry(registry *FactoryRegistry)
 }
 
 // NextFactory indicates that a factory will handle graceful replacements

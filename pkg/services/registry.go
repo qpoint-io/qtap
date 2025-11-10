@@ -48,14 +48,31 @@ func NewFactoryRegistry(factories ...ServiceFactory) *FactoryRegistry {
 	return &FactoryRegistry{fr}
 }
 
-func (fr *FactoryRegistry) Register(value ServiceFactory) {
-	fr.Registry.Register(value.ServiceType(), value)
+// Register registers a default service factory by type and optional ID.
+// If the ID is empty, the factory is registered as the default for the type.
+func (fr *FactoryRegistry) Register(value ServiceFactory, id string) {
+	key := value.ServiceType()
+	if id != "" {
+		key = ServiceType(fmt.Sprintf("%s:%s", key.String(), id))
+	}
+	fr.Registry.Register(key, value)
+}
+
+// Load retrieves a service factory by type and optional ID.
+// If the ID is empty, the default factory for the type is returned.
+func (fr *FactoryRegistry) Load(serviceType ServiceType, id string) (ServiceFactory, bool) {
+	key := serviceType
+	if id != "" {
+		key = ServiceType(fmt.Sprintf("%s:%s", serviceType.String(), id))
+	}
+	return fr.Registry.Load(key)
 }
 
 func (fr *FactoryRegistry) Copy() *FactoryRegistry {
 	return &FactoryRegistry{fr.Registry.Copy()}
 }
 
+// CreateService creates a new service instance from the default factory for the given type.
 func (fr *FactoryRegistry) CreateService(ctx context.Context, serviceType ServiceType) (Service, error) {
 	factory := fr.Get(serviceType)
 	if factory == nil {

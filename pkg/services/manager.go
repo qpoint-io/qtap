@@ -10,10 +10,11 @@ import (
 
 // ServiceManager handles service creation and lifecycle
 type ServiceManager struct {
-	ctx       context.Context
-	logger    *zap.Logger
-	registry  *FactoryRegistry
-	factories *Registry[ServiceType, FactoryFactory]
+	ctx           context.Context
+	logger        *zap.Logger
+	registry      *FactoryRegistry
+	factories     *Registry[ServiceType, FactoryFactory]
+	extraServices []func(*config.Config) *config.ServiceConfig
 }
 
 // NewServiceManager creates a new service manager
@@ -24,6 +25,10 @@ func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *Factor
 		registry:  registry,
 		factories: NewRegistry[ServiceType, FactoryFactory](),
 	}
+}
+
+func (sm *ServiceManager) AddExtraServices(services ...func(*config.Config) *config.ServiceConfig) {
+	sm.extraServices = append(sm.extraServices, services...)
 }
 
 // RegisterFactory registers a service factory
@@ -38,20 +43,21 @@ func (sm *ServiceManager) RegisterFactory(fns ...FactoryFactory) {
 }
 
 // SetConfig processes a config update and creates/updates services
-func (sm *ServiceManager) SetConfig(config *config.Config) {
-	if config == nil {
+func (sm *ServiceManager) SetConfig(cfg *config.Config) {
+	if cfg == nil {
 		return
 	}
 
 	// get services from config
-	svcs := config.Services.ToMap()
-	// add core services
-	svcs["rulekit"] = config.Rulekit
-	svcs["connmeta"] = nil
-	for key, svcConfig := range svcs {
-		fn := sm.factories.Get(ServiceType(key))
+	svcs := cfg.Services.AllConfigs()
+	for _, fn := range sm.extraServices {
+		svcs = append(svcs, fn(cfg))
+	}
+
+	for _, svcConfig := range svcs {
+		fn := sm.factories.Get(ServiceType(svcConfig.Type))
 		if fn == nil {
-			sm.logger.Debug("no factory registered for service type", zap.String("service_type", key))
+			sm.logger.Debug("no factory registered for service type", zap.String("service_type", svcConfig.Type))
 			continue
 		}
 
@@ -79,12 +85,22 @@ func (sm *ServiceManager) SetConfig(config *config.Config) {
 			sr.SetFactoryRegistry(sm.registry)
 		}
 
-		sm.logger.Info("initializing service factory", zap.String("factory_type", key))
-		if err := factory.Init(sm.ctx, svcConfig); err != nil {
-			sm.logger.Error("failed to initialize service factory", zap.String("factory_type", key), zap.Error(err))
+		sm.logger.Info(
+			"initializing service factory",
+			zap.String("factory_type", svcConfig.Type),
+			zap.Stringer("service_type", factory.ServiceType()),
+		)
+		if err := factory.Init(sm.ctx, svcConfig.Config); err != nil {
+			sm.logger.Error("failed to initialize service factory", zap.String("factory_type", svcConfig.Type), zap.Error(err))
 			continue
 		}
 
-		sm.registry.Register(factory)
+		if svcConfig.ID != "" {
+			sm.registry.Register(factory, svcConfig.ID)
+		}
+		// register it as the default if explicitly specified or no ID was provided
+		if svcConfig.Default || svcConfig.ID == "" {
+			sm.registry.Register(factory, "")
+		}
 	}
 }

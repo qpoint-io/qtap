@@ -73,6 +73,29 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 
 	// start watching the connection
 	conn.Open()
+
+	// setup reporters
+	if m.shouldReport(conn) {
+		conn.SetupReporters()
+	}
+}
+
+func (m *Manager) shouldReport(conn *Connection) bool {
+	if conn.HandlerType == HandlerType_FORWARDING {
+		conn.logger.Debug("generateAuditLog: forwarding connection detected, ignoring audit")
+		return false
+	}
+
+	// if this is DNS, ensure we're wanted
+	if m.config != nil && conn.Protocol == Protocol_DNS && !m.config.Tap.AuditIncludeDNS {
+		m.logger.Debug("generateAuditLog: DNS audit log disabled",
+			zap.String("conn_pid_id", conn.connPIDKey.String()),
+			zap.String("local_addr", conn.OpenEvent.Local.String()),
+			zap.String("remote_addr", conn.OpenEvent.Remote.String()))
+		return false
+	}
+
+	return true
 }
 
 func (c *Connection) processEvent(event any) {

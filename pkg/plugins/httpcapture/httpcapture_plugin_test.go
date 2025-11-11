@@ -216,7 +216,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 			},
 		}
 
-		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
+		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
 		mockES.EXPECT().Save(gomock.Any(), gomock.All(
 			gomock.Cond(func(a *eventstore.Artifact) bool {
 				return a.Type == eventstore.ArtifactType_HTTPTransaction && a.ContentType == "application/json"
@@ -246,7 +246,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		ctx := &plugintest.Context{
 			T: t,
 		}
-		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
+		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
 
 		// simulate http tx
 		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")

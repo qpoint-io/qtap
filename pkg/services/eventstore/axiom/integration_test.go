@@ -9,13 +9,11 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/mocks"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 // TestAxiomIntegration tests the Axiom service with a real Axiom instance
@@ -24,8 +22,6 @@ import (
 // - AXIOM_DATASET environment variable to be set (optional, defaults to "qtap-test")
 // Run with: go test -tags=integration
 func TestAxiomIntegration(t *testing.T) {
-	ctrl := gomock.NewController(t)
-
 	token := os.Getenv("AXIOM_TOKEN")
 	if token == "" {
 		t.Skip("AXIOM_TOKEN environment variable not set, skipping integration test")
@@ -58,13 +54,11 @@ func TestAxiomIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory (integration test doesn't need real object store)
-	mockRegistry := mocks.NewMockRegistryAccessor(ctrl)
 	noopFactory := &noop.Factory{}
-	mockRegistry.EXPECT().Get(objectstore.TypeObjectStore).Return(noopFactory)
-	f.SetRegistry(mockRegistry)
+	svcRegistry := services.NewServiceRegistry(services.NewFactoryRegistry(noopFactory))
 
 	// Create service instance
-	svc, err := f.Create(context.Background())
+	svc, err := f.Create(context.Background(), svcRegistry)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 

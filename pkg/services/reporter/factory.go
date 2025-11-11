@@ -13,9 +13,8 @@ import (
 const Type services.ServiceType = "reporter"
 
 type Factory struct {
-	svcRegistry *services.ServiceRegistry
-	logger      *zap.Logger
-	config      *Config
+	logger *zap.Logger
+	config *Config
 }
 
 type Config struct {
@@ -36,11 +35,6 @@ func (f *Factory) ServiceType() services.ServiceType {
 	return Type
 }
 
-// SetServiceRegistry implements the SetServiceRegistry interface.
-func (f *Factory) SetServiceRegistry(registry *services.ServiceRegistry) {
-	f.svcRegistry = registry
-}
-
 func (f *Factory) Init(ctx context.Context, cfg any) error {
 	c, ok := cfg.(*Config)
 	if !ok {
@@ -53,10 +47,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
-	es, err := services.GetService[eventstore.EventStore](ctx, svcRegistry, services.ServiceKey{
-		Type: eventstore.TypeEventStore,
-		ID:   f.config.EventStoreID,
-	})
+	es, err := services.GetService[eventstore.EventStore](ctx, svcRegistry, eventstore.TypeEventStore, f.config.EventStoreID)
 	if err != nil {
 		return nil, fmt.Errorf("getting event store: %w", err)
 	}

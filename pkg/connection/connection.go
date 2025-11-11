@@ -318,7 +318,7 @@ func (c *Connection) setupReporters() {
 	//  2. services are created on-demand if requested from the registry
 	for _, key := range c.svcRegistry.AvailableServicesForType(servicespkg.ServiceType("reporter")) {
 		// getting the reporter service is enough - it will start itself on creation
-		_, err := servicespkg.GetService[servicespkg.Service](c.ctx, c.svcRegistry, key)
+		_, err := servicespkg.GetService[servicespkg.Service](c.ctx, c.svcRegistry, key.Type, key.ID)
 		if err != nil {
 			c.logger.Error("failed to get reporter service", zap.Error(err))
 			continue

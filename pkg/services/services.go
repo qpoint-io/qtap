@@ -75,7 +75,8 @@ func (f *staticFactory) Init(ctx context.Context, config any) error {
 }
 
 // GetService retrieves a service by type and optional ID from a registry and casts it into the requested type.
-func GetService[T any](ctx context.Context, sr *ServiceRegistry, key ServiceKey) (T, error) {
+func GetService[T any](ctx context.Context, sr *ServiceRegistry, typ ServiceType, id string) (T, error) {
+	key := ServiceKey{Type: typ, ID: id}
 	var zero T
 	service, err := sr.Get(ctx, key)
 	if err != nil {

@@ -106,7 +106,7 @@ func (f *factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceR
 		rules:  f.config.Rules,
 	}
 
-	if rk, err := services.GetService[rulekitsvc.Service](ctx.Context(), svcs, services.ServiceKey{Type: rulekitsvc.TypeRulekit}); err != nil {
+	if rk, err := services.GetService[rulekitsvc.Service](ctx.Context(), svcs, rulekitsvc.TypeRulekit, ""); err != nil {
 		f.logger.Error("failed to get rulekit", zap.Error(err))
 	} else {
 		i.rulekit = rk

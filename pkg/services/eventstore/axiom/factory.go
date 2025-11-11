@@ -67,7 +67,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 
 // Create creates a new Axiom EventStore service instance
 func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
-	os, err := services.GetService[objectstore.ObjectStore](ctx, svcRegistry, services.ServiceKey{Type: objectstore.TypeObjectStore})
+	os, err := services.GetService[objectstore.ObjectStore](ctx, svcRegistry, objectstore.TypeObjectStore, "")
 	if err != nil {
 		return nil, fmt.Errorf("getting object store: %w", err)
 	}

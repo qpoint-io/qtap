@@ -112,15 +112,12 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 		rules:  f.config.Rules,
 	}
 
-	if es, err := services.GetService[eventstore.EventStore](ctx, svcs, services.ServiceKey{
-		Type: eventstore.TypeEventStore,
-		ID:   f.config.EventStoreID,
-	}); err != nil {
+	if es, err := services.GetService[eventstore.EventStore](ctx, svcs, eventstore.TypeEventStore, f.config.EventStoreID); err != nil {
 		f.logger.Error("failed to get event store", zap.Error(err))
 	} else {
 		fi.eventstore = es
 	}
-	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, services.ServiceKey{Type: rulekitsvc.TypeRulekit}); err != nil {
+	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, rulekitsvc.TypeRulekit, ""); err != nil {
 		f.logger.Error("failed to get rulekit", zap.Error(err))
 	} else {
 		fi.rulekit = rk

@@ -41,7 +41,7 @@ func (f *EventStoreFactory) Init(ctx context.Context, cfg any) error {
 	return nil
 }
 
-func (f *EventStoreFactory) Create(ctx context.Context) (services.Service, error) {
+func (f *EventStoreFactory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
 	return &EventStore{
 		save: f.save,
 	}, nil

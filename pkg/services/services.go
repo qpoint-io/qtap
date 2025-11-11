@@ -28,18 +28,14 @@ type Factory interface {
 	// Init initializes the service factory
 	Init(ctx context.Context, config any) error
 	// Create creates a new service instance
-	Create(ctx context.Context) (Service, error)
+	// svcRegistry is used to resolve any cross-service dependencies.
+	Create(ctx context.Context, svcRegistry *ServiceRegistry) (Service, error)
 	// FactoryType returns the type of factory. This is typically a namespaced instance of the ServiceType.
 	//
 	// For example, an eventstore that prints to the console would have a FactoryType of "eventstore.console" and a ServiceType of "eventstore".
 	FactoryType() ServiceType
 	// ServiceType returns the type of service this factory creates
 	ServiceType() ServiceType
-}
-
-// SetFactoryRegistry sets the factory registry for the service
-type SetFactoryRegistry interface {
-	SetFactoryRegistry(registry *FactoryRegistry)
 }
 
 // NextFactory indicates that a factory will handle graceful replacements
@@ -69,7 +65,7 @@ func (f *staticFactory) ServiceType() ServiceType {
 	return f.service.ServiceType()
 }
 
-func (f *staticFactory) Create(ctx context.Context) (Service, error) {
+func (f *staticFactory) Create(ctx context.Context, svcRegistry *ServiceRegistry) (Service, error) {
 	return f.service, nil
 }
 

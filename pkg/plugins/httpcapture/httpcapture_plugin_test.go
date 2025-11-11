@@ -193,13 +193,14 @@ func TestHttpCapturePlugin(t *testing.T) {
 			}),
 		},
 	}
-	rulekitSvc, err := rulekit.Create(ctx)
+
+	factories := services.NewFactoryRegistry()
+	svcs := services.NewServiceRegistry(factories)
+
+	rulekitSvc, err := rulekit.Create(ctx, svcs)
 	require.NoError(t, err)
 	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
-	factories := services.NewFactoryRegistry(
-		services.StaticFactory(rulekitsvc.TypeRulekit, rulekitSvc),
-	)
-	svcs := services.NewServiceRegistry(factories)
+	factories.Register(services.StaticFactory(rulekitsvc.TypeRulekit, rulekitSvc), "")
 
 	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup

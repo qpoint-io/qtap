@@ -28,7 +28,7 @@ type EventStore interface {
 
 // BaseEventStore provides common functionality for EventStore implementations
 type BaseEventStore struct {
-	FactoryRegistry *services.FactoryRegistry
+	ServiceRegistry *services.ServiceRegistry
 }
 
 // ServiceType returns the service type
@@ -36,8 +36,8 @@ func (b *BaseEventStore) ServiceType() services.ServiceType {
 	return TypeEventStore
 }
 
-func (b *BaseEventStore) SetFactoryRegistry(registry *services.FactoryRegistry) {
-	b.FactoryRegistry = registry
+func (b *BaseEventStore) SetServiceRegistry(registry *services.ServiceRegistry) {
+	b.ServiceRegistry = registry
 }
 
 type meta struct {

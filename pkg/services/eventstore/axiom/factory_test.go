@@ -75,11 +75,11 @@ func TestFactory_Create(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory
-	mockRegistry := services.NewFactoryRegistry(&noop.Factory{})
-	f.SetFactoryRegistry(mockRegistry)
+	factories := services.NewFactoryRegistry(&noop.Factory{})
+	svcs := services.NewServiceRegistry(factories)
 
 	// Now test Create
-	svc, err := f.Create(t.Context())
+	svc, err := f.Create(t.Context(), svcs)
 	require.NoError(t, err)
 	require.NotNil(t, svc)
 

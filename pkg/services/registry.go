@@ -57,16 +57,6 @@ func (fr *FactoryRegistry) Copy() *FactoryRegistry {
 	return &FactoryRegistry{fr.r.Copy()}
 }
 
-// CreateService creates a new service instance from the default factory for the given type.
-func (fr *FactoryRegistry) CreateService(ctx context.Context, serviceType ServiceType, id string) (Service, error) {
-	factory, ok := fr.Load(serviceType, id)
-	if !ok {
-		key := keyWithID(serviceType, id)
-		return nil, fmt.Errorf("factory not found for service %s", key)
-	}
-	return factory.Create(ctx)
-}
-
 // ServiceRegistry is a connection-scoped registry that handles creating services from factories.
 // This is used to apply adapters and maintain a singleton store for service instances.
 type ServiceRegistry struct {
@@ -74,7 +64,7 @@ type ServiceRegistry struct {
 	factories    *FactoryRegistry
 	configurator ServiceConfigurator
 
-	mu sync.Mutex
+	mu *MutexMap[ServiceType]
 }
 
 type ServiceConfigurator func(ctx context.Context, service Service) (Service, error)
@@ -83,6 +73,7 @@ func NewServiceRegistry(fr *FactoryRegistry) *ServiceRegistry {
 	return &ServiceRegistry{
 		services:  NewRegistry[ServiceType, Service](),
 		factories: fr,
+		mu:        &MutexMap[ServiceType]{},
 	}
 }
 
@@ -95,10 +86,13 @@ func (sr *ServiceRegistry) SetConfigurator(configurator ServiceConfigurator) {
 // Get retrieves a service by type and optional ID.
 // If the such a service hasn't been created yet, it will be created using the corresponding factory, configured, and returned on future Get calls.
 func (sr *ServiceRegistry) Get(ctx context.Context, serviceType ServiceType, id string) (Service, error) {
-	sr.mu.Lock()
-	defer sr.mu.Unlock()
-
 	key := keyWithID(serviceType, id)
+
+	// per-key mutex to allow for resolving of cross-service dependencies
+	mu := sr.mu.Get(key)
+	mu.Lock()
+	defer mu.Unlock()
+
 	service, ok := sr.services.Load(key)
 	if ok {
 		// the service has already been created
@@ -107,7 +101,11 @@ func (sr *ServiceRegistry) Get(ctx context.Context, serviceType ServiceType, id 
 
 	// create the service and store it
 	zap.L().Debug("creating service", zap.Stringer("service", key))
-	service, err := sr.factories.CreateService(ctx, serviceType, id)
+	factory, ok := sr.factories.Load(serviceType, id)
+	if !ok {
+		return nil, fmt.Errorf("factory not found for service %s", key)
+	}
+	service, err := factory.Create(ctx, sr)
 	if err != nil {
 		return nil, fmt.Errorf("creating service: %w", err)
 	}
@@ -211,4 +209,18 @@ func (sr *Registry[K, T]) Copy() *Registry[K, T] {
 	return &Registry[K, T]{
 		m: sr.m.Clone(),
 	}
+}
+
+// MutexMap is a map of named mutexes that is safe for concurrent use.
+type MutexMap[T comparable] struct {
+	m sync.Map
+}
+
+func (m *MutexMap[T]) Get(name T) *sync.Mutex {
+	mutex, ok := m.m.Load(name)
+	if !ok {
+		newMutex := &sync.Mutex{}
+		mutex, _ = m.m.LoadOrStore(name, newMutex)
+	}
+	return mutex.(*sync.Mutex)
 }

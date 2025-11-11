@@ -73,11 +73,6 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 			logger = logger.With(zap.String("service_id", svcConfig.ID))
 		}
 
-		// Set the registry for the factory if it implements the SetRegistry interface
-		if sr, ok := factory.(SetFactoryRegistry); ok {
-			sr.SetFactoryRegistry(m.factories)
-		}
-
 		logger.Info("initializing service factory")
 		if err := factory.Init(m.ctx, svcConfig.Config); err != nil {
 			logger.Error("failed to initialize service factory", zap.Error(err))

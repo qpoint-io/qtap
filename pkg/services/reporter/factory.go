@@ -53,7 +53,10 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
-	es, err := services.GetService[eventstore.EventStore](ctx, svcRegistry, eventstore.TypeEventStore, f.config.EventStoreID)
+	es, err := services.GetService[eventstore.EventStore](ctx, svcRegistry, services.ServiceKey{
+		Type: eventstore.TypeEventStore,
+		ID:   f.config.EventStoreID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("getting event store: %w", err)
 	}

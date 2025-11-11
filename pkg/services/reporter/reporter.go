@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// service runs for the duration of the connection and sends reports to the event store.
 type service struct {
 	conn                *connection.Connection
 	eventStore          eventstore.EventStore
@@ -33,7 +32,7 @@ type service struct {
 func (s *service) SetConnection(conn *connection.Connection) {
 	s.conn = conn
 
-	// now that we have the connection, we can kick off the loop
+	// we have the connection, we can start reporting now
 	go s.start()
 }
 

@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 )
 
 // ServiceType represents a type identifier for services
@@ -71,4 +72,31 @@ func (f *staticFactory) Create(ctx context.Context, svcRegistry *ServiceRegistry
 
 func (f *staticFactory) Init(ctx context.Context, config any) error {
 	return nil
+}
+
+// GetService retrieves a service by type and optional ID from a registry and casts it into the requested type.
+func GetService[T any](ctx context.Context, sr *ServiceRegistry, key ServiceKey) (T, error) {
+	var zero T
+	service, err := sr.Get(ctx, key)
+	if err != nil {
+		return zero, fmt.Errorf("getting service %q: %w", key, err)
+	}
+	t, ok := service.(T)
+	if !ok {
+		return zero, fmt.Errorf("service %q is not of type %T", key, zero)
+	}
+	return t, nil
+}
+
+// ServiceKey is a key for a service in a registry.
+type ServiceKey struct {
+	Type ServiceType
+	ID   string
+}
+
+func (k ServiceKey) String() string {
+	if k.ID != "" {
+		return fmt.Sprintf("%s:%s", k.Type, k.ID)
+	}
+	return k.Type.String()
 }

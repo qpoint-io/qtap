@@ -90,7 +90,8 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 }
 
 func (m *FactoryManager) registerFactory(factory Factory, id string) {
-	old := m.factories.Get(factory.ServiceType(), id)
+	key := ServiceKey{Type: factory.ServiceType(), ID: id}
+	old := m.factories.Get(key)
 	if old != nil {
 		// gracefully replace the old factory if it exists
 		defer m.replaceFactory(id, old, factory)

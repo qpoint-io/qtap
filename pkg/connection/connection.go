@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"net"
 	"strings"
@@ -310,11 +311,18 @@ func (c *Connection) Open() {
 }
 
 func (c *Connection) setupReporters() {
-	// create reporter services
-	_, err := c.svcRegistry.Get(c.ctx, "reporter", "")
-	if err != nil {
-		c.logger.Error("failed to create reporter service", zap.Error(err))
-		return
+	// start all configured reporter services
+	//
+	// NOTE(kamal): this is kind of hacky, but we need to do this because:
+	// 	1. whether a connection should be reported or not is determined by the connection manager
+	//  2. services are created on-demand if requested from the registry
+	for _, key := range c.svcRegistry.AvailableServicesForType(servicespkg.ServiceType("reporter")) {
+		// getting the reporter service is enough - it will start itself on creation
+		_, err := servicespkg.GetService[servicespkg.Service](c.ctx, c.svcRegistry, key)
+		if err != nil {
+			c.logger.Error("failed to get reporter service", zap.Error(err))
+			continue
+		}
 	}
 }
 
@@ -403,9 +411,6 @@ func (c *Connection) Close() {
 	if err := c.svcRegistry.Close(); err != nil {
 		c.logger.Error("error closing service registry", zap.Error(err))
 	}
-
-	// print a debug log line with the report
-	c.logConnectionReport()
 }
 
 func (c *Connection) SetDomain(input string) {
@@ -606,6 +611,19 @@ func (c *Connection) ControlValues() map[string]any {
 	}
 
 	return v
+}
+
+func (m *Manager) shouldReport(conn *Connection) (bool, error) {
+	if conn.HandlerType == HandlerType_FORWARDING {
+		return false, errors.New("forwarding connection detected")
+	}
+
+	// if this is DNS, ensure we're wanted
+	if m.config != nil && conn.Protocol == Protocol_DNS && !m.config.Tap.AuditIncludeDNS {
+		return false, errors.New("DNS audit log disabled")
+	}
+
+	return true, nil
 }
 
 func parseHostString(input string) (string, string, bool) {

@@ -32,9 +32,6 @@ type service struct {
 // SetConnection implements the ConnectionAdapter interface.
 func (s *service) SetConnection(conn *connection.Connection) {
 	s.conn = conn
-	if es, ok := s.eventStore.(connection.ConnectionAdapter); ok {
-		es.SetConnection(conn)
-	}
 
 	// now that we have the connection, we can kick off the loop
 	go s.start()

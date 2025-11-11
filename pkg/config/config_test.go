@@ -446,3 +446,132 @@ tap:
 
 	provider.Stop()
 }
+
+func TestServiceConfigs(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   *Config
+		expected []*ServiceConfig
+	}{
+		{
+			name: "no services",
+			config: &Config{
+				Services: Services{},
+			},
+			expected: []*ServiceConfig{
+				{
+					Type:    "eventstore.noop",
+					Default: true,
+					Config: ServiceEventStore{
+						Type: EventStoreType_DISABLED,
+					},
+				},
+				{
+					Type:    "objectstore.noop",
+					Default: true,
+					Config: ServiceObjectStore{
+						Type: ObjectStoreType_DISABLED,
+					},
+				},
+				{
+					Type:    "qscan.noop",
+					Default: true,
+					Config: &ServiceQscan{
+						Type: QscanType_DISABLED,
+					},
+				},
+			},
+		},
+		{
+			name: "happy path",
+			config: &Config{
+				Services: Services{
+					EventStores: []ServiceEventStore{
+						{
+							ID:   "pulse",
+							Type: EventStoreType_PULSE,
+						},
+						// no id
+						{
+							Type: EventStoreType_AXIOM,
+						},
+					},
+					ObjectStores: []ServiceObjectStore{
+						{
+							ID:   "qpoint",
+							Type: ObjectStoreType_QPOINT,
+						},
+						// no id
+						{
+							Type: ObjectStoreType_S3,
+						},
+					},
+					QscanClient: &ServiceQscan{
+						Type: QscanType_Client,
+						URL:  "https://qscan.qpoint.io",
+						Token: ValueSource{
+							Type:  ValueSourceType_TEXT,
+							Value: "token",
+						},
+					},
+				},
+			},
+			expected: []*ServiceConfig{
+				// event stores
+				{
+					Type:    "eventstore.eventstorev1_nonstreaming",
+					ID:      "pulse",
+					Default: true,
+					Config: ServiceEventStore{
+						ID:   "pulse",
+						Type: EventStoreType_PULSE,
+					},
+				},
+				{
+					Type: "eventstore.axiom",
+					ID:   "eventstore-1", // auto assigned ID
+					Config: ServiceEventStore{
+						Type: EventStoreType_AXIOM,
+					},
+				},
+				// object stores
+				{
+					ID:      "qpoint",
+					Type:    "objectstore.warehouse",
+					Default: true,
+					Config: ServiceObjectStore{
+						ID:   "qpoint",
+						Type: ObjectStoreType_QPOINT,
+					},
+				},
+				{
+					Type: "objectstore.s3",
+					ID:   "objectstore-1", // auto assigned ID
+					Config: ServiceObjectStore{
+						Type: ObjectStoreType_S3,
+					},
+				},
+				// qscans
+				{
+					Type:    "qscan.client",
+					Default: true,
+					Config: &ServiceQscan{
+						Type: "client",
+						URL:  "https://qscan.qpoint.io",
+						Token: ValueSource{
+							Type:  ValueSourceType_TEXT,
+							Value: "token",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.Services.All()
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

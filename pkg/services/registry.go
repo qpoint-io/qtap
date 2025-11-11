@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/synq"
+	"go.uber.org/zap"
 )
 
 /*
@@ -16,11 +18,11 @@ import (
 // FactoryRegistry is a convenience type for a registry of service factories.
 // Factory registries are keyed by ServiceType() and not FactoryType() so this wrapper exists to avoid any confusion by users.
 type FactoryRegistry struct {
-	r *Registry[ServiceType, ServiceFactory]
+	r *Registry[ServiceType, Factory]
 }
 
-func NewFactoryRegistry(factories ...ServiceFactory) *FactoryRegistry {
-	fr := NewRegistrySize[ServiceType, ServiceFactory](len(factories))
+func NewFactoryRegistry(factories ...Factory) *FactoryRegistry {
+	fr := NewRegistrySize[ServiceType, Factory](len(factories))
 	for _, factory := range factories {
 		fr.Register(factory.ServiceType(), factory)
 	}
@@ -29,27 +31,21 @@ func NewFactoryRegistry(factories ...ServiceFactory) *FactoryRegistry {
 
 // Register registers a default service factory by type and optional ID.
 // If the ID is empty, the factory is registered as the default for the type.
-func (fr *FactoryRegistry) Register(value ServiceFactory, id string) {
-	key := value.ServiceType()
-	if id != "" {
-		key = ServiceType(fmt.Sprintf("%s:%s", key.String(), id))
-	}
+func (fr *FactoryRegistry) Register(value Factory, id string) {
+	key := keyWithID(value.ServiceType(), id)
 	fr.r.Register(key, value)
 }
 
 // Load retrieves a service factory by type and optional ID.
 // If the ID is empty, the default factory for the type is returned.
-func (fr *FactoryRegistry) Load(serviceType ServiceType, id string) (ServiceFactory, bool) {
-	key := serviceType
-	if id != "" {
-		key = ServiceType(fmt.Sprintf("%s:%s", serviceType.String(), id))
-	}
+func (fr *FactoryRegistry) Load(serviceType ServiceType, id string) (Factory, bool) {
+	key := keyWithID(serviceType, id)
 	return fr.r.Load(key)
 }
 
 // Get retrieves a service factory by type and optional ID.
 // If the ID is empty, the default factory for the type is returned.
-func (fr *FactoryRegistry) Get(serviceType ServiceType, id string) ServiceFactory {
+func (fr *FactoryRegistry) Get(serviceType ServiceType, id string) Factory {
 	f, ok := fr.Load(serviceType, id)
 	if !ok {
 		return nil
@@ -65,42 +61,97 @@ func (fr *FactoryRegistry) Copy() *FactoryRegistry {
 func (fr *FactoryRegistry) CreateService(ctx context.Context, serviceType ServiceType, id string) (Service, error) {
 	factory, ok := fr.Load(serviceType, id)
 	if !ok {
-		key := serviceType.String()
-		if id != "" {
-			key = fmt.Sprintf("%s:%s", key, id)
-		}
+		key := keyWithID(serviceType, id)
 		return nil, fmt.Errorf("factory not found for service %s", key)
 	}
 	return factory.Create(ctx)
 }
 
-// ServiceRegistry is a convenience type for a registry of services
+// ServiceRegistry is a connection-scoped registry that handles creating services from factories.
+// This is used to apply adapters and maintain a singleton store for service instances.
 type ServiceRegistry struct {
-	r *Registry[ServiceType, Service]
+	services     *Registry[ServiceType, Service]
+	factories    *FactoryRegistry
+	configurator ServiceConfigurator
+
+	mu sync.Mutex
 }
 
-func NewServiceRegistry(services ...Service) *ServiceRegistry {
-	sr := NewRegistrySize[ServiceType, Service](len(services))
-	for _, service := range services {
-		sr.Register(service.ServiceType(), service)
+type ServiceConfigurator func(ctx context.Context, service Service) (Service, error)
+
+func NewServiceRegistry(fr *FactoryRegistry) *ServiceRegistry {
+	return &ServiceRegistry{
+		services:  NewRegistry[ServiceType, Service](),
+		factories: fr,
 	}
-	return &ServiceRegistry{sr}
 }
 
-func (sr *ServiceRegistry) Register(value Service) {
-	sr.r.Register(value.ServiceType(), value)
+// SetConfigurator sets a configurator function for any service configuration that needs to be done once it is created.
+// This is typically used to apply adapters.
+func (sr *ServiceRegistry) SetConfigurator(configurator ServiceConfigurator) {
+	sr.configurator = configurator
 }
 
-func (sr *ServiceRegistry) Get(serviceType ServiceType) Service {
-	return sr.r.Get(serviceType)
-}
+// Get retrieves a service by type and optional ID.
+// If the such a service hasn't been created yet, it will be created using the corresponding factory, configured, and returned on future Get calls.
+func (sr *ServiceRegistry) Get(ctx context.Context, serviceType ServiceType, id string) (Service, error) {
+	sr.mu.Lock()
+	defer sr.mu.Unlock()
 
-func (sr *ServiceRegistry) Copy() *ServiceRegistry {
-	return &ServiceRegistry{sr.r.Copy()}
+	key := keyWithID(serviceType, id)
+	service, ok := sr.services.Load(key)
+	if ok {
+		// the service has already been created
+		return service, nil
+	}
+
+	// create the service and store it
+	zap.L().Debug("creating service", zap.Stringer("service", key))
+	service, err := sr.factories.CreateService(ctx, serviceType, id)
+	if err != nil {
+		return nil, fmt.Errorf("creating service: %w", err)
+	}
+
+	// configure the service
+	if sr.configurator != nil {
+		service, err = sr.configurator(ctx, service)
+		if err != nil {
+			return nil, fmt.Errorf("configuring service: %w", err)
+		}
+	}
+
+	sr.services.Register(key, service)
+	return service, nil
 }
 
 func (sr *ServiceRegistry) Close() error {
-	return sr.r.Close()
+	return sr.services.Close()
+}
+
+// Has checks if the registry is able to return the given service type and ID.
+func (sr *ServiceRegistry) Has(serviceType ServiceType, id string) bool {
+	_, ok := sr.factories.Load(serviceType, id)
+	return ok
+}
+
+func GetService[T any](ctx context.Context, sr *ServiceRegistry, serviceType ServiceType, id string) (T, error) {
+	var zero T
+	service, err := sr.Get(ctx, serviceType, id)
+	if err != nil {
+		return zero, fmt.Errorf("getting service %q: %w", keyWithID(serviceType, id), err)
+	}
+	t, ok := service.(T)
+	if !ok {
+		return zero, fmt.Errorf("service %q is not of type %T", keyWithID(serviceType, id), zero)
+	}
+	return t, nil
+}
+
+func keyWithID[T ~string](serviceType T, id string) T {
+	if id != "" {
+		return T(fmt.Sprintf("%s:%s", serviceType, id))
+	}
+	return serviceType
 }
 
 /*

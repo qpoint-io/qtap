@@ -39,7 +39,7 @@ var (
 	start            time.Time
 	logger           *zap.Logger
 	e2ectx           *e2e.Context
-	serviceFactories []services.FactoryFactory
+	serviceFactories []services.FactoryFn
 	pluginFactories  []plugins.HttpPlugin
 )
 
@@ -89,17 +89,17 @@ func mainSetup() error {
 		e2ectx.SetMachineIP(conn.LocalAddr().(*net.UDPAddr).IP)
 	}
 
-	serviceFactories = []services.FactoryFactory{
+	serviceFactories = []services.FactoryFn{
 		// Eventstore services
-		func() services.ServiceFactory { return e2ectx.EventStore },
+		func() services.Factory { return e2ectx.EventStore },
 
 		// Objectstore services
-		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
+		func() services.Factory { return &objectstorenoop.Factory{} },
 
 		// Add more services here...
-		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
-		func() services.ServiceFactory { return &connmeta.Factory{} },
-		func() services.ServiceFactory { return &reporter.Factory{} },
+		func() services.Factory { return &rulekitsvc.Factory{} },
+		func() services.Factory { return &connmeta.Factory{} },
+		func() services.Factory { return &reporter.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{
@@ -185,7 +185,7 @@ func mainSetup() error {
 
 	// Initialize service and plugin systems
 	svcRegistry := services.NewFactoryRegistry()
-	svcManager := services.NewServiceManager(e2ectx, logger, svcRegistry)
+	svcManager := services.NewFactoryManager(e2ectx, logger, svcRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
 	// register core services that must always be included
 	svcManager.AddExtraServices(

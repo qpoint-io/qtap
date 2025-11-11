@@ -196,7 +196,10 @@ func TestHttpCapturePlugin(t *testing.T) {
 	rulekitSvc, err := rulekit.Create(ctx)
 	require.NoError(t, err)
 	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
-	svcs := services.NewServiceRegistry(rulekitSvc)
+	factories := services.NewFactoryRegistry(
+		services.StaticFactory(rulekitsvc.TypeRulekit, rulekitSvc),
+	)
+	svcs := services.NewServiceRegistry(factories)
 
 	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup
@@ -225,8 +228,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		)).Return()
 
 		// simulate http tx
-		svcs := svcs.Copy()
-		svcs.Register(mockES)
+		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
 		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
@@ -246,8 +248,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
 
 		// simulate http tx
-		svcs := svcs.Copy()
-		svcs.Register(mockES)
+		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
 		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)

@@ -50,9 +50,10 @@ type LogRule struct {
 }
 
 type HttpCaptureConfig struct {
-	Level  CaptureLevel `json:"level" yaml:"level"`
-	Format OutputFormat `json:"format" yaml:"format"`
-	Rules  []LogRule    `json:"rules" yaml:"rules"`
+	Level        CaptureLevel `json:"level" yaml:"level"`
+	Format       OutputFormat `json:"format" yaml:"format"`
+	EventStoreID string       `json:"event_store" yaml:"event_store"`
+	Rules        []LogRule    `json:"rules" yaml:"rules"`
 }
 
 type Factory struct {
@@ -111,10 +112,14 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 		rules:  f.config.Rules,
 	}
 
-	if es, ok := svcs.Get(eventstore.TypeEventStore).(eventstore.EventStore); ok {
+	if es, err := services.GetService[eventstore.EventStore](ctx, svcs, eventstore.TypeEventStore, f.config.EventStoreID); err != nil {
+		f.logger.Error("failed to get event store", zap.Error(err))
+	} else {
 		fi.eventstore = es
 	}
-	if rk, ok := svcs.Get(rulekitsvc.TypeRulekit).(rulekitsvc.Service); ok {
+	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, rulekitsvc.TypeRulekit, ""); err != nil {
+		f.logger.Error("failed to get rulekit", zap.Error(err))
+	} else {
 		fi.rulekit = rk
 	}
 

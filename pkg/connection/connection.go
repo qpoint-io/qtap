@@ -186,7 +186,6 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		HandlerType: handlerType,
 		tags:        t,
 		labels:      labels.New(),
-		svcRegistry: servicespkg.NewServiceRegistry(),
 	}
 
 	// apply options
@@ -194,51 +193,41 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 		opt(c)
 	}
 
-	c.assignEventStore()
+	c.createServiceRegistry()
 	return c
 }
 
-func (c *Connection) assignEventStore() {
+func (c *Connection) createServiceRegistry() {
 	if c.svcFactoryRegistry == nil {
-		return
+		c.svcFactoryRegistry = servicespkg.NewFactoryRegistry() // an empty registry that will return "not found" errors
 	}
 
-	instance, err := c.createService(eventstore.TypeEventStore)
-	if err != nil {
-		c.logger.Error("failed to create event store", zap.Error(err))
-		return
-	}
+	c.svcRegistry = servicespkg.NewServiceRegistry(c.svcFactoryRegistry)
+	c.svcRegistry.SetConfigurator(func(ctx context.Context, service servicespkg.Service) (servicespkg.Service, error) {
+		// apply adapters
+		if l, ok := service.(servicespkg.LoggerAdapter); ok {
+			l.SetLogger(c.logger.With(zap.Stringer("service", service.ServiceType())))
+		}
 
-	es, ok := instance.(eventstore.EventStore)
-	if !ok {
-		c.logger.DPanic("event store factory returned non-eventstore instance")
-		return
-	}
+		if ca, ok := service.(ConnectionAdapter); ok {
+			ca.SetConnection(c)
+		}
 
-	// setup meta injector
-	injector := &EventStoreMetaInjector{
-		Conn:       c,
-		EventStore: es,
-	}
+		if es, ok := service.(eventstore.EventStore); ok {
+			// if this is an event store, wrap it with the meta injector
+			service = &EventStoreMetaInjector{
+				Conn:       c,
+				EventStore: es,
+			}
+		}
 
-	c.svcRegistry.Register(injector)
+		// return the service
+		return service, nil
+	})
 }
 
-func (c *Connection) createService(serviceType servicespkg.ServiceType) (servicespkg.Service, error) {
-	instance, err := c.svcFactoryRegistry.CreateService(c.ctx, serviceType, "")
-	if err != nil {
-		return nil, fmt.Errorf("creating service %q: %w", serviceType, err)
-	}
-
-	// setup adapters
-	if l, ok := instance.(servicespkg.LoggerAdapter); ok {
-		l.SetLogger(c.logger.With(zap.Stringer("service", serviceType)))
-	}
-	if ca, ok := instance.(ConnectionAdapter); ok {
-		ca.SetConnection(c)
-	}
-
-	return instance, nil
+func (c *Connection) ServiceRegistry() *servicespkg.ServiceRegistry {
+	return c.svcRegistry
 }
 
 func (c *Connection) SetProcess(process *process.Process) {
@@ -322,13 +311,11 @@ func (c *Connection) Open() {
 
 func (c *Connection) setupReporters() {
 	// create reporter services
-	r, err := c.createService("reporter")
+	_, err := c.svcRegistry.Get(c.ctx, "reporter", "")
 	if err != nil {
 		c.logger.Error("failed to create reporter service", zap.Error(err))
 		return
 	}
-
-	c.svcRegistry.Register(r)
 }
 
 func (c *Connection) ID() string {

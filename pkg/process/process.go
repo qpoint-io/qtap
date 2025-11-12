@@ -84,6 +84,7 @@ type Process struct {
 	exited     atomic.Bool
 	tlsOk      bool
 	startTime  time.Time
+	closeTime  *time.Time
 	mu         sync.Mutex
 	scanMu     sync.Mutex
 	scanWg     sync.WaitGroup
@@ -658,4 +659,12 @@ func (p *Process) AddDetectedTLSProbeType(t string) {
 	}
 
 	p.TLSProbeTypesDetected = append(p.TLSProbeTypesDetected, t)
+}
+
+func (p *Process) CreatedAt() time.Time {
+	return p.startTime
+}
+
+func (p *Process) ClosedAt() *time.Time {
+	return p.closeTime
 }

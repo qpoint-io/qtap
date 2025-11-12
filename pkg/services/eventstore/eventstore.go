@@ -283,7 +283,6 @@ type Connection struct {
 
 	Tags           map[string][]string `json:"tags,omitzero"`
 	Finalized      bool                `json:"finalized,omitempty"`
-	Timestamp      time.Time           `json:"timestamp,omitempty"`
 	Direction      Direction           `json:"direction,omitempty"`
 	VendorID       string              `json:"vendorId,omitempty"`
 	Part           uint32              `json:"part,omitempty"`
@@ -296,6 +295,12 @@ type Connection struct {
 	BytesReceived  uint64              `json:"bytesReceived,omitempty"`
 	BytesSent      uint64              `json:"bytesSent,omitempty"`
 	Labels         []string            `json:"labels,omitempty"`
+
+	// Timestamp is the time the connection was created.
+	// [DEPRECATED] Use CreatedAt instead.
+	Timestamp time.Time `json:"timestamp,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitempty"`
+	ClosedAt  time.Time `json:"closedAt,omitempty"`
 }
 
 type ConnectionSystem struct {

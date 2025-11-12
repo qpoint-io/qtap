@@ -221,7 +221,7 @@ func (s *EventStore) extractTimestamp(item any) time.Time {
 	case *eventstore.ArtifactRecord:
 		return i.Timestamp
 	case *eventstore.Connection:
-		return i.Timestamp
+		return i.CreatedAt
 	default:
 		return time.Now()
 	}

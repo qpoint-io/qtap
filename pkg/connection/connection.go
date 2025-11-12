@@ -335,6 +335,14 @@ func (c *Connection) ID() string {
 	return c.id
 }
 
+func (c *Connection) CreatedAt() time.Time {
+	return c.report.openTime
+}
+
+func (c *Connection) ClosedAt() time.Time {
+	return c.report.closeTime
+}
+
 func (c *Connection) watch() {
 	defer func() {
 		if r := recover(); r != nil {

@@ -93,7 +93,6 @@ func (s *service) report() {
 
 	connection := toEventStoreConnection(s.conn)
 	connection.Part = s.reportCount // set event store specific part number
-	connection.Timestamp = time.Now()
 
 	// generate the log
 	s.eventStore.Save(s.conn.Context(), connection)
@@ -123,6 +122,9 @@ func (s *service) ServiceType() services.ServiceType {
 func toEventStoreConnection(conn *connection.Connection) *eventstore.Connection {
 	c := &eventstore.Connection{
 		Finalized: conn.CloseEvent != nil,
+		Timestamp: conn.CreatedAt(), // [DEPRECATED]
+		CreatedAt: conn.CreatedAt(),
+		ClosedAt:  conn.ClosedAt(),
 		System: &eventstore.ConnectionSystem{
 			Hostname:      telemetry.Hostname(),
 			Agent:         "tap",

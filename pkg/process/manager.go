@@ -325,7 +325,9 @@ func (m *Manager) removeProc(p *Process) error {
 	labels := getProcessLabels(p)
 	processCloseTotal.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Inc()
 	processActiveTotal.WithLabelValues(labels...).Dec()
-	processDuration.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Observe(time.Since(p.startTime).Seconds())
+	closeTime := time.Now()
+	p.closeTime = &closeTime
+	processDuration.WithLabelValues(append(labels, strconv.Itoa(p.ExitCode))...).Observe(time.Since(closeTime).Seconds())
 
 	// acquire a lock
 	m.mu.Lock()

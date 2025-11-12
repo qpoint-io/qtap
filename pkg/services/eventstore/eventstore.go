@@ -298,9 +298,9 @@ type Connection struct {
 
 	// Timestamp is the time the connection was created.
 	// [DEPRECATED] Use CreatedAt instead.
-	Timestamp time.Time `json:"timestamp,omitempty"`
-	CreatedAt time.Time `json:"createdAt,omitempty"`
-	ClosedAt  time.Time `json:"closedAt,omitempty"`
+	Timestamp time.Time  `json:"timestamp,omitempty"`
+	CreatedAt time.Time  `json:"createdAt,omitempty"`
+	ClosedAt  *time.Time `json:"closedAt,omitempty"`
 }
 
 type ConnectionSystem struct {

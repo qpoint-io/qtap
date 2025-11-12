@@ -339,8 +339,12 @@ func (c *Connection) CreatedAt() time.Time {
 	return c.report.openTime
 }
 
-func (c *Connection) ClosedAt() time.Time {
-	return c.report.closeTime
+func (c *Connection) ClosedAt() *time.Time {
+	if c.report.closeTime.IsZero() {
+		return nil
+	}
+
+	return &c.report.closeTime
 }
 
 func (c *Connection) watch() {

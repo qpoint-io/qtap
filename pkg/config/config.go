@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	validator "github.com/go-playground/validator/v10"
@@ -97,6 +98,14 @@ func (s Services) GetEventStores() []*ServiceConfig {
 		}
 	}
 	return configs
+}
+
+func (s Services) GetEventStoresByID() map[string]*ServiceEventStore {
+	stores := make(map[string]*ServiceEventStore, len(s.EventStores))
+	for _, store := range s.EventStores {
+		stores[store.ID] = &store
+	}
+	return stores
 }
 
 func (s Services) HasAnyObjectStores() bool {
@@ -206,6 +215,25 @@ func (c *Config) Validate() error {
 
 		if err := ValidateRulekitMacros(macros); err != nil {
 			return fmt.Errorf("validating rulekit macros: %w", err)
+		}
+	}
+
+	if len(c.Services.ObjectStores) > 0 {
+		eventStores := c.Services.GetEventStoresByID()
+		for i, objectStore := range c.Services.ObjectStores {
+			if objectStore.EventStore.Disabled {
+				continue
+			}
+
+			if objectStore.EventStore.ID != "" {
+				if _, exists := eventStores[objectStore.EventStore.ID]; !exists {
+					osID := objectStore.ID
+					if osID == "" {
+						osID = strconv.Itoa(i)
+					}
+					return fmt.Errorf("object store %s: event store id=%q does not exist", osID, objectStore.EventStore.ID)
+				}
+			}
 		}
 	}
 

@@ -241,6 +241,53 @@ syntax error: unexpected symbol`,
 				`parsing rulekit macros: "zone": name must be unique`,
 			},
 		},
+		{
+			name: "object store event store selector - valid",
+			config: &Config{
+				Services: Services{
+					EventStores: []ServiceEventStore{{
+						ID:   "test",
+						Type: EventStoreType_CONSOLE,
+					}},
+					ObjectStores: []ServiceObjectStore{{
+						ObjectStoreConfig: ObjectStoreConfig{
+							EventStore: EventStoreSelector{ID: "test"},
+						},
+					}},
+				},
+			},
+			errors: []string{},
+		},
+		{
+			name: "object store event store selector - inexistent",
+			config: &Config{
+				Services: Services{
+					ObjectStores: []ServiceObjectStore{{
+						ObjectStoreConfig: ObjectStoreConfig{
+							EventStore: EventStoreSelector{ID: "test"},
+						},
+					}},
+				},
+			},
+			errors: []string{
+				"object store 0: event store id=\"test\" does not exist",
+			},
+		},
+		{
+			name: "object store event store selector - disabled and ID",
+			config: &Config{
+				Services: Services{
+					ObjectStores: []ServiceObjectStore{{
+						ObjectStoreConfig: ObjectStoreConfig{
+							EventStore: EventStoreSelector{
+								Disabled: true,
+								ID:       "test",
+							},
+						},
+					}},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tcs {

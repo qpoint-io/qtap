@@ -9,7 +9,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
@@ -24,14 +23,6 @@ type ConnectionAdapter interface {
 const (
 	defaultBufferSize = 1024 * 1024 * 10 // 10MB
 	PodLabelStack     = "tap.qpoint.io/stack"
-)
-
-var (
-	// coreServices are services that are always included without
-	// having to be explicitly added to a stack in the config
-	coreServices = []services.ServiceType{
-		connmeta.Type,
-	}
 )
 
 var tracer = telemetry.Tracer()

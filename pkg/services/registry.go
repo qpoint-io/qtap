@@ -79,6 +79,9 @@ type ServiceRegistry struct {
 type ServiceConfigurator func(ctx context.Context, service Service) (Service, error)
 
 func NewServiceRegistry(fr *FactoryRegistry) *ServiceRegistry {
+	if fr == nil {
+		fr = NewFactoryRegistry()
+	}
 	return &ServiceRegistry{
 		services:  NewRegistry[ServiceKey, Service](),
 		factories: fr,

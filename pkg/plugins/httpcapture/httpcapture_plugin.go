@@ -126,13 +126,6 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 	return fi
 }
 
-func (f *Factory) RequiredServices() []services.ServiceType {
-	return []services.ServiceType{
-		eventstore.TypeEventStore,
-		rulekitsvc.TypeRulekit,
-	}
-}
-
 func (f *Factory) Destroy() {
 	f.logger.Debug("http_capture plugin destroyed")
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
-	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -242,13 +241,6 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 	}
 
 	svcs := conn.ServiceRegistry()
-	requiredSvcs := set.Union(stack.requiredServices, set.NewSet(coreServices...))
-	for _, s := range requiredSvcs.Items() {
-		if !svcs.Has(services.ServiceKey{Type: s}) {
-			return nil, fmt.Errorf("service %q not found", s)
-		}
-	}
-
 	return NewConnection(ctx, conn.Logger(), requestID, m.bufferSize, connectionType, stack, svcs), nil
 }
 

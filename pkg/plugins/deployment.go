@@ -2,8 +2,6 @@ package plugins
 
 import (
 	"github.com/qpoint-io/qtap/pkg/config"
-	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 )
 
@@ -18,17 +16,15 @@ type StackDeployment struct {
 	pluginAccessor PluginAccessor
 
 	name              string
-	requiredServices  set.Set[services.ServiceType]
 	plugins           []HttpPlugin
 	persistentPlugins []config.Plugin
 }
 
 func NewStackDeployment(logger *zap.Logger, name string, pluginAccessor PluginAccessor) *StackDeployment {
 	return &StackDeployment{
-		name:             name,
-		logger:           logger,
-		pluginAccessor:   pluginAccessor,
-		requiredServices: set.NewSet[services.ServiceType](),
+		name:           name,
+		logger:         logger,
+		pluginAccessor: pluginAccessor,
 	}
 }
 
@@ -53,9 +49,6 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 			continue
 		}
 		plugin.Init(d.logger.With(zap.String("plugin", cp.Type)), cp.Config)
-
-		// add the required services
-		d.requiredServices.Add(plugin.RequiredServices()...)
 
 		// add to the list of plugins
 		d.plugins = append(d.plugins, plugin)

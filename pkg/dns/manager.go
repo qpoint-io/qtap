@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/process"
+	"github.com/qpoint-io/qtap/pkg/qnet"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
@@ -82,7 +83,7 @@ func (m *DNSManager) Lookup(addr [16]byte, containerID string) (*Record, error) 
 	ip := net.IP(addr[:])
 
 	// grab an IP string
-	ipString := ip.String()
+	ipString := qnet.IPString(ip)
 
 	// lookup domains
 	domains, err := net.LookupAddr(ipString)

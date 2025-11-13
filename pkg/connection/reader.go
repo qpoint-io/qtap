@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/dns"
+	"github.com/qpoint-io/qtap/pkg/qnet"
 	"go.uber.org/zap"
 )
 
@@ -129,7 +130,7 @@ func (c *Connection) processProtocolEvent(event ProtocolEvent) {
 	}
 
 	// report metrics
-	connProtocolTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), c.Protocol.String()).Inc()
+	connProtocolTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), c.Protocol.String()).Inc()
 
 	// use the protocol event to create a stream processor
 	c.streamProcessor = c.services.createStreamer(c)
@@ -172,7 +173,7 @@ func (c *Connection) processOriginalDestinationEvent(event OriginalDestinationEv
 	c.OriginalDestination = &event.Destination
 
 	// set original destination as domain
-	c.SetDomain(event.Destination.IP.String())
+	c.SetDomain(qnet.IPString(event.Destination.IP))
 }
 
 func (c *Connection) processErrorEvent(event ErrorEvent) {
@@ -247,7 +248,7 @@ func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {
 	}
 
 	// report metrics
-	connTLSHandshakeTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), event.Msg.SNI, event.Msg.Version.String()).Inc()
+	connTLSHandshakeTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), event.Msg.SNI, event.Msg.Version.String()).Inc()
 
 	c.TLSClientHello = event.Msg
 }

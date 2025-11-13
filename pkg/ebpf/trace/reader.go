@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/qpoint-io/qtap/pkg/qnet"
 	"go.uber.org/zap"
 )
 
@@ -182,7 +183,7 @@ func (m *TraceManager) readAttrEvent(r *bytes.Reader, event *TraceEventMeta) err
 
 		ip := make([]byte, 4)
 		binary.BigEndian.PutUint32(ip, ip4Value)
-		entry.AddField(zap.String(titleString, net.IP(ip).String()))
+		entry.AddField(zap.String(titleString, qnet.IPString(net.IP(ip))))
 	case TraceIP6:
 		var ip6Value [4]uint32
 		if err := binary.Read(r, binary.BigEndian, &ip6Value); err != nil {
@@ -194,7 +195,7 @@ func (m *TraceManager) readAttrEvent(r *bytes.Reader, event *TraceEventMeta) err
 		for i := range 4 {
 			binary.BigEndian.PutUint32(ip[i*4:], ip6Value[i])
 		}
-		entry.AddField(zap.String(titleString, net.IP(ip).String()))
+		entry.AddField(zap.String(titleString, qnet.IPString(net.IP(ip))))
 	}
 
 	return nil

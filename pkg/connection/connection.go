@@ -169,7 +169,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	// } else {
 	// 	t.Add("ip", openEvent.Remote.IP.String())
 	// }
-	t.Add("ip", openEvent.Local.IP.String())
+	t.Add("ip", qnet.IPString(openEvent.Local.IP))
 
 	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
 	c := &Connection{
@@ -292,8 +292,8 @@ func (c *Connection) Open() {
 		c.logger.Debug("opening connection")
 
 		// report metrics
-		connOpenTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
-		connActiveTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+		connOpenTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+		connActiveTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
 
 		// Check that the process was redirected if this processes connections
 		// are intended to be forwarded/proxied.
@@ -371,11 +371,11 @@ func (c *Connection) Close() {
 	defer c.cancel()
 
 	// report metrics
-	connCloseTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
-	connActiveTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Dec()
-	connDuration.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port))).Observe(float64(c.report.closeTime.Sub(c.report.openTime).Milliseconds()))
-	connBytesSentTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.WrBytes))
-	connBytesRecvTotal.WithLabelValues(c.OpenEvent.Remote.IP.String(), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
+	connCloseTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+	connActiveTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Dec()
+	connDuration.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port))).Observe(float64(c.report.closeTime.Sub(c.report.openTime).Milliseconds()))
+	connBytesSentTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.WrBytes))
+	connBytesRecvTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
 
 	span := trace.SpanFromContext(c.ctx)
 	defer span.End()
@@ -477,9 +477,9 @@ func (c *Connection) Domain() string {
 	if c.domain == "" {
 		// if we have an original destination, use that
 		if c.OriginalDestination != nil {
-			c.domain = c.OriginalDestination.IP.String()
+			c.domain = qnet.IPString(c.OriginalDestination.IP)
 		} else {
-			c.domain = dstAddr.IP.String()
+			c.domain = qnet.IPString(dstAddr.IP)
 		}
 		c.domainIsIP = true
 	}

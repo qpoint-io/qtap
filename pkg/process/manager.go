@@ -163,21 +163,22 @@ func (m *Manager) SetConfig(cfg *config.Config) {
 		m.envMask.Delete(tag.Key)
 	}
 
-	// nothing to do if we don't have any tag configs
-	if cfg == nil || cfg.Tags == nil {
-		m.envTags = make([]config.Tag, 0)
+	if cfg == nil {
 		return
 	}
 
-	// add the new env tags to the env mask
-	for _, tag := range cfg.Tags {
-		if tag.Source == "env" {
-			m.envMask.Store(tag.Location, true)
+	m.envTags = make([]config.Tag, 0)
+	if cfg.Tags != nil {
+		// add the new env tags to the env mask
+		for _, tag := range cfg.Tags {
+			if tag.Source == "env" {
+				m.envMask.Store(tag.Location, true)
+			}
 		}
-	}
 
-	// set the new env tags
-	m.envTags = cfg.Tags
+		// set the new env tags
+		m.envTags = cfg.Tags
+	}
 
 	// update the filters
 	m.updateFilters(cfg)

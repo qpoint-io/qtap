@@ -169,7 +169,8 @@ var (
 	ArtifactType_ResponseBody    ArtifactType = "res-body"
 	ArtifactType_ResponseHeaders ArtifactType = "res-headers"
 	ArtifactType_DLPMatches      ArtifactType = "dlp_matches"
-	ArtifactType_SensitiveData   ArtifactType = "sensitive_data"
+	ArtifactType_SensitiveData   ArtifactType = "sensitive_data" // TODO(Jon):  DEPRECATED
+	ArtifactType_QscanRequest    ArtifactType = "qscan_request"
 	ArtifactType_HTTPTransaction ArtifactType = "http_transaction"
 	ArtifactType_LLMConversation ArtifactType = "llm_conversation"
 )

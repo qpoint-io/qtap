@@ -66,22 +66,22 @@ var (
 )
 
 var (
-	serviceFactories = []services.FactoryFactory{
+	serviceFactories = []services.FactoryFn{
 		// Eventstore services
-		func() services.ServiceFactory { return &eventstoreconsole.Factory{} },
-		func() services.ServiceFactory { return &eventstorenoop.Factory{} },
-		func() services.ServiceFactory { return &eventstoreaxiom.Factory{} },
-		func() services.ServiceFactory { return &eventstoreotel.Factory{} },
+		func() services.Factory { return &eventstoreconsole.Factory{} },
+		func() services.Factory { return &eventstorenoop.Factory{} },
+		func() services.Factory { return &eventstoreaxiom.Factory{} },
+		func() services.Factory { return &eventstoreotel.Factory{} },
 
 		// Objectstore services
-		func() services.ServiceFactory { return &objectstoreconsole.Factory{} },
-		func() services.ServiceFactory { return &objectstorenoop.Factory{} },
-		func() services.ServiceFactory { return &objecstores3.Factory{} },
+		func() services.Factory { return &objectstoreconsole.Factory{} },
+		func() services.Factory { return &objectstorenoop.Factory{} },
+		func() services.Factory { return &objecstores3.Factory{} },
 
 		// Add more services here...
-		func() services.ServiceFactory { return &rulekitsvc.Factory{} },
-		func() services.ServiceFactory { return &connmeta.Factory{} },
-		func() services.ServiceFactory { return &reporter.Factory{} },
+		func() services.Factory { return &rulekitsvc.Factory{} },
+		func() services.Factory { return &connmeta.Factory{} },
+		func() services.Factory { return &reporter.Factory{} },
 	}
 
 	pluginFactories = []plugins.HttpPlugin{
@@ -322,7 +322,7 @@ func runTapCmd(logger *zap.Logger) {
 
 	// Initialize service and plugin systems
 	svcFactoryRegistry := services.NewFactoryRegistry()
-	svcManager := services.NewServiceManager(ctx, logger, svcFactoryRegistry)
+	svcManager := services.NewFactoryManager(ctx, logger, svcFactoryRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
 	// register core services that must always be included
 	svcManager.AddExtraServices(

@@ -10,7 +10,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
-	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
@@ -242,38 +241,12 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 		return nil, nil
 	}
 
-	// ensure core services are included
+	svcs := conn.ServiceRegistry()
 	requiredSvcs := set.Union(stack.requiredServices, set.NewSet(coreServices...))
-
-	svcs := services.NewServiceRegistry()
 	for _, s := range requiredSvcs.Items() {
-		factory := m.serviceFactoryRegistry.Get(s, "")
-		if factory == nil {
-			return nil, fmt.Errorf("service %s not found", s)
+		if !svcs.Has(services.ServiceKey{Type: s}) {
+			return nil, fmt.Errorf("service %q not found", s)
 		}
-
-		svc, err := factory.Create(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("creating service: %w", err)
-		}
-
-		// check for adapters
-		if l, ok := svc.(services.LoggerAdapter); ok {
-			l.SetLogger(conn.Logger())
-		}
-		if c, ok := svc.(ConnectionAdapter); ok {
-			c.SetConnection(conn)
-		}
-
-		if es, ok := svc.(eventstore.EventStore); ok {
-			// if this is an event store, wrap it with the meta injector
-			svc = &connection.EventStoreMetaInjector{
-				Conn:       conn,
-				EventStore: es,
-			}
-		}
-
-		svcs.Register(svc)
 	}
 
 	return NewConnection(ctx, conn.Logger(), requestID, m.bufferSize, connectionType, stack, svcs), nil

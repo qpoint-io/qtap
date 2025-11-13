@@ -178,7 +178,7 @@ func Buffer[T string | []byte](data T) *synq.LinkedBuffer {
 
 func ConnmetaSvc(t *testing.T, ctx context.Context, conn *connection.Connection) connmeta.Service {
 	t.Helper()
-	svc, err := (&connmeta.Factory{}).Create(ctx)
+	svc, err := (&connmeta.Factory{}).Create(ctx, nil)
 	require.NoError(t, err)
 
 	svc.(plugins.ConnectionAdapter).SetConnection(conn)

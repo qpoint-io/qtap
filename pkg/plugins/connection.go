@@ -80,7 +80,9 @@ func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bu
 		workerDone:   make(chan struct{}),
 	}
 
-	if svc, ok := svcs.Get(connmeta.Type).(connmeta.Service); ok {
+	if svc, err := services.GetService[connmeta.Service](ctx, svcs, connmeta.Type, ""); err != nil {
+		c.logger.Error("failed to get connmeta", zap.Error(err))
+	} else {
 		c.meta.Service = svc
 	}
 

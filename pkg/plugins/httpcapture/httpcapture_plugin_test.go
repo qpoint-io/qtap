@@ -193,10 +193,14 @@ func TestHttpCapturePlugin(t *testing.T) {
 			}),
 		},
 	}
-	rulekitSvc, err := rulekit.Create(ctx)
+
+	factories := services.NewFactoryRegistry()
+	svcs := services.NewServiceRegistry(factories)
+
+	rulekitSvc, err := rulekit.Create(ctx, svcs)
 	require.NoError(t, err)
 	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
-	svcs := services.NewServiceRegistry(rulekitSvc)
+	factories.Register(services.StaticFactory(rulekitsvc.TypeRulekit, rulekitSvc), "")
 
 	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup
@@ -212,7 +216,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 			},
 		}
 
-		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
+		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
 		mockES.EXPECT().Save(gomock.Any(), gomock.All(
 			gomock.Cond(func(a *eventstore.Artifact) bool {
 				return a.Type == eventstore.ArtifactType_HTTPTransaction && a.ContentType == "application/json"
@@ -225,8 +229,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		)).Return()
 
 		// simulate http tx
-		svcs := svcs.Copy()
-		svcs.Register(mockES)
+		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
 		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
@@ -243,11 +246,10 @@ func TestHttpCapturePlugin(t *testing.T) {
 		ctx := &plugintest.Context{
 			T: t,
 		}
-		mockES.EXPECT().ServiceType().Return(eventstore.TypeEventStore)
+		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
 
 		// simulate http tx
-		svcs := svcs.Copy()
-		svcs.Register(mockES)
+		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
 		plugin := factory.NewInstance(ctx, svcs)
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)

@@ -8,99 +8,113 @@ import (
 	"go.uber.org/zap"
 )
 
-// ServiceManager handles service creation and lifecycle
-type ServiceManager struct {
+// FactoryManager handles factory creation and configuration
+type FactoryManager struct {
 	ctx           context.Context
 	logger        *zap.Logger
-	registry      *FactoryRegistry
-	factories     *Registry[ServiceType, FactoryFactory]
+	factories     *FactoryRegistry
+	factoryFns    *Registry[ServiceType, FactoryFn]
 	extraServices []func(*config.Config) *config.ServiceConfig
 }
 
-// NewServiceManager creates a new service manager
-func NewServiceManager(ctx context.Context, logger *zap.Logger, registry *FactoryRegistry) *ServiceManager {
-	return &ServiceManager{
-		ctx:       ctx,
-		logger:    logger,
-		registry:  registry,
-		factories: NewRegistry[ServiceType, FactoryFactory](),
+// NewFactoryManager creates a new factory manager
+func NewFactoryManager(ctx context.Context, logger *zap.Logger, registry *FactoryRegistry) *FactoryManager {
+	return &FactoryManager{
+		ctx:        ctx,
+		logger:     logger,
+		factories:  registry,
+		factoryFns: NewRegistry[ServiceType, FactoryFn](),
 	}
 }
 
-func (sm *ServiceManager) AddExtraServices(services ...func(*config.Config) *config.ServiceConfig) {
-	sm.extraServices = append(sm.extraServices, services...)
+// AddExtraServices adds services that are always added to the config.
+func (m *FactoryManager) AddExtraServices(services ...func(*config.Config) *config.ServiceConfig) {
+	m.extraServices = append(m.extraServices, services...)
 }
 
 // RegisterFactory registers a service factory
-func (sm *ServiceManager) RegisterFactory(fns ...FactoryFactory) {
+func (m *FactoryManager) RegisterFactory(fns ...FactoryFn) {
 	for _, fn := range fns {
 		factory := fn()
-		if _, exists := sm.factories.Load(factory.FactoryType()); !exists {
-			sm.logger.Debug("registering factory", zap.String("factory_type", factory.FactoryType().String()))
-			sm.factories.Register(factory.FactoryType(), fn)
+		if _, exists := m.factoryFns.Load(factory.FactoryType()); !exists {
+			m.logger.Debug("registering factory", zap.String("factory_type", factory.FactoryType().String()))
+			m.factoryFns.Register(factory.FactoryType(), fn)
 		}
 	}
 }
 
 // SetConfig processes a config update and creates/updates services
-func (sm *ServiceManager) SetConfig(cfg *config.Config) {
+func (m *FactoryManager) SetConfig(cfg *config.Config) {
 	if cfg == nil {
+		// TODO: should we clear all existing factories in this case?
 		return
 	}
 
 	// get services from config
-	svcs := cfg.Services.AllConfigs()
-	for _, fn := range sm.extraServices {
+	svcs := cfg.Services.All()
+	for _, fn := range m.extraServices {
 		svcs = append(svcs, fn(cfg))
 	}
 
 	for _, svcConfig := range svcs {
-		fn := sm.factories.Get(ServiceType(svcConfig.Type))
+		fn := m.factoryFns.Get(ServiceType(svcConfig.Type))
 		if fn == nil {
-			sm.logger.Debug("no factory registered for service type", zap.String("service_type", svcConfig.Type))
+			m.logger.Debug("no factory registered for service", zap.String("service_type", svcConfig.Type))
 			continue
 		}
 
 		factory := fn()
 
-		// Close old service if it exists and implements Closer
-		if old := sm.registry.Get(factory.ServiceType(), ""); old != nil {
-			// closes factories that are closeable
-			if closer, ok := old.(io.Closer); ok {
-				defer func() {
-					closer.Close()
-				}()
-			}
-
-			// sends replacement factory to services that support it
-			if next, ok := old.(NextFactory); ok {
-				defer func() {
-					next.Next(factory)
-				}()
-			}
-		}
-
-		// Set the registry for the factory if it implements the SetRegistry interface
-		if sr, ok := factory.(SetFactoryRegistry); ok {
-			sr.SetFactoryRegistry(sm.registry)
-		}
-
-		sm.logger.Info(
-			"initializing service factory",
-			zap.String("factory_type", svcConfig.Type),
+		logger := m.logger.With(
 			zap.Stringer("service_type", factory.ServiceType()),
+			zap.String("factory_type", svcConfig.Type),
 		)
-		if err := factory.Init(sm.ctx, svcConfig.Config); err != nil {
-			sm.logger.Error("failed to initialize service factory", zap.String("factory_type", svcConfig.Type), zap.Error(err))
+		if svcConfig.ID != "" {
+			logger = logger.With(zap.String("service_id", svcConfig.ID))
+		}
+
+		logger.Info("initializing service factory")
+		if err := factory.Init(m.ctx, svcConfig.Config); err != nil {
+			logger.Error("failed to initialize service factory", zap.Error(err))
 			continue
 		}
 
 		if svcConfig.ID != "" {
-			sm.registry.Register(factory, svcConfig.ID)
+			m.registerFactory(factory, svcConfig.ID)
 		}
 		// register it as the default if explicitly specified or no ID was provided
 		if svcConfig.Default || svcConfig.ID == "" {
-			sm.registry.Register(factory, "")
+			m.registerFactory(factory, "")
 		}
+	}
+}
+
+func (m *FactoryManager) registerFactory(factory Factory, id string) {
+	key := ServiceKey{Type: factory.ServiceType(), ID: id}
+	old := m.factories.Get(key)
+	if old != nil {
+		// gracefully replace the old factory if it exists
+		defer m.replaceFactory(id, old, factory)
+	}
+	m.factories.Register(factory, id)
+}
+
+func (m *FactoryManager) replaceFactory(id string, old Factory, new Factory) {
+	logger := m.logger.With(
+		zap.Stringer("old_factory_type", old.FactoryType()),
+		zap.Stringer("new_factory_type", new.FactoryType()),
+	)
+	if id != "" {
+		logger = logger.With(zap.String("service_id", id))
+	}
+	logger.Debug("replacing factory")
+	// send replacement factory to services that support it
+	if next, ok := old.(NextFactory); ok {
+		next.Next(new)
+	}
+
+	// close old factory if it implements Closer
+	if closer, ok := old.(io.Closer); ok {
+		closer.Close()
 	}
 }

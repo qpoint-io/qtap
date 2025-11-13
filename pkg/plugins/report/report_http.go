@@ -117,7 +117,7 @@ func (h *filterInstance) Destroy() {
 
 	h.eventstore.Save(ctx, &r)
 
-	h.logger.Debug("filter instance destroyed")
+	h.logger.Debug("plugin instance destroyed")
 }
 
 func (h *filterInstance) scanForAuthTokens() (string, string, bool) {

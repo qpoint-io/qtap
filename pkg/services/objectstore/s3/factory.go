@@ -84,7 +84,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	return nil
 }
 
-func (f *Factory) Create(ctx context.Context) (services.Service, error) {
+func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
 	return &ObjectStore{
 		putFn:     f.objectstore.Put,
 		accessURL: f.accessURL,

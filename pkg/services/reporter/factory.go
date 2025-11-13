@@ -2,7 +2,6 @@ package reporter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -14,9 +13,8 @@ import (
 const Type services.ServiceType = "reporter"
 
 type Factory struct {
-	factoryRegistry *services.FactoryRegistry
-	logger          *zap.Logger
-	config          *Config
+	logger *zap.Logger
+	config *Config
 }
 
 type Config struct {
@@ -37,11 +35,6 @@ func (f *Factory) ServiceType() services.ServiceType {
 	return Type
 }
 
-// SetFactoryRegistry implements the SetFactoryRegistry interface.
-func (f *Factory) SetFactoryRegistry(registry *services.FactoryRegistry) {
-	f.factoryRegistry = registry
-}
-
 func (f *Factory) Init(ctx context.Context, cfg any) error {
 	c, ok := cfg.(*Config)
 	if !ok {
@@ -53,26 +46,21 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	return nil
 }
 
-func (f *Factory) Create(ctx context.Context) (services.Service, error) {
-	svc, err := f.factoryRegistry.CreateService(ctx, eventstore.TypeEventStore, f.config.EventStoreID)
+func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
+	es, err := services.GetService[eventstore.EventStore](ctx, svcRegistry, eventstore.TypeEventStore, f.config.EventStoreID)
 	if err != nil {
-		return nil, fmt.Errorf("creating event store: %w", err)
-	}
-	es, ok := svc.(eventstore.EventStore)
-	if !ok {
-		return nil, errors.New("service is not an eventstore.EventStore")
-	}
-	if l, ok := es.(services.LoggerAdapter); ok {
-		l.SetLogger(f.logger)
+		return nil, fmt.Errorf("getting event store: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	return &service{
-		ctx:                 ctx,
-		cancel:              cancel,
+		ctx:        ctx,
+		cancel:     cancel,
+		eventStore: es,
+		logger:     f.logger,
+
 		firstReportDeadline: f.config.FirstReportDeadline,
 		reportInterval:      f.config.ReportInterval,
-		eventStore:          es,
 		logToConsole:        f.config.EventStoreID == "", // log to the console only if this is the default reporter
 	}, nil
 }

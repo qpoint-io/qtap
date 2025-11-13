@@ -26,78 +26,108 @@ type Services struct {
 	QscanClient  *ServiceQscan        `yaml:"qscan"`
 }
 
-func (s Services) AllConfigs() []*ServiceConfig {
-	es := s.FirstEventStore()
-	os := s.FirstObjectStore()
-	qc := s.Qscan()
+// All returns all service configs.
+// For event stores and object stores, the first ones are set as the default.
+func (s Services) All() []*ServiceConfig {
+	qscans := s.GetQscans()
+	eventStores := s.GetEventStores()
+	objectStores := s.GetObjectStores()
 
-	return []*ServiceConfig{
-		{
-			ID:      es.ID,
-			Type:    es.ServiceType(),
-			Config:  es,
-			Default: true,
-		},
-		{
-			ID:      os.ID,
-			Type:    os.ServiceType(),
-			Config:  os,
-			Default: true,
-		},
-		{
-			Type:    qc.ServiceType(),
-			Config:  qc,
-			Default: true,
-		},
-	}
+	configs := make([]*ServiceConfig, 0, len(eventStores)+len(objectStores)+len(qscans))
+	configs = append(configs, eventStores...)
+	configs = append(configs, objectStores...)
+	configs = append(configs, qscans...)
+	return configs
 }
 
 type ServiceConfig struct {
-	ID     string
-	Type   string
+	// ID is optional.
+	// If not set, the service will be registered as the default for its service type.
+	ID string
+	// Type is th factory type.
+	// For example, "eventstore.console".
+	Type string
+	// Config is passed to the factory's Init method.
 	Config any
 
-	// Default indicates that this service should be used if its service type is requested
-	// without specifying an ID
+	// Default indicates that this service should be used as the default for its service type
+	// even if an ID is provided.
 	Default bool
 }
 
-func (s Services) Qscan() ServiceQscan {
-	if s.QscanClient == nil {
-		return ServiceQscan{
-			Type: QscanType_DISABLED,
-		}
+func (s Services) GetQscans() []*ServiceConfig {
+	qc := s.QscanClient
+	if qc == nil {
+		qc = &ServiceQscan{Type: QscanType_DISABLED}
 	}
 
-	return *s.QscanClient
+	return []*ServiceConfig{{
+		Type:    qc.ServiceType(),
+		Config:  qc,
+		Default: true,
+	}}
 }
 
 func (s Services) HasAnyEventStores() bool {
 	return len(s.EventStores) > 0
 }
 
-func (s Services) FirstEventStore() ServiceEventStore {
-	if len(s.EventStores) == 0 {
-		return ServiceEventStore{
-			Type: EventStoreType_DISABLED,
-		}
+func (s Services) GetEventStores() []*ServiceConfig {
+	stores := s.EventStores
+	if len(stores) == 0 {
+		stores = []ServiceEventStore{{Type: EventStoreType_DISABLED}}
 	}
 
-	return s.EventStores[0]
+	configs := make([]*ServiceConfig, len(stores))
+	for i, store := range stores {
+		isDefault := i == 0
+		id := store.ID
+		if id == "" && !isDefault {
+			// the service registry will treat event stores without an ID as the default.
+			// however, we want to explicitly set the first event store as the default regardless of IDs.
+			// => if this is not the first event store, generate a unique ID for it
+			id = fmt.Sprintf("eventstore-%d", i)
+		}
+
+		configs[i] = &ServiceConfig{
+			Type:    store.ServiceType(),
+			Config:  store,
+			Default: isDefault,
+			ID:      id,
+		}
+	}
+	return configs
 }
 
 func (s Services) HasAnyObjectStores() bool {
 	return len(s.ObjectStores) > 0
 }
 
-func (s Services) FirstObjectStore() ServiceObjectStore {
-	if len(s.ObjectStores) == 0 {
-		return ServiceObjectStore{
-			Type: ObjectStoreType_DISABLED,
-		}
+func (s Services) GetObjectStores() []*ServiceConfig {
+	stores := s.ObjectStores
+	if len(stores) == 0 {
+		stores = []ServiceObjectStore{{Type: ObjectStoreType_DISABLED}}
 	}
 
-	return s.ObjectStores[0]
+	configs := make([]*ServiceConfig, len(stores))
+	for i, store := range stores {
+		isDefault := i == 0
+		id := store.ID
+		if id == "" && !isDefault {
+			// the service registry will treat object stores without an ID as the default.
+			// however, we want to explicitly set the first object store as the default regardless of IDs.
+			// => if this is not the first object store, generate a unique ID for it
+			id = fmt.Sprintf("objectstore-%d", i)
+		}
+
+		configs[i] = &ServiceConfig{
+			Type:    store.ServiceType(),
+			Config:  store,
+			Default: isDefault,
+			ID:      id,
+		}
+	}
+	return configs
 }
 
 type Config struct {

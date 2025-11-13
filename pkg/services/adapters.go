@@ -4,6 +4,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// LoggerAdapter is a service that accepts a logger
 type LoggerAdapter interface {
 	SetLogger(*zap.Logger)
 }

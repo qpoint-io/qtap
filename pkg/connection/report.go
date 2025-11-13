@@ -8,37 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 )
-
-func (c *Connection) logConnectionReport() {
-	span := trace.SpanFromContext(c.ctx)
-	var errorMsgs []string
-	var logFn func(msg string, fields ...zap.Field) = c.logger.Debug
-
-	fields := []zap.Field{
-		zap.Any("cookie", c.cookie),
-		zap.String("destinationProtocol", c.OpenEvent.SocketType.String()),
-		zap.Dict("report", c.report.reportFields()...),
-	}
-
-	// add handler type
-	fields = append(fields, zap.String("handler", c.HandlerType.String()))
-	span.SetAttributes(attribute.String("connection.handler", c.HandlerType.String()))
-
-	// add strategy
-	if proc := c.Process(); proc != nil {
-		span.SetAttributes(attribute.String("connection.strategy", proc.Strategy.String()))
-		fields = append(fields, zap.String("strategy", proc.Strategy.String()))
-	}
-
-	if len(errorMsgs) > 0 {
-		fields = append(fields, zap.Strings("errors", errorMsgs))
-	}
-
-	// send it
-	logFn("connection report", fields...)
-}
 
 type report struct {
 	ctx                    context.Context
@@ -77,16 +47,6 @@ func (r *report) reportEvent(event any) {
 	}
 
 	span.AddEvent(eventName, trace.WithAttributes(eventAttrs...))
-}
-
-func (r *report) reportFields() []zap.Field {
-	return []zap.Field{
-		zap.Duration("duration", r.closeTime.Sub(r.openTime)),
-		zap.Bool("gotTLSClientHelloEvent", r.gotTLSClientHelloEvent),
-		zap.Bool("gotProtocolEvent", r.gotProtocolEvent),
-		zap.Bool("gotHandlerTypeEvent", r.gotHandlerTypeEvent),
-		zap.Uint64("dataEventCount", r.dataEventCount),
-	}
 }
 
 func (r *report) DataEventCount() uint64 {

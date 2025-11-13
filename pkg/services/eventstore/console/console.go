@@ -6,9 +6,11 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"go.uber.org/zap"
 )
+
+// ensure we implement the EventStore interface
+var _ eventstore.EventStore = (*EventStore)(nil)
 
 const (
 	TypeConsoleEventStore services.ServiceType = "console"
@@ -23,17 +25,9 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
-	os, err := services.GetService[objectstore.ObjectStore](ctx, svcRegistry, objectstore.TypeObjectStore, "")
-	if err != nil {
-		return nil, fmt.Errorf("getting object store: %w", err)
-	}
-
-	return &EventStore{
-		objectStore: os,
-	}, nil
+	return &EventStore{}, nil
 }
 
-// ServiceType returns the service type
 func (f *Factory) FactoryType() services.ServiceType {
 	return services.ServiceType(fmt.Sprintf("%s.%s", eventstore.TypeEventStore, TypeConsoleEventStore))
 }
@@ -42,28 +36,17 @@ func (f *Factory) FactoryType() services.ServiceType {
 type EventStore struct {
 	services.LogHelper
 	eventstore.BaseEventStore
-
-	objectStore objectstore.ObjectStore
 }
 
 // Save stores an event
 func (s *EventStore) Save(ctx context.Context, item any) {
-	if l, ok := s.objectStore.(services.LoggerAdapter); ok {
-		l.SetLogger(s.Log())
-	}
-
+	ll := s.Log()
 	switch i := item.(type) {
 	case *eventstore.Artifact:
-		go func() {
-			ar, err := s.objectStore.Put(*i)
-			if err != nil {
-				s.Log().Error("failed to put artifact", zap.Error(err))
-				return
-			}
-			s.Save(ctx, ar)
-		}()
+		ll.DPanic("event stores do not support artifacts", zap.Any("artifact", i))
+		return
 	default:
-		s.Log().Info("event store submission",
+		ll.Info("event store submission",
 			zap.String("type", fmt.Sprintf("%T", item)),
 			zap.Any("item", item))
 	}

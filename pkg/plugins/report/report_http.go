@@ -60,7 +60,6 @@ func (h *filterInstance) Destroy() {
 	userAgent, _ := hm.UserAgent()
 	path, _ := hm.Path()
 	method, _ := hm.Method()
-	endpoint := meta.Endpoint()
 	url, _ := hm.URL()
 	direction := meta.Direction()
 
@@ -100,7 +99,6 @@ func (h *filterInstance) Destroy() {
 	}
 
 	r.SetRequestID(meta.RequestID())
-	r.SetEndpointID(endpoint)
 
 	// Scan for auth tokens
 	authTokenSource, authToken, authTokenFound := h.scanForAuthTokens()

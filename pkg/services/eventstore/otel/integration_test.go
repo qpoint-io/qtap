@@ -7,7 +7,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	noopotel "go.opentelemetry.io/otel/log/noop"
@@ -19,7 +18,6 @@ func TestOTelEventStore_Integration(t *testing.T) {
 	// Create EventStore directly for integration testing
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("integration-test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "integration-test",
 		environment: "test",
 	}

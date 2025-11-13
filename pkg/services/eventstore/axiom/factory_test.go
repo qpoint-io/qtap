@@ -5,7 +5,6 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,9 +73,7 @@ func TestFactory_Create(t *testing.T) {
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
 
-	// Set up mock registry with noop object store factory
-	factories := services.NewFactoryRegistry(&noop.Factory{})
-	svcs := services.NewServiceRegistry(factories)
+	svcs := services.NewServiceRegistry(nil)
 
 	// Now test Create
 	svc, err := f.Create(t.Context(), svcs)

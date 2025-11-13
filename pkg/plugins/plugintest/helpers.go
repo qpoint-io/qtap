@@ -9,6 +9,7 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/plugins"
+	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -121,6 +122,13 @@ type Context struct {
 	VContext context.Context
 	VTags    tags.List
 	VMeta    *Meta
+}
+
+func NewMeta(t *testing.T, conn *connection.Connection) *Meta {
+	t.Helper()
+	svc, err := services.GetService[connmeta.Service](t.Context(), conn.ServiceRegistry(), connmeta.Type, "")
+	require.NoError(t, err)
+	return &Meta{Service: svc}
 }
 
 type Meta struct {

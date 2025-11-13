@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/services"
@@ -10,8 +11,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// ensure we implement the ObjectStore interface
+var _ objectstore.ObjectStore = (*ObjectStore)(nil)
+
 const (
-	TypeConsoleEventStore services.ServiceType = "console"
+	TypeConsoleObjectStore services.ServiceType = "console"
 )
 
 type Factory struct {
@@ -27,7 +31,7 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 }
 
 func (f *Factory) FactoryType() services.ServiceType {
-	return services.ServiceType(fmt.Sprintf("%s.%s", objectstore.TypeObjectStore, TypeConsoleEventStore))
+	return services.ServiceType(fmt.Sprintf("%s.%s", objectstore.TypeObjectStore, TypeConsoleObjectStore))
 }
 
 type ObjectStore struct {
@@ -35,11 +39,9 @@ type ObjectStore struct {
 	objectstore.BaseObjectStore
 }
 
-func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
-	s.Log().Info("object store submission",
-		zap.Dict("artifact", artifact.Fields()...))
+func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
+	fields := append(s.LogFields(artifact),
+		zap.String("data_base64", base64.StdEncoding.EncodeToString(artifact.Data)))
 
-	fmt.Println(string(artifact.Data))
-
-	return artifact.Record("stdout://" + artifact.Digest()), nil
+	s.Log().Info("object store submission", fields...)
 }

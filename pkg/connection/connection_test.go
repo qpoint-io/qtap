@@ -1,18 +1,24 @@
 package connection
 
 import (
+	"context"
 	"net"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/qnet"
+	servicespkg "github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/tlsutils"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
@@ -388,4 +394,62 @@ func TestConnection_ControlValues(t *testing.T) {
 			"test:test",
 		},
 	}, cv)
+}
+
+func TestEventMetaInjector(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svcFactoryRegistry := servicespkg.NewFactoryRegistry()
+	conn := NewConnection(t.Context(), zaptest.NewLogger(t), &OpenEvent{}, WithServiceFactoryRegistry(svcFactoryRegistry))
+	conn.Tags().Add("key", "value1", "value2")
+	conn.id = "conn-id"
+
+	mockES := eventstore.NewMockEventStore(ctrl)
+	mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
+	mockES.EXPECT().Save(t.Context(), gomock.Any()).Do(func(ctx context.Context, item any) {
+		issue := item.(*eventstore.Issue)
+		// these values should be auto injected
+		require.Equal(t, "conn-id", issue.ConnectionID)
+		require.Equal(t, conn.Tags().List(), issue.Tags)
+	})
+	svcFactoryRegistry.Register(servicespkg.StaticFactory(eventstore.TypeEventStore, mockES), "")
+
+	es, err := servicespkg.GetService[eventstore.EventStore](t.Context(), conn.ServiceRegistry(), eventstore.TypeEventStore, "")
+	require.NoError(t, err)
+	es.Save(t.Context(), &eventstore.Issue{
+		Timestamp: time.Now(),
+		Direction: "ingress",
+		Error:     "test error",
+		URL:       "https://example.com",
+		Method:    "GET",
+		Status:    200,
+	})
+}
+
+func TestObjectStoreMetaInjector(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svcFactoryRegistry := servicespkg.NewFactoryRegistry()
+	conn := NewConnection(t.Context(), zaptest.NewLogger(t), &OpenEvent{}, WithServiceFactoryRegistry(svcFactoryRegistry))
+	conn.Tags().Add("key", "value1", "value2")
+	conn.id = "conn-id"
+	conn.SetDomain("test-endpoint")
+
+	mockOS := objectstore.NewMockObjectStore(ctrl)
+	mockOS.EXPECT().ServiceType().AnyTimes().Return(objectstore.TypeObjectStore)
+	mockOS.EXPECT().Put(t.Context(), gomock.Any()).Do(func(ctx context.Context, artifact *eventstore.Artifact) {
+		require.Equal(t, "conn-id", artifact.ConnectionID)
+		require.Equal(t, "test-endpoint", artifact.EndpointId)
+	})
+	svcFactoryRegistry.Register(servicespkg.StaticFactory(objectstore.TypeObjectStore, mockOS), "")
+
+	os, err := servicespkg.GetService[objectstore.ObjectStore](t.Context(), conn.ServiceRegistry(), objectstore.TypeObjectStore, "")
+	require.NoError(t, err)
+	os.Put(t.Context(), &eventstore.Artifact{
+		Type:        "test-type",
+		ContentType: "text/plain",
+		Data:        []byte("test data"),
+	})
 }

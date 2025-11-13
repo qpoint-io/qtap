@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
-	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/plugintest"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/rulekit"
 	"github.com/stretchr/testify/assert"
@@ -163,7 +164,9 @@ func TestOutputFormatConstants(t *testing.T) {
 func TestHttpCapturePlugin(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	ctx := t.Context()
-	conn := connection.NewConnection(ctx, logger, &connection.OpenEvent{})
+	svcFactoryRegistry := services.NewFactoryRegistry()
+	conn := connection.NewConnection(ctx, logger, &connection.OpenEvent{}, connection.WithServiceFactoryRegistry(svcFactoryRegistry))
+	conn.SetDomain("example.com")
 
 	// factory
 	pluginConf := &HttpCaptureConfig{
@@ -194,43 +197,37 @@ func TestHttpCapturePlugin(t *testing.T) {
 		},
 	}
 
-	factories := services.NewFactoryRegistry()
-	svcs := services.NewServiceRegistry(factories)
+	svcFactoryRegistry.Register(rulekit, "")
+	svcFactoryRegistry.Register(services.StaticFactory(connmeta.Type, plugintest.ConnmetaSvc(t, ctx, conn)), "")
 
-	rulekitSvc, err := rulekit.Create(ctx, svcs)
-	require.NoError(t, err)
-	rulekitSvc.(plugins.ConnectionAdapter).SetConnection(conn)
-	factories.Register(services.StaticFactory(rulekitsvc.TypeRulekit, rulekitSvc), "")
-
-	connMetaSvc := plugintest.ConnmetaSvc(t, ctx, conn)
 	// setup
 	t.Run("match", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockES := eventstore.NewMockEventStore(ctrl)
+		mockOS := objectstore.NewMockObjectStore(ctrl)
 		ctx := &plugintest.Context{
 			T:        t,
 			VReqBody: []byte("in"),
 			VResBody: []byte("out"),
-			VMeta: &plugintest.Meta{
-				Service: connMetaSvc,
-			},
+			VMeta:    plugintest.NewMeta(t, conn),
 		}
 
-		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
-		mockES.EXPECT().Save(gomock.Any(), gomock.All(
+		mockOS.EXPECT().ServiceType().AnyTimes().Return(objectstore.TypeObjectStore)
+		mockOS.EXPECT().Put(gomock.Any(), gomock.All(
 			gomock.Cond(func(a *eventstore.Artifact) bool {
-				return a.Type == eventstore.ArtifactType_HTTPTransaction && a.ContentType == "application/json"
+				return a.ConnectionID == conn.ID() &&
+					a.EndpointId == conn.Domain()
 			}),
 			HttpTransactionMatcher(func(tx *HttpTransaction) bool {
 				return string(tx.Request.Body) == "in" &&
 					string(tx.Response.Body) == "out" &&
-					tx.Response.Status == 200
+					tx.Response.Status == 200 &&
+					tx.Metadata.ConnectionID == conn.ID()
 			}),
 		)).Return()
 
 		// simulate http tx
-		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
-		plugin := factory.NewInstance(ctx, svcs)
+		svcFactoryRegistry.Register(services.StaticFactory(objectstore.TypeObjectStore, mockOS), "")
+		plugin := factory.NewInstance(ctx, conn.ServiceRegistry())
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 200 should trigger
@@ -242,15 +239,14 @@ func TestHttpCapturePlugin(t *testing.T) {
 
 	t.Run("no match", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockES := eventstore.NewMockEventStore(ctrl)
+		mockOS := objectstore.NewMockObjectStore(ctrl)
 		ctx := &plugintest.Context{
 			T: t,
 		}
-		mockES.EXPECT().ServiceType().AnyTimes().Return(eventstore.TypeEventStore)
-
+		mockOS.EXPECT().ServiceType().AnyTimes().Return(objectstore.TypeObjectStore)
 		// simulate http tx
-		factories.Register(services.StaticFactory(eventstore.TypeEventStore, mockES), "")
-		plugin := factory.NewInstance(ctx, svcs)
+		svcFactoryRegistry.Register(services.StaticFactory(objectstore.TypeObjectStore, mockOS), "")
+		plugin := factory.NewInstance(ctx, conn.ServiceRegistry())
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 403 should NOT trigger

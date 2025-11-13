@@ -1,9 +1,10 @@
 package httpcapture
 
 import (
+	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/rulekit"
@@ -50,10 +51,10 @@ type LogRule struct {
 }
 
 type HttpCaptureConfig struct {
-	Level        CaptureLevel `json:"level" yaml:"level"`
-	Format       OutputFormat `json:"format" yaml:"format"`
-	EventStoreID string       `json:"event_store" yaml:"event_store"`
-	Rules        []LogRule    `json:"rules" yaml:"rules"`
+	Level               CaptureLevel               `json:"level" yaml:"level"`
+	Format              OutputFormat               `json:"format" yaml:"format"`
+	ObjectStoreSelector config.ObjectStoreSelector `json:"object_store" yaml:"object_store"`
+	Rules               []LogRule                  `json:"rules" yaml:"rules"`
 }
 
 type Factory struct {
@@ -69,7 +70,6 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	var cfg HttpCaptureConfig = HttpCaptureConfig{
 		Level:  CaptureLevelNone,
 		Format: OutputFormatJSON,
-		Rules:  []LogRule{},
 	}
 
 	// Parse provided configuration
@@ -112,10 +112,10 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 		rules:  f.config.Rules,
 	}
 
-	if es, err := services.GetService[eventstore.EventStore](ctx, svcs, eventstore.TypeEventStore, f.config.EventStoreID); err != nil {
-		f.logger.Error("failed to get event store", zap.Error(err))
+	if os, err := services.GetService[objectstore.ObjectStore](ctx, svcs, objectstore.TypeObjectStore, f.config.ObjectStoreSelector.ID); err != nil {
+		f.logger.Error("failed to get object store", zap.Error(err))
 	} else {
-		fi.eventstore = es
+		fi.objectstore = os
 	}
 	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, rulekitsvc.TypeRulekit, ""); err != nil {
 		f.logger.Error("failed to get rulekit", zap.Error(err))

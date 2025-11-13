@@ -11,7 +11,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,8 +53,7 @@ func TestAxiomIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set up mock registry with noop object store factory (integration test doesn't need real object store)
-	noopFactory := &noop.Factory{}
-	svcRegistry := services.NewServiceRegistry(services.NewFactoryRegistry(noopFactory))
+	svcRegistry := services.NewServiceRegistry(nil)
 
 	// Create service instance
 	svc, err := f.Create(context.Background(), svcRegistry)

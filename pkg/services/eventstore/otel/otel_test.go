@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	noopotel "go.opentelemetry.io/otel/log/noop"
@@ -15,7 +14,6 @@ func TestEventStore_Save_Request(t *testing.T) {
 	// Use noop logger to avoid actual OTLP export in tests
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -52,7 +50,6 @@ func TestEventStore_Save_Request(t *testing.T) {
 func TestEventStore_Save_Issue(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -81,7 +78,6 @@ func TestEventStore_Save_Issue(t *testing.T) {
 func TestEventStore_Save_PIIEntity(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -105,7 +101,6 @@ func TestEventStore_Save_PIIEntity(t *testing.T) {
 func TestEventStore_Save_ArtifactRecord(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -130,7 +125,6 @@ func TestEventStore_Save_ArtifactRecord(t *testing.T) {
 func TestEventStore_Save_Connection(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -165,7 +159,6 @@ func TestEventStore_Save_Connection(t *testing.T) {
 func TestEventStore_Save_Artifact(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -192,7 +185,6 @@ func TestEventStore_Save_Artifact(t *testing.T) {
 func TestEventStore_Save_UnsupportedType(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -211,7 +203,6 @@ func TestEventStore_Save_UnsupportedType(t *testing.T) {
 func TestEventStore_SetConnection(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}
@@ -237,7 +228,6 @@ func TestEventStore_SetConnection(t *testing.T) {
 func TestEventStore_StructToAttributes(t *testing.T) {
 	es := &EventStore{
 		logger:      noopotel.NewLoggerProvider().Logger("test"),
-		objectStore: &noop.ObjectStore{},
 		serviceName: "test-qtap",
 		environment: "test",
 	}

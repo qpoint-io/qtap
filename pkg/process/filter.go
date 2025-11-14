@@ -13,6 +13,7 @@ import (
 type Filter interface {
 	Evaluate(*Process) (bool, error)
 	Bitmask() uint8
+	String() string
 }
 
 var filters []Filter
@@ -74,7 +75,7 @@ func (m *Manager) updateFilters(cfg *config.Config) {
 	filterMu.Unlock()
 
 	// debug
-	m.Logger.Debug("applying filters to existing processes", zap.Any("filters", filters))
+	m.Logger.Debug("applying filters to existing processes", zap.Stringers("filters", filters))
 
 	// check existing exe map for existing pids and set the flags accordingly
 	m.procs.Iter(func(pid int, p *Process) bool {
@@ -86,7 +87,7 @@ func (m *Manager) updateFilters(cfg *config.Config) {
 					m.Logger.Warn("failed to notify eventer",
 						zap.Int("pid", pid),
 						zap.String("exe", p.Exe),
-						zap.Any("flag", f),
+						zap.Stringers("flags", config.UnpackTapFilter(f)),
 						zap.Error(err))
 				}
 			}
@@ -95,7 +96,7 @@ func (m *Manager) updateFilters(cfg *config.Config) {
 			m.Logger.Debug("filtering existing process",
 				zap.Int("pid", pid),
 				zap.String("exe", p.Exe),
-				zap.String("flag", fmt.Sprintf("%08b", f)))
+				zap.Stringers("flags", config.UnpackTapFilter(f)))
 		}
 
 		// continue iterating
@@ -157,6 +158,10 @@ func (f *ExeFilter) Bitmask() uint8 {
 	return f.bitmask
 }
 
+func (f *ExeFilter) String() string {
+	return fmt.Sprintf("exe.%s:%s", f.strategy, strings.ToLower(f.pattern))
+}
+
 type ExeRegexFilter struct {
 	pattern *regexp.Regexp
 	bitmask uint8
@@ -170,6 +175,10 @@ func (f *ExeRegexFilter) Bitmask() uint8 {
 	return f.bitmask
 }
 
+func (f *ExeRegexFilter) String() string {
+	return fmt.Sprintf("exe.regex:/%s/", f.pattern.String())
+}
+
 type PIDFilter struct {
 	PID     int
 	bitmask uint8
@@ -181,4 +190,8 @@ func (f *PIDFilter) Evaluate(p *Process) (bool, error) {
 
 func (f *PIDFilter) Bitmask() uint8 {
 	return f.bitmask
+}
+
+func (f *PIDFilter) String() string {
+	return fmt.Sprintf("pid:%d", f.PID)
 }

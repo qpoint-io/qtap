@@ -473,10 +473,10 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 						l.Warn("read pid file error", zap.Error(err))
 					}
 				}
-				l.Warn("waiting for pid file", zap.Error(err))
+				l.Debug("waiting for pid file", zap.Error(err))
 				time.Sleep(1 * time.Second)
 			}
-			l.Warn("got pid", zap.Int("pid", pid))
+			l.Debug("got pid", zap.Int("pid", pid))
 			c.processPID <- pid
 		}
 

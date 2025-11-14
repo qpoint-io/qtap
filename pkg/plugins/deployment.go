@@ -58,9 +58,15 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 }
 
 func (d *StackDeployment) NewInstance(connection *Connection) StackInstance {
+	ll := connection.logger
 	instances := make(StackInstance, 0, len(d.plugins))
 	for _, p := range d.plugins {
-		instances = append(instances, p.NewInstance(connection.Context(), connection.services))
+		i := p.NewInstance(connection.Context(), connection.services)
+		if i == nil {
+			ll.Error("plugin returned nil instance, skipping", zap.Stringer("plugin", p.PluginType()))
+			continue
+		}
+		instances = append(instances, i)
 	}
 	return instances
 }

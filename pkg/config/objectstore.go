@@ -25,6 +25,8 @@ func (s ServiceObjectStore) ServiceType() string {
 		return "objectstore.console"
 	case ObjectStoreType_DISABLED:
 		return "objectstore.noop"
+	case "e2e": // TODO(e2e)
+		return "objectstore.e2e"
 	default:
 		return "objectstore.console"
 	}

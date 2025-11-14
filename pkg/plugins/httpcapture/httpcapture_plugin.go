@@ -112,13 +112,17 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 		rules:  f.config.Rules,
 	}
 
-	if os, err := services.GetService[objectstore.ObjectStore](ctx, svcs, objectstore.TypeObjectStore, f.config.ObjectStoreSelector.ID); err != nil {
+	os, err := services.GetService[objectstore.ObjectStore](ctx, svcs, objectstore.TypeObjectStore, f.config.ObjectStoreSelector.ID)
+	if err != nil {
 		f.logger.Error("failed to get object store", zap.Error(err))
-	} else {
-		fi.objectstore = os
+		// object store is a hard requirement for this plugin
+		return nil
 	}
+	fi.objectstore = os
+
 	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, rulekitsvc.TypeRulekit, ""); err != nil {
 		f.logger.Error("failed to get rulekit", zap.Error(err))
+		// rulekit is optional, so we can continue and ignore any configured rules
 	} else {
 		fi.rulekit = rk
 	}

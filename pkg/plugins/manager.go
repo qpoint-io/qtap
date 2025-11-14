@@ -8,7 +8,6 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
-	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
@@ -51,9 +50,6 @@ type Manager struct {
 	// default stack
 	defaultStackConfig config.TapHttpConfig
 
-	// service factory registry
-	serviceFactoryRegistry *services.FactoryRegistry
-
 	// plugin registry
 	pluginRegistry *PluginRegistry
 
@@ -69,12 +65,6 @@ type ManagerOpt func(*Manager)
 func SetBufferSize(bufferSize int) ManagerOpt {
 	return func(m *Manager) {
 		m.bufferSize = bufferSize
-	}
-}
-
-func SetServiceFactoryRegistry(registry *services.FactoryRegistry) ManagerOpt {
-	return func(m *Manager) {
-		m.serviceFactoryRegistry = registry
 	}
 }
 

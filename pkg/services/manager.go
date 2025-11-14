@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 )
 
@@ -15,6 +18,7 @@ type FactoryManager struct {
 	factories     *FactoryRegistry
 	factoryFns    *Registry[ServiceType, FactoryFn]
 	extraServices []func(*config.Config) *config.ServiceConfig
+	mu            sync.Mutex
 }
 
 // NewFactoryManager creates a new factory manager
@@ -29,6 +33,8 @@ func NewFactoryManager(ctx context.Context, logger *zap.Logger, registry *Factor
 
 // AddExtraServices adds services that are always added to the config.
 func (m *FactoryManager) AddExtraServices(services ...func(*config.Config) *config.ServiceConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.extraServices = append(m.extraServices, services...)
 }
 
@@ -45,6 +51,8 @@ func (m *FactoryManager) RegisterFactory(fns ...FactoryFn) {
 
 // SetConfig processes a config update and creates/updates services
 func (m *FactoryManager) SetConfig(cfg *config.Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if cfg == nil {
 		// TODO: should we clear all existing factories in this case?
 		return
@@ -53,10 +61,15 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 	// get services from config
 	svcs := cfg.Services.All()
 	for _, fn := range m.extraServices {
+		// TODO(Jon): At this point we know that the services coming from the
+		// config have the appropriate defaults and IDs. So we can set the
+		// default flag to false and add an ID here instead of creating the
+		// seenServiceTypes set below.
 		svcs = append(svcs, fn(cfg))
 	}
 
-	for _, svcConfig := range svcs {
+	seenServiceTypes := set.NewSet[ServiceType]()
+	for i, svcConfig := range svcs {
 		fn := m.factoryFns.Get(ServiceType(svcConfig.Type))
 		if fn == nil {
 			m.logger.Debug("no factory registered for service", zap.String("service_type", svcConfig.Type))
@@ -73,6 +86,19 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 			logger = logger.With(zap.String("service_id", svcConfig.ID))
 		}
 
+		var isDefault bool
+		if seenServiceTypes.Contains(factory.ServiceType()) {
+			// we have already seen this service type. give it an ID so that it is not set as default
+			isDefault = false
+			if svcConfig.ID == "" {
+				svcConfig.ID = fmt.Sprintf("service-%d", i)
+			}
+		} else {
+			// we have not seen this service type yet. set it as default.
+			isDefault = true
+			seenServiceTypes.Add(factory.ServiceType())
+		}
+
 		logger.Info("initializing service factory")
 		if err := factory.Init(m.ctx, svcConfig.Config); err != nil {
 			logger.Error("failed to initialize service factory", zap.Error(err))
@@ -83,7 +109,7 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 			m.registerFactory(factory, svcConfig.ID)
 		}
 		// register it as the default if explicitly specified or no ID was provided
-		if svcConfig.Default || svcConfig.ID == "" {
+		if isDefault {
 			m.registerFactory(factory, "")
 		}
 	}

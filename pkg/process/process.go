@@ -31,8 +31,10 @@ var (
 	podRe       *regexp.Regexp
 	containerRe *regexp.Regexp
 
+	ErrProcessStopped  = errors.New("process stopped")
 	ErrProcessReplaced = errors.New("process replaced")
 	ErrUnknownProcess  = errors.New("unknown process")
+	ErrNewScanStarting = errors.New("new scan starting up")
 )
 
 func init() {
@@ -91,7 +93,7 @@ type Process struct {
 	scanMu     sync.Mutex
 	scanWg     sync.WaitGroup
 	scanCtx    context.Context
-	scanCancel context.CancelFunc
+	scanCancel context.CancelCauseFunc
 	tags       tags.List
 	envTags    []config.Tag
 	closers    []io.Closer
@@ -472,7 +474,7 @@ func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
 
 	// Cancel any existing scan
 	if p.scanCancel != nil {
-		p.scanCancel()
+		p.scanCancel(ErrNewScanStarting)
 	}
 
 	// Wait for the previous scan to fully exit
@@ -482,7 +484,7 @@ func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
 
 	// Now start the new scan
 	p.scanWg.Add(1)
-	p.scanCtx, p.scanCancel = context.WithCancel(ctx)
+	p.scanCtx, p.scanCancel = context.WithCancelCause(ctx)
 	return p.scanCtx, nil
 }
 
@@ -493,12 +495,12 @@ func (p *Process) FinishScan() {
 }
 
 // CancelScan cancels any in-progress scan without waiting
-func (p *Process) CancelScan() {
+func (p *Process) CancelScan(cause error) {
 	p.scanMu.Lock()
 	defer p.scanMu.Unlock()
 
 	if p.scanCancel != nil {
-		p.scanCancel()
+		p.scanCancel(cause)
 		p.scanCancel = nil
 		p.scanCtx = nil
 	}

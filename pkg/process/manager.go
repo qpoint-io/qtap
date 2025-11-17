@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -306,10 +307,12 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 		attribute.Bool("replace", replace),
 	)
 	defer span.End()
+
 	// if the process has already exited, ignore
 	if p.Exited() {
 		return
 	}
+	logger := m.Logger.With(zap.Int("pid", p.Pid), zap.String("exe", p.Exe))
 
 	// we use a wait group to ensure the observers have time to complete
 	// because they all share the same instance of the ELF file which is
@@ -337,7 +340,16 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 					return
 				}
 
-				m.Logger.Error("notifying observer of process start/replace", zap.Error(err))
+				switch {
+				case errors.Is(err, ErrNewScanStarting):
+					logger.Debug("current scan was cancelled due to new scan starting up")
+				case errors.Is(err, ErrProcessStopped):
+					logger.Debug("current scan was cancelled due to process stopping")
+				case errors.Is(err, ErrProcessReplaced):
+					logger.Debug("current scan was cancelled due to process being replaced")
+				default:
+					logger.Error("notifying observer of process start/replace", zap.Error(err))
+				}
 			}
 		})
 	}

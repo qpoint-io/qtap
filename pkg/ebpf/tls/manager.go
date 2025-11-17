@@ -108,7 +108,7 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	for _, p := range m.probes {
 		// check if scan was cancelled
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return context.Cause(ctx)
 		}
 		if proc.Exited() {
 			continue
@@ -136,7 +136,7 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 	ctx, span := tracer.Start(context.TODO(), "TlsManager.ProcessReplaced", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
-	proc.CancelScan() // cancel any in-progress scan
+	proc.CancelScan(process.ErrProcessReplaced)
 
 	if m.final != nil {
 		if err := m.final.ProcessReplaced(ctx, proc); err != nil {
@@ -160,7 +160,7 @@ func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) 
 	defer span.End()
 
 	// cancel any in-progress scan since the process is stopping
-	proc.CancelScan()
+	proc.CancelScan(process.ErrProcessStopped)
 
 	for _, p := range m.probes {
 		if err := p.ProcessStopped(ctx, proc); err != nil {

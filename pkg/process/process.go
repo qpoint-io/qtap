@@ -132,7 +132,7 @@ func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 }
 
 func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
-	_, span := tracer.Start(context.TODO(), "AllProcesses", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "AllProcesses", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	ps, err := AllProcs("/proc")
@@ -341,8 +341,7 @@ func (p *Process) RootFS() string {
 }
 
 func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Process.FindSharedLibrary")
+	ctx, span := tracer.Start(context.TODO(), "Process.FindSharedLibrary", trace.WithLinks(trace.LinkFromContext(ctx)))
 	span.SetAttributes(attribute.String("prefix", libNamePrefix))
 	defer span.End()
 
@@ -430,7 +429,6 @@ func (p *Process) Exited() bool {
 
 // Elf returns the elf file
 func (p *Process) Elf(ctx context.Context) (*binutils.Elf, error) {
-	ctx = context.WithoutCancel(ctx)
 	if p.elf == nil {
 		var err error
 		p.elf, err = binutils.NewElf(ctx, p.PidExe, "/", false)
@@ -466,8 +464,7 @@ func (p *Process) Unlock() {
 // StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
 // The caller MUST defer FinishScan() to signal completion.
 func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Process.StartScan")
+	ctx, span := tracer.Start(context.TODO(), "Process.StartScan", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	p.scanMu.Lock()
@@ -572,8 +569,7 @@ func (p *Process) discoverTags() error {
 
 // getRootID returns the unique identifier of the process' root filesystem
 func (p *Process) getRootID(ctx context.Context) (uint64, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Process.getRootID")
+	ctx, span := tracer.Start(context.TODO(), "Process.getRootID", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	rootInfo, err := os.Stat(p.Root)

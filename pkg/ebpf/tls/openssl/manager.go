@@ -15,6 +15,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -82,7 +83,6 @@ func NewOpenSSLManager(logger *zap.Logger, probeFn func() []*common.Uprobe) *Ope
 }
 
 func (m *OpenSSLManager) Start(ctx context.Context) error {
-	ctx = context.WithoutCancel(ctx)
 	metrics.NewSystemGaugeFunc("containers_tracked", "The number of containers currently being tracked",
 		func() float64 {
 			return float64(m.containers.Len())
@@ -126,8 +126,7 @@ func (m *OpenSSLManager) Stop() (err error) {
 }
 
 func (m *OpenSSLManager) ProcessStarted(ctx context.Context, p *process.Process) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "OpenSSLManager.ProcessStarted")
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessStarted", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	// get the cache key
@@ -256,8 +255,7 @@ func (m *OpenSSLManager) ProcessStarted(ctx context.Context, p *process.Process)
 }
 
 func (m *OpenSSLManager) ProcessReplaced(ctx context.Context, p *process.Process) error {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "OpenSSLManager.ProcessReplaced")
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessReplaced", trace.WithLinks(trace.LinkFromContext(ctx)))
 	span.SetAttributes(
 		attribute.Int("pid", p.Pid),
 		attribute.String("exe", p.Exe),
@@ -293,8 +291,7 @@ func (m *OpenSSLManager) ProcessReplaced(ctx context.Context, p *process.Process
 }
 
 func (m *OpenSSLManager) ProcessStopped(ctx context.Context, p *process.Process) error {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "OpenSSLManager.ProcessStopped")
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 	// fetch the container
 	container, exists := m.containers.Load(p.ContainerID)
@@ -337,8 +334,7 @@ func (m *OpenSSLManager) ProcessStopped(ctx context.Context, p *process.Process)
 }
 
 func (m *OpenSSLManager) detectStaticallyLinkedLibssl(ctx context.Context, proc *process.Process) (bool, error) {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "OpenSSLManager.detectStaticallyLinkedLibssl")
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.detectStaticallyLinkedLibssl", trace.WithLinks(trace.LinkFromContext(ctx)))
 	span.SetAttributes(attribute.Int("pid", proc.Pid), attribute.String("exe", proc.Exe))
 	defer span.End()
 	// get the pid of this running process

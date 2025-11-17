@@ -52,8 +52,7 @@ func NewContainer(logger *zap.Logger, probeFn func() []*common.Uprobe) *Containe
 }
 
 func (c *Container) Init(ctx context.Context, p *process.Process) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Container.Init",
+	ctx, span := tracer.Start(context.TODO(), "Container.Init",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)

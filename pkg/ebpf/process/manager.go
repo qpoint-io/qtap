@@ -59,8 +59,7 @@ func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.T
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Manager.Start")
+	ctx, span := tracer.Start(context.TODO(), "Manager.Start", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	// attach the tracepoints
@@ -95,7 +94,6 @@ func (m *Manager) Register(r process.Receiver) {
 }
 
 func (m *Manager) readProcEvents(ctx context.Context) {
-	ctx = context.WithoutCancel(ctx)
 	for {
 		if ctx.Err() != nil {
 			m.logger.Error("context cancelled", zap.Error(ctx.Err()))
@@ -136,8 +134,7 @@ var (
 )
 
 func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "readProcEvent",
+	ctx, span := tracer.Start(context.TODO(), "readProcEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 		trace.WithSpanKind(trace.SpanKindConsumer),

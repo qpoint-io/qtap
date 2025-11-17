@@ -107,7 +107,6 @@ func NewContainerEnricher(containerManager *container.Manager) *ContainerEnriche
 }
 
 func (e *ContainerEnricher) ProcessStarted(ctx context.Context, p *Process) error {
-	ctx = context.WithoutCancel(ctx)
 	// discover the container metadata if it exists
 	if e.containerManager == nil || p.ContainerID == "" || p.ContainerID == "root" {
 		return nil

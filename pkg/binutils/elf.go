@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = telemetry.Tracer()
@@ -70,8 +71,7 @@ type Elf struct {
 // Returns ErrNotELF if the file is not an ELF
 // Remember to call Close() when done
 func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*Elf, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "NewElf")
+	ctx, span := tracer.Start(context.TODO(), "NewElf", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	e := &Elf{
@@ -140,7 +140,6 @@ func (e Elf) isELF() (bool, error) {
 }
 
 func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
-	ctx = context.WithoutCancel(ctx)
 	if p.isClosed {
 		return nil, ErrFileClosed
 	}
@@ -148,7 +147,7 @@ func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
 		return nil, ErrNoFileLoaded
 	}
 	if p.ef == nil {
-		_, span := tracer.Start(ctx, "Elf.NewFile")
+		_, span := tracer.Start(context.TODO(), "Elf.NewFile", trace.WithLinks(trace.LinkFromContext(ctx)))
 		defer span.End()
 
 		var err error
@@ -162,8 +161,7 @@ func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
 }
 
 func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Elf.SearchSymbols")
+	ctx, span := tracer.Start(context.TODO(), "Elf.SearchSymbols", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 	if p.file == nil {
 		return nil, ErrNoFileLoaded
@@ -208,8 +206,7 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 }
 
 func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Elf.getSymbols32")
+	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols32", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 	matches := []elf.Symbol{}
 
@@ -271,8 +268,7 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 }
 
 func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Elf.getSymbols64")
+	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols64", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 	matches := []elf.Symbol{}
 
@@ -358,8 +354,7 @@ func readString(r io.ReadSeeker, offset int64) (string, error) {
 }
 
 func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSearch, typ ...elf.SectionType) (bool, error) {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Elf.ContainsAnySymbols")
+	ctx, span := tracer.Start(context.TODO(), "Elf.ContainsAnySymbols", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	f, err := p.Elf(ctx)
@@ -404,8 +399,7 @@ func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSear
 }
 
 func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.SectionType, targetSymbols []SymbolSearch) (bool, error) {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Elf.containsAnySymbols")
+	ctx, span := tracer.Start(context.TODO(), "Elf.containsAnySymbols", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	var recordSize int64
@@ -559,8 +553,7 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 
 // CalculateUprobeAddresses calculates the loaded address of a symbol (needed for uprobes)
 func (p *Elf) CalculateUprobeAddresses(ctx context.Context, symbols []elf.Symbol) []elf.Symbol {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "Elf.CalculateUprobeAddresses")
+	ctx, span := tracer.Start(context.TODO(), "Elf.CalculateUprobeAddresses", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	// create a copy of the input symbols to modify .Value
@@ -599,7 +592,6 @@ func (p *Elf) CalculateUprobeAddresses(ctx context.Context, symbols []elf.Symbol
 }
 
 func (p *Elf) GetSections(ctx context.Context) []*elf.Section {
-	ctx = context.WithoutCancel(ctx)
 	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil
@@ -608,7 +600,6 @@ func (p *Elf) GetSections(ctx context.Context) []*elf.Section {
 }
 
 func (p *Elf) Ldd(ctx context.Context) ([]string, error) {
-	ctx = context.WithoutCancel(ctx)
 	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil, err

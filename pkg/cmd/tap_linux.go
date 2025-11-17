@@ -506,7 +506,7 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 }
 
 func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
-	ctx, span := tracer.Start(context.Background(), "InitTLSProbes")
+	ctx, span := tracer.Start(context.TODO(), "InitTLSProbes")
 	defer span.End()
 
 	// Split the string and trim whitespace

@@ -141,7 +141,7 @@ func (m *Manager) MaskEnvVars(envVars []string) {
 }
 
 func (m *Manager) Start() error {
-	ctx, span := tracer.Start(context.Background(), "Manager.Start")
+	ctx, span := tracer.Start(context.TODO(), "Manager.Start")
 	defer span.End()
 
 	// add QPOINT_STRATEGY to the env mask
@@ -198,8 +198,7 @@ func (m *Manager) Stop() error {
 }
 
 func (m *Manager) preloadProcs(ctx context.Context) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Manager.preloadProcs")
+	ctx, span := tracer.Start(context.TODO(), "Manager.preloadProcs", trace.WithLinks(trace.LinkFromContext(ctx)))
 	defer span.End()
 
 	// load all of the procs
@@ -228,8 +227,7 @@ func (m *Manager) preloadProcs(ctx context.Context) error {
 }
 
 func (m *Manager) addProc(ctx context.Context, p *Process) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Manager.addProc")
+	ctx, span := tracer.Start(context.TODO(), "Manager.addProc", trace.WithLinks(trace.LinkFromContext(ctx)))
 	span.SetAttributes(attribute.Int("pid", p.Pid))
 	defer span.End()
 
@@ -292,14 +290,13 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 	}
 
 	// initialize the observers
-	go m.initProcObservers(context.WithoutCancel(ctx), p, procChanged)
+	go m.initProcObservers(ctx, p, procChanged)
 
 	return nil
 }
 
 func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool) {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Manager.initProcObservers",
+	ctx, span := tracer.Start(context.TODO(), "Manager.initProcObservers",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
@@ -350,8 +347,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 }
 
 func (m *Manager) removeProc(ctx context.Context, p *Process) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "Manager.removeProc")
+	ctx, span := tracer.Start(context.TODO(), "Manager.removeProc", trace.WithLinks(trace.LinkFromContext(ctx)))
 	span.SetAttributes(attribute.Int("pid", p.Pid), attribute.Int("exit_code", p.ExitCode))
 	defer span.End()
 

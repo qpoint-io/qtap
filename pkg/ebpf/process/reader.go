@@ -38,8 +38,7 @@ var (
 // handleExecStartEvent handles detecting when a process is being started
 // and adds it to the init procs map
 func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "handleExecStartEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExecStartEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
@@ -95,8 +94,7 @@ func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) err
 // handleExecArgvEvent handles detecting when a process's arguments are being set
 // and adds them to the proc init
 func (m *Manager) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx = context.WithoutCancel(ctx)
-	_, span := tracer.Start(ctx, "handleExecArgvEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExecArgvEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
@@ -140,8 +138,7 @@ func (m *Manager) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) erro
 // handleExecEndEvent handles detecting when a process exec is complete
 // and applies the changes to the process
 func (m *Manager) handleExecEndEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "handleExecEndEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExecEndEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
@@ -176,8 +173,7 @@ func (m *Manager) handleExecEndEvent(ctx context.Context, r *bytes.Reader) error
 // handleExitEvent handles detecting when a process has exited
 // and removes it from the system
 func (m *Manager) handleExitEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx = context.WithoutCancel(ctx)
-	ctx, span := tracer.Start(ctx, "handleExitEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExitEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)

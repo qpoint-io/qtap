@@ -25,7 +25,7 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	go.opentelemetry.io/contrib/exporters/autoexport v0.60.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0
@@ -50,6 +50,7 @@ require (
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect
+	cyphar.com/go-pathrs v0.2.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/4meepo/tagalign v1.4.2 // indirect
 	github.com/Abirdcfly/dupword v0.1.3 // indirect
@@ -120,6 +121,7 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
+	github.com/cyphar/filepath-securejoin v0.6.0 // indirect
 	github.com/daixiang0/gci v0.13.6 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect
@@ -249,7 +251,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opencontainers/runtime-spec v1.2.1 // indirect
-	github.com/opencontainers/selinux v1.12.0 // indirect
+	github.com/opencontainers/selinux v1.13.0 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect

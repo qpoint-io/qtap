@@ -121,7 +121,7 @@ func (m *TraceManager) Stop() error {
 }
 
 func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStarted", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStarted", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles
@@ -156,7 +156,7 @@ func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process
 }
 
 func (m *TraceManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles

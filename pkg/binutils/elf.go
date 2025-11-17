@@ -71,7 +71,7 @@ type Elf struct {
 // Returns ErrNotELF if the file is not an ELF
 // Remember to call Close() when done
 func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*Elf, error) {
-	ctx, span := tracer.Start(context.TODO(), "NewElf", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "NewElf", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	e := &Elf{
@@ -206,7 +206,7 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 }
 
 func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols32", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols32", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	matches := []elf.Symbol{}
 
@@ -268,7 +268,7 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 }
 
 func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols64", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "Elf.getSymbols64", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	matches := []elf.Symbol{}
 
@@ -399,7 +399,7 @@ func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSear
 }
 
 func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.SectionType, targetSymbols []SymbolSearch) (bool, error) {
-	ctx, span := tracer.Start(context.TODO(), "Elf.containsAnySymbols", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "Elf.containsAnySymbols", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	var recordSize int64

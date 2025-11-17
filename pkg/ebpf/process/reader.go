@@ -38,7 +38,7 @@ var (
 // handleExecStartEvent handles detecting when a process is being started
 // and adds it to the init procs map
 func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx, span := tracer.Start(context.TODO(), "handleExecStartEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExecStartEvent", //nolint:ineffassign,wastedassign,staticcheck
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
@@ -94,7 +94,7 @@ func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) err
 // handleExecArgvEvent handles detecting when a process's arguments are being set
 // and adds them to the proc init
 func (m *Manager) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) error {
-	ctx, span := tracer.Start(context.TODO(), "handleExecArgvEvent",
+	ctx, span := tracer.Start(context.TODO(), "handleExecArgvEvent", //nolint:ineffassign,wastedassign,staticcheck
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)

@@ -134,7 +134,7 @@ func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 }
 
 func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
-	ctx, span := tracer.Start(context.TODO(), "AllProcesses", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "AllProcesses", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	ps, err := AllProcs("/proc")
@@ -343,7 +343,7 @@ func (p *Process) RootFS() string {
 }
 
 func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
-	ctx, span := tracer.Start(context.TODO(), "Process.FindSharedLibrary", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "Process.FindSharedLibrary", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	span.SetAttributes(attribute.String("prefix", libNamePrefix))
 	defer span.End()
 
@@ -571,7 +571,7 @@ func (p *Process) discoverTags() error {
 
 // getRootID returns the unique identifier of the process' root filesystem
 func (p *Process) getRootID(ctx context.Context) (uint64, error) {
-	ctx, span := tracer.Start(context.TODO(), "Process.getRootID", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "Process.getRootID", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	rootInfo, err := os.Stat(p.Root)

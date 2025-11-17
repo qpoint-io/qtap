@@ -255,7 +255,7 @@ func (m *OpenSSLManager) ProcessStarted(ctx context.Context, p *process.Process)
 }
 
 func (m *OpenSSLManager) ProcessReplaced(ctx context.Context, p *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessReplaced", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessReplaced", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	span.SetAttributes(
 		attribute.Int("pid", p.Pid),
 		attribute.String("exe", p.Exe),
@@ -291,7 +291,7 @@ func (m *OpenSSLManager) ProcessReplaced(ctx context.Context, p *process.Process
 }
 
 func (m *OpenSSLManager) ProcessStopped(ctx context.Context, p *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.Start(context.TODO(), "OpenSSLManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	// fetch the container
 	container, exists := m.containers.Load(p.ContainerID)

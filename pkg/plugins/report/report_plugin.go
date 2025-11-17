@@ -34,6 +34,7 @@ func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceR
 
 	if es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, ""); err != nil {
 		f.logger.Error("failed to get event store", zap.Error(err))
+		return nil
 	} else {
 		fi.eventstore = es
 	}

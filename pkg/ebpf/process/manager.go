@@ -2,23 +2,25 @@ package process
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/ringbuf"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
 const (
-	cacheTTL  = time.Millisecond * 50
 	cacheSize = 1024
 )
 
@@ -39,6 +41,8 @@ type Manager struct {
 	metaMap     *ebpf.Map
 }
 
+var tracer = telemetry.Tracer()
+
 func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *Manager {
 	cache, err := lru.New[int32, *process.Process](cacheSize)
 	if err != nil {
@@ -54,7 +58,11 @@ func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.T
 	}
 }
 
-func (m *Manager) Start() error {
+func (m *Manager) Start(ctx context.Context) error {
+	ctx = context.WithoutCancel(ctx)
+	ctx, span := tracer.Start(ctx, "Manager.Start")
+	defer span.End()
+
 	// attach the tracepoints
 	for _, tracepoint := range m.tracepoints {
 		if err := tracepoint.Attach(); err != nil {
@@ -63,7 +71,7 @@ func (m *Manager) Start() error {
 	}
 
 	// start the proc event reader
-	go m.readProcEvents()
+	go m.readProcEvents(ctx)
 
 	return nil
 }
@@ -86,8 +94,14 @@ func (m *Manager) Register(r process.Receiver) {
 	m.reciever = r
 }
 
-func (m *Manager) readProcEvents() {
+func (m *Manager) readProcEvents(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
 	for {
+		if ctx.Err() != nil {
+			m.logger.Error("context cancelled", zap.Error(ctx.Err()))
+			break
+		}
+
 		record := recordPool.Get().(*ringbuf.Record)
 		err := m.rb.ReadInto(record)
 		if err != nil {
@@ -99,9 +113,9 @@ func (m *Manager) readProcEvents() {
 			continue
 		}
 
-		err = m.readProcEvent(record)
-		if err != nil {
+		if err := m.readProcEvent(ctx, record); err != nil {
 			m.logger.Error("failed to read proc event", zap.Error(err))
+			continue
 		}
 
 		recordPool.Put(record)
@@ -121,7 +135,15 @@ var (
 	}
 )
 
-func (m *Manager) readProcEvent(record *ringbuf.Record) error {
+func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
+	ctx = context.WithoutCancel(ctx)
+	ctx, span := tracer.Start(ctx, "readProcEvent",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithNewRoot(),
+		trace.WithSpanKind(trace.SpanKindConsumer),
+	)
+	defer span.End()
+
 	// get our reader from the pool
 	r := readerEventPool.Get().(*bytes.Reader)
 	defer readerEventPool.Put(r)
@@ -139,16 +161,23 @@ func (m *Manager) readProcEvent(record *ringbuf.Record) error {
 
 	switch t := event.Type; t {
 	case EVENT_EXEC_START:
-		return m.handleExecStartEvent(r)
+		span.SetAttributes(attribute.String("type", "exec_start"))
+		return m.handleExecStartEvent(ctx, r)
 	case EVENT_EXEC_ARGV:
-		return m.handleExecArgvEvent(r)
+		span.SetAttributes(attribute.String("type", "exec_argv"))
+		return m.handleExecArgvEvent(ctx, r)
 	case EVENT_EXEC_END:
-		return m.handleExecEndEvent(r)
+		span.SetAttributes(attribute.String("type", "exec_end"))
+		return m.handleExecEndEvent(ctx, r)
 	case EVENT_EXIT:
-		return m.handleExitEvent(r)
+		span.SetAttributes(attribute.String("type", "exit"))
+		return m.handleExitEvent(ctx, r)
+	default:
+		err := fmt.Errorf("unknown event type: %d", t)
+		span.RecordError(err)
+		m.logger.Error("failed to parse proc event", zap.Error(err))
+		return err
 	}
-
-	return nil
 }
 
 func (m *Manager) SetMeta(p *process.Process) error {

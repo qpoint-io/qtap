@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/moby/moby/pkg/parsers/kernel"
@@ -34,16 +33,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/connmeta"
-	eventstoreaxiom "github.com/qpoint-io/qtap/pkg/services/eventstore/axiom"
-	eventstoreconsole "github.com/qpoint-io/qtap/pkg/services/eventstore/console"
-	eventstorenoop "github.com/qpoint-io/qtap/pkg/services/eventstore/noop"
-	eventstoreotel "github.com/qpoint-io/qtap/pkg/services/eventstore/otel"
-	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
-	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
-	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
-	"github.com/qpoint-io/qtap/pkg/services/reporter"
-	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/status"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -66,24 +55,6 @@ var (
 )
 
 var (
-	serviceFactories = []services.FactoryFn{
-		// Eventstore services
-		func() services.Factory { return &eventstoreconsole.Factory{} },
-		func() services.Factory { return &eventstorenoop.Factory{} },
-		func() services.Factory { return &eventstoreaxiom.Factory{} },
-		func() services.Factory { return &eventstoreotel.Factory{} },
-
-		// Objectstore services
-		func() services.Factory { return &objectstoreconsole.Factory{} },
-		func() services.Factory { return &objectstorenoop.Factory{} },
-		func() services.Factory { return &objecstores3.Factory{} },
-
-		// Add more services here...
-		func() services.Factory { return &rulekitsvc.Factory{} },
-		func() services.Factory { return &connmeta.Factory{} },
-		func() services.Factory { return &reporter.Factory{} },
-	}
-
 	pluginFactories = []plugins.HttpPlugin{
 		wrapper.Catch(&logger.Factory{}),
 		wrapper.Catch(&report.Factory{}),
@@ -190,9 +161,7 @@ func runTapCmd(logger *zap.Logger) {
 	// Check if running as root (required for eBPF)
 	if syscall.Getuid() != 0 {
 		logger.Error("This program requires root privileges to load BPF programs and maps. Please run as root or with sudo.")
-		defer func() {
-			os.Exit(1)
-		}()
+		defer os.Exit(1)
 		return
 	}
 
@@ -271,9 +240,7 @@ func runTapCmd(logger *zap.Logger) {
 	}
 
 	pm := process.NewProcessManager(logger, procEbpfMan)
-	configManager.Subscribe(func(cfg *config.Config) {
-		pm.SetConfig(cfg)
-	})
+	configManager.SubscribeSetter(pm)
 
 	// Initialize container detection
 	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
@@ -323,36 +290,9 @@ func runTapCmd(logger *zap.Logger) {
 	// Initialize service and plugin systems
 	svcFactoryRegistry := services.NewFactoryRegistry()
 	svcManager := services.NewFactoryManager(ctx, logger, svcFactoryRegistry)
+	svcManager.AddExtraServices(extraServiceConfigs...)
 	svcManager.RegisterFactory(serviceFactories...)
-	// register core services that must always be included
-	svcManager.AddExtraServices(
-		// rulekit
-		func(cfg *config.Config) *config.ServiceConfig {
-			return &config.ServiceConfig{
-				Type:   rulekitsvc.TypeRulekit.String(),
-				Config: cfg.Rulekit,
-			}
-		},
-		// connmeta
-		func(cfg *config.Config) *config.ServiceConfig {
-			return &config.ServiceConfig{
-				Type: connmeta.Type.String(),
-			}
-		},
-		// report connections to the default event store
-		func(cfg *config.Config) *config.ServiceConfig {
-			return &config.ServiceConfig{
-				Type: reporter.Type.String(),
-				Config: &reporter.Config{
-					FirstReportDeadline: 500 * time.Millisecond,
-					ReportInterval:      10 * time.Second,
-				},
-			}
-		},
-	)
-	configManager.Subscribe(func(cfg *config.Config) {
-		svcManager.SetConfig(cfg)
-	})
+	configManager.SubscribeSetter(svcManager)
 
 	pluginRegistry := plugins.NewRegistry(pluginFactories...)
 	pluginManager := plugins.NewPluginManager(
@@ -360,15 +300,11 @@ func runTapCmd(logger *zap.Logger) {
 		plugins.SetBufferSize(int(httpBufsize)),
 		plugins.SetPluginRegistry(pluginRegistry),
 	)
-	configManager.Subscribe(func(cfg *config.Config) {
-		pluginManager.SetConfig(cfg)
-	})
+	configManager.SubscribeSetter(pluginManager)
 	if err := pluginManager.Start(); err != nil {
 		panic(fmt.Errorf("failed to start plugin manager: %w", err))
 	}
-	defer func() {
-		pluginManager.Stop()
-	}()
+	defer pluginManager.Stop()
 
 	// Initialize stream factory
 	ds := stream.NewStreamFactory(
@@ -389,18 +325,14 @@ func runTapCmd(logger *zap.Logger) {
 	)
 
 	// Subscribe connection manager to config changes
-	configManager.Subscribe(func(cfg *config.Config) {
-		connectionManager.SetConfig(cfg)
-	})
+	configManager.SubscribeSetter(connectionManager)
 
 	// init a socket settings manager to push config changes
 	// down into ebpf land
 	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.TapMaps.SocketSettingsMap)
 
 	// Subscribe socket settings manager to config changes
-	configManager.Subscribe(func(cfg *config.Config) {
-		socketSettingManager.SetConfig(cfg)
-	})
+	configManager.SubscribeSetter(socketSettingManager)
 
 	// Initialize socket manager
 	socketManager, err := NewEbpfSockManager(logger, connectionManager, &tapObjs)

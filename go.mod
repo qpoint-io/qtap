@@ -1,6 +1,6 @@
 module github.com/qpoint-io/qtap
 
-go 1.25.3
+go 1.23
 
 require (
 	github.com/andybalholm/brotli v1.1.1
@@ -20,6 +20,7 @@ require (
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
 	github.com/moby/moby v28.1.1+incompatible
+	github.com/opencontainers/runc v1.2.8
 	github.com/prometheus/client_golang v1.22.0
 	github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9
 	github.com/rs/xid v1.6.0

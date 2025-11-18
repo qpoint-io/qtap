@@ -482,13 +482,13 @@ func (c *Connection) Domain() string {
 			c.domain = qnet.IPString(dstAddr.IP)
 		}
 		c.domainIsIP = true
-	}
 
-	// add to logger. use an object marshaler func for lazy evaluation
-	c.logger = c.logger.With(zap.Inline(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
-		enc.AddString("domain", c.domain)
-		return nil
-	})))
+		// add to logger. use an object marshaler func for lazy evaluation
+		c.logger = c.logger.With(zap.Inline(zapcore.ObjectMarshalerFunc(func(enc zapcore.ObjectEncoder) error {
+			enc.AddString("domain", c.domain)
+			return nil
+		})))
+	}
 
 	// return from the cache
 	return c.domain

@@ -43,6 +43,10 @@ const (
 	FilterLevel_HTTP FilterLevel = "http"
 )
 
+func (t FilterLevel) String() string {
+	return string(t)
+}
+
 func (t FilterLevel) Resolve() uint8 {
 	switch t {
 	case FilterLevel_DATA:
@@ -118,6 +122,23 @@ func (tf TapFilter) Pack() uint8 {
 		flags |= SkipHTTPFlag
 	}
 
+	return flags
+}
+
+func UnpackTapFilter(mask uint8) []FilterLevel {
+	var flags []FilterLevel
+	if mask&SkipDataFlag != 0 {
+		flags = append(flags, FilterLevel_DATA)
+	}
+	if mask&SkipDNSFlag != 0 {
+		flags = append(flags, FilterLevel_DNS)
+	}
+	if mask&SkipTLSFlag != 0 {
+		flags = append(flags, FilterLevel_TLS)
+	}
+	if mask&SkipHTTPFlag != 0 {
+		flags = append(flags, FilterLevel_HTTP)
+	}
 	return flags
 }
 

@@ -8,12 +8,9 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
-	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/qtap/pkg/services/connmeta"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
-	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -25,14 +22,6 @@ type ConnectionAdapter interface {
 const (
 	defaultBufferSize = 1024 * 1024 * 10 // 10MB
 	PodLabelStack     = "tap.qpoint.io/stack"
-)
-
-var (
-	// coreServices are services that are always included without
-	// having to be explicitly added to a stack in the config
-	coreServices = []services.ServiceType{
-		connmeta.Type,
-	}
 )
 
 var tracer = telemetry.Tracer()
@@ -61,9 +50,6 @@ type Manager struct {
 	// default stack
 	defaultStackConfig config.TapHttpConfig
 
-	// service factory registry
-	serviceFactoryRegistry *services.FactoryRegistry
-
 	// plugin registry
 	pluginRegistry *PluginRegistry
 
@@ -79,12 +65,6 @@ type ManagerOpt func(*Manager)
 func SetBufferSize(bufferSize int) ManagerOpt {
 	return func(m *Manager) {
 		m.bufferSize = bufferSize
-	}
-}
-
-func SetServiceFactoryRegistry(registry *services.FactoryRegistry) ManagerOpt {
-	return func(m *Manager) {
-		m.serviceFactoryRegistry = registry
 	}
 }
 
@@ -242,13 +222,6 @@ func (m *Manager) NewConnection(ctx context.Context, connectionType ConnectionTy
 	}
 
 	svcs := conn.ServiceRegistry()
-	requiredSvcs := set.Union(stack.requiredServices, set.NewSet(coreServices...))
-	for _, s := range requiredSvcs.Items() {
-		if !svcs.Has(services.ServiceKey{Type: s}) {
-			return nil, fmt.Errorf("service %q not found", s)
-		}
-	}
-
 	return NewConnection(ctx, conn.Logger(), requestID, m.bufferSize, connectionType, stack, svcs), nil
 }
 

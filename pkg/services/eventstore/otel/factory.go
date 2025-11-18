@@ -12,7 +12,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
@@ -36,6 +35,9 @@ import (
 //     tls:
 //       enabled: true
 //       insecure_skip_verify: false
+
+// ensure we implement the EventStore interface
+var _ eventstore.EventStore = (*EventStore)(nil)
 
 const (
 	Type services.ServiceType = "otel"
@@ -151,23 +153,14 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 }
 
 func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegistry) (services.Service, error) {
-	os, err := services.GetService[objectstore.ObjectStore](ctx, svcRegistry, objectstore.TypeObjectStore, "")
-	if err != nil {
-		return nil, fmt.Errorf("getting object store: %w", err)
-	}
-
 	// Create logger for this service
 	logger := f.logProvider.Logger("qtap.eventstore")
 
 	es := &EventStore{
 		logger:      logger,
-		objectStore: os,
 		serviceName: f.serviceName,
 		environment: f.environment,
 	}
-
-	// Initialize LogHelper
-	es.SetLogger(f.logger)
 
 	return es, nil
 }

@@ -25,6 +25,8 @@ func (s ServiceObjectStore) ServiceType() string {
 		return "objectstore.console"
 	case ObjectStoreType_DISABLED:
 		return "objectstore.noop"
+	case "e2e": // TODO(e2e)
+		return "objectstore.e2e"
 	default:
 		return "objectstore.console"
 	}
@@ -33,6 +35,7 @@ func (s ServiceObjectStore) ServiceType() string {
 type ObjectStoreConfig struct {
 	ObjectStoreQPointWarehouseConfig `yaml:",inline,omitempty"`
 	ObjectStoreS3Config              `yaml:",inline,omitempty"`
+	EventStore                       EventStoreSelector `yaml:"event_store"`
 }
 
 type ObjectStoreQPointWarehouseConfig struct {
@@ -48,4 +51,14 @@ type ObjectStoreS3Config struct {
 	SecretKey ValueSource `yaml:"secret_key"`
 	AccessURL string      `yaml:"access_url"`
 	Insecure  bool        `yaml:"insecure"`
+}
+
+type EventStoreSelector struct {
+	ID       string `yaml:"id"`
+	Disabled bool   `yaml:"disabled"`
+}
+
+type ObjectStoreSelector struct {
+	ID       string `yaml:"id"`
+	Disabled bool   `yaml:"disabled"`
 }

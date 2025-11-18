@@ -10,7 +10,6 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
@@ -23,13 +22,13 @@ type EventStore struct {
 	eventstore.BaseEventStore
 
 	logger      log.Logger
-	objectStore objectstore.ObjectStore
 	serviceName string
 	environment string
 }
 
 // Save submits an event to OpenTelemetry
 func (s *EventStore) Save(ctx context.Context, item any) {
+	ll := s.Log()
 	switch i := item.(type) {
 	case *eventstore.Request:
 		s.logEvent(ctx, i, log.SeverityInfo, fmt.Sprintf("HTTP %s (%d) %s", i.Method, i.Status, i.Url))
@@ -46,33 +45,12 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 		}
 		s.logEvent(ctx, i, log.SeverityInfo, fmt.Sprintf("Connection: [%s via %s] %s → %s", i.Direction, i.SocketProtocol, host, i.EndpointId))
 	case *eventstore.Artifact:
-		go func() {
-			ar, err := s.objectStore.Put(*i)
-			if err != nil {
-				// Use zap.L() as fallback if LogHelper not initialized
-				if s.Log() != nil {
-					s.Log().Error("failed to put artifact", zap.Error(err))
-				} else {
-					zap.L().Error("failed to put artifact", zap.Error(err))
-				}
-				return
-			}
-			// Only save artifact record if it's not nil
-			if ar != nil {
-				s.Save(ctx, ar)
-			}
-		}()
+		ll.DPanic("event stores do not support artifacts", zap.Any("artifact", i))
+		return
 	default:
-		// Safely log unsupported event type
-		if s.Log() != nil {
-			s.Log().Warn("unsupported event type",
-				zap.String("type", fmt.Sprintf("%T", i)),
-				zap.Any("item", i))
-		} else {
-			zap.L().Warn("unsupported event type",
-				zap.String("type", fmt.Sprintf("%T", i)),
-				zap.Any("item", i))
-		}
+		ll.Warn("unsupported event type",
+			zap.String("type", fmt.Sprintf("%T", i)),
+			zap.Any("item", i))
 	}
 }
 
@@ -80,11 +58,7 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severity, bodyMessage string) {
 	attrs, err := s.structToAttributes(item)
 	if err != nil {
-		if s.Log() != nil {
-			s.Log().Error("failed to convert item to attributes", zap.Error(err))
-		} else {
-			zap.L().Error("failed to convert item to attributes", zap.Error(err))
-		}
+		s.Log().Error("failed to convert item to attributes", zap.Error(err))
 		return
 	}
 

@@ -358,7 +358,6 @@ func runTapCmd(logger *zap.Logger) {
 	pluginManager := plugins.NewPluginManager(
 		logger,
 		plugins.SetBufferSize(int(httpBufsize)),
-		plugins.SetServiceFactoryRegistry(svcFactoryRegistry),
 		plugins.SetPluginRegistry(pluginRegistry),
 	)
 	configManager.Subscribe(func(cfg *config.Config) {

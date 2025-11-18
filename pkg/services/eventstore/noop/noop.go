@@ -8,6 +8,9 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 )
 
+// ensure we implement the EventStore interface
+var _ eventstore.EventStore = (*EventStore)(nil)
+
 const (
 	TypeNoopEventStore services.ServiceType = "noop"
 )

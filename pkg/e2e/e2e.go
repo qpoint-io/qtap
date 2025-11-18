@@ -28,6 +28,7 @@ type Context struct {
 	machineIP     net.IP
 	Start         time.Time
 	EventStore    *EventStoreFactory
+	ObjectStore   *ObjectStoreFactory
 	ConfProvider  *ConfigProvider
 	L             *zap.Logger
 	TestConfig    func(mut func(*config.Config)) *config.Config
@@ -105,7 +106,7 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 	conf := &config.Config{
 		Services: config.Services{
 			EventStores:  []config.ServiceEventStore{{Type: "e2e"}},
-			ObjectStores: []config.ServiceObjectStore{{Type: "disabled"}},
+			ObjectStores: []config.ServiceObjectStore{{Type: "e2e"}},
 		},
 		Stacks: map[string]config.Stack{
 			"e2e": {

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"reflect"
 )
 
 // ServiceType represents a type identifier for services
@@ -84,7 +85,7 @@ func GetService[T any](ctx context.Context, sr *ServiceRegistry, typ ServiceType
 	}
 	t, ok := service.(T)
 	if !ok {
-		return zero, fmt.Errorf("service %q is not of type %T", key, zero)
+		return zero, fmt.Errorf("service %q is of type %s, expected %s", key, reflect.TypeOf(service), reflect.TypeOf(&zero).Elem())
 	}
 	return t, nil
 }

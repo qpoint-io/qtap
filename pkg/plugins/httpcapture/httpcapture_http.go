@@ -8,6 +8,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/rulekit"
 	"go.opentelemetry.io/otel/trace"
@@ -18,14 +19,13 @@ type instance struct {
 	logger *zap.Logger
 
 	// services
-	ctx        context.Context
-	conn       plugins.PluginContext
-	rulekit    rulekitsvc.Service
-	eventstore eventstore.EventStore
-
-	level  CaptureLevel
-	format OutputFormat
-	rules  []LogRule
+	ctx         context.Context
+	conn        plugins.PluginContext
+	rulekit     rulekitsvc.Service
+	objectstore objectstore.ObjectStore
+	level       CaptureLevel
+	format      OutputFormat
+	rules       []LogRule
 
 	reqheaders plugins.Headers
 	resheaders plugins.Headers
@@ -72,8 +72,8 @@ func (i *instance) Destroy() {
 	}()
 
 	// If eventstore is not available, log an error and return
-	if i.eventstore == nil {
-		i.logger.Error("eventstore is nil, cannot save HTTP transaction")
+	if i.objectstore == nil {
+		i.logger.Error("objectstore is nil, cannot save HTTP transaction")
 		return
 	}
 
@@ -139,8 +139,6 @@ func (i *instance) Destroy() {
 		Data:        data,
 		ContentType: contentType,
 	}
-	artifact.SetConnectionID(meta.ConnectionID())
-	artifact.SetEndpointID(meta.Endpoint())
 	artifact.SetRequestID(meta.RequestID())
 
 	// Attach the summary to the artifact
@@ -148,13 +146,13 @@ func (i *instance) Destroy() {
 		artifact.Summary = summary
 	}
 
-	// Save the artifact to the eventstore
-	i.logger.Debug("saving HTTP transaction to eventstore",
+	// Save the artifact to the objectstore
+	i.logger.Debug("saving HTTP transaction to object store",
 		zap.String("level", string(captureLevel)),
 		zap.String("format", string(outputFormat)),
 		zap.Int("bytes", len(data)))
 
-	i.eventstore.Save(ctx, artifact)
+	i.objectstore.Put(ctx, artifact)
 }
 
 func (i *instance) evaluateRules() (CaptureLevel, OutputFormat) {

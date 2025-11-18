@@ -37,11 +37,11 @@ func (s *PanicCatcher) NewInstance(ctx plugins.PluginContext, svcs *services.Ser
 		}
 	}()
 
-	return NewSafeHttpFilterInstance(s.logger, s.p.NewInstance(ctx, svcs))
-}
-
-func (s *PanicCatcher) RequiredServices() []services.ServiceType {
-	return s.p.RequiredServices()
+	i := s.p.NewInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafeHttpFilterInstance(s.logger, i)
 }
 
 // Destroy implements the HttpFilter interface

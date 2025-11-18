@@ -2,8 +2,6 @@ package plugins
 
 import (
 	"github.com/qpoint-io/qtap/pkg/config"
-	"github.com/qpoint-io/qtap/pkg/services"
-	"github.com/qpoint-io/rulekit/set"
 	"go.uber.org/zap"
 )
 
@@ -18,17 +16,15 @@ type StackDeployment struct {
 	pluginAccessor PluginAccessor
 
 	name              string
-	requiredServices  set.Set[services.ServiceType]
 	plugins           []HttpPlugin
 	persistentPlugins []config.Plugin
 }
 
 func NewStackDeployment(logger *zap.Logger, name string, pluginAccessor PluginAccessor) *StackDeployment {
 	return &StackDeployment{
-		name:             name,
-		logger:           logger,
-		pluginAccessor:   pluginAccessor,
-		requiredServices: set.NewSet[services.ServiceType](),
+		name:           name,
+		logger:         logger,
+		pluginAccessor: pluginAccessor,
 	}
 }
 
@@ -54,9 +50,6 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 		}
 		plugin.Init(d.logger.With(zap.String("plugin", cp.Type)), cp.Config)
 
-		// add the required services
-		d.requiredServices.Add(plugin.RequiredServices()...)
-
 		// add to the list of plugins
 		d.plugins = append(d.plugins, plugin)
 	}
@@ -65,9 +58,15 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 }
 
 func (d *StackDeployment) NewInstance(connection *Connection) StackInstance {
+	ll := connection.logger
 	instances := make(StackInstance, 0, len(d.plugins))
 	for _, p := range d.plugins {
-		instances = append(instances, p.NewInstance(connection.Context(), connection.services))
+		i := p.NewInstance(connection.Context(), connection.services)
+		if i == nil {
+			ll.Error("plugin returned nil instance, skipping", zap.Stringer("plugin", p.PluginType()))
+			continue
+		}
+		instances = append(instances, i)
 	}
 	return instances
 }

@@ -42,10 +42,6 @@ func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceR
 	}
 }
 
-func (f *Factory) RequiredServices() []services.ServiceType {
-	return nil
-}
-
 func (f *Factory) Destroy() {
 	instances := f.instancesCreated.Load()
 	totalEgressReqBodySize := f.egressReqBodySize.Load()

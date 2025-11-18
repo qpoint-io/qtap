@@ -9,7 +9,6 @@ import (
 	"github.com/axiomhq/axiom-go/axiom"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
-	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -26,8 +25,6 @@ type EventStore struct {
 	eventstore.BaseEventStore
 	axiomClient *axiom.Client
 	dataset     string
-
-	objectStore objectstore.ObjectStore
 }
 
 // Save submits an event to Axiom
@@ -36,25 +33,20 @@ func (s *EventStore) Save(_ context.Context, item any) {
 	ctx, span := tracer.Start(ctx, "Axiom.Save", trace.WithSpanKind(trace.SpanKindProducer))
 	defer span.End()
 
+	ll := s.Log()
 	switch i := item.(type) {
 	case *eventstore.Request, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord, *eventstore.Connection:
 		submittedRecords.Inc()
 
 		// Submit directly to Axiom without batching for simplicity
 		if err := s.submitToAxiom(ctx, i); err != nil {
-			s.Log().Error("failed to submit event to Axiom", zap.Error(err))
+			ll.Error("failed to submit event to Axiom", zap.Error(err))
 		}
 	case *eventstore.Artifact:
-		go func() {
-			ar, err := s.objectStore.Put(*i)
-			if err != nil {
-				s.Log().Error("failed to put artifact", zap.Error(err))
-				return
-			}
-			s.Save(ctx, ar)
-		}()
+		ll.DPanic("event stores do not support artifacts", zap.Any("artifact", i))
+		return
 	default:
-		s.Log().Warn("unsupported event type",
+		ll.Warn("unsupported event type",
 			zap.String("type", fmt.Sprintf("%T", i)),
 			zap.Any("item", i))
 		return

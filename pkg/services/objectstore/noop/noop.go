@@ -9,6 +9,9 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 )
 
+// ensure we implement the ObjectStore interface
+var _ objectstore.ObjectStore = (*ObjectStore)(nil)
+
 const (
 	TypeNoopObjectStore services.ServiceType = "noop"
 )
@@ -33,6 +36,4 @@ type ObjectStore struct {
 	objectstore.BaseObjectStore
 }
 
-func (s *ObjectStore) Put(artifact eventstore.Artifact) (*eventstore.ArtifactRecord, error) {
-	return nil, nil
-}
+func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {}

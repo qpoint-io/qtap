@@ -27,7 +27,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
-	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
@@ -51,6 +50,7 @@ func mainSetup() error {
 	e2ectx = e2e.NewContext(context.Background())
 	e2ectx.Start = start
 	e2ectx.EventStore = e2e.NewEventStore(logger)
+	e2ectx.ObjectStore = e2e.NewObjectStore(logger)
 	e2ectx.TestConfig = func(mut func(*config.Config)) *config.Config {
 		c := e2e.DefaultTestConfig(func(c *config.Config) {
 			// ignore connections related to GitHub Actions tooling
@@ -94,7 +94,7 @@ func mainSetup() error {
 		func() services.Factory { return e2ectx.EventStore },
 
 		// Objectstore services
-		func() services.Factory { return &objectstorenoop.Factory{} },
+		func() services.Factory { return e2ectx.ObjectStore },
 
 		// Add more services here...
 		func() services.Factory { return &rulekitsvc.Factory{} },
@@ -184,8 +184,8 @@ func mainSetup() error {
 	e2ectx.RegisterErrCloser(resolv.Stop)
 
 	// Initialize service and plugin systems
-	svcRegistry := services.NewFactoryRegistry()
-	svcManager := services.NewFactoryManager(e2ectx, logger, svcRegistry)
+	svcFactoryRegistry := services.NewFactoryRegistry()
+	svcManager := services.NewFactoryManager(e2ectx, logger, svcFactoryRegistry)
 	svcManager.RegisterFactory(serviceFactories...)
 	// register core services that must always be included
 	svcManager.AddExtraServices(
@@ -220,7 +220,6 @@ func mainSetup() error {
 	pluginManager := plugins.NewPluginManager(
 		logger,
 		plugins.SetBufferSize(2*1<<20), // 2MB
-		plugins.SetServiceFactoryRegistry(svcRegistry),
 		plugins.SetPluginRegistry(pluginRegistry),
 	)
 	confManager.SubscribeSetter(pluginManager)
@@ -242,7 +241,7 @@ func mainSetup() error {
 		connection.SetProcessManager(pm),
 		connection.SetDnsManager(resolv),
 		connection.SetStreamFactory(ds),
-		connection.SetServiceFactoryRegistry(svcRegistry),
+		connection.SetServiceFactoryRegistry(svcFactoryRegistry),
 		connection.SetConfig(confManager.GetConfig()),
 		connection.SetDeploymentTags(tags.FromValues(map[string]string{"e2e": "true"})),
 	)

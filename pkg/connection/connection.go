@@ -18,6 +18,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/qnet"
 	servicespkg "github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -219,6 +220,14 @@ func (c *Connection) createServiceRegistry() {
 			service = &EventStoreMetaInjector{
 				Conn:       c,
 				EventStore: es,
+			}
+		}
+
+		if os, ok := service.(objectstore.ObjectStore); ok {
+			// if this is an object store, wrap it with the meta injector
+			service = &ObjectStoreMetaInjector{
+				Conn:        c,
+				ObjectStore: os,
 			}
 		}
 
@@ -752,6 +761,10 @@ func (e *EventStoreMetaInjector) Save(ctx context.Context, item any) {
 		if t, ok := item.(taggable); ok {
 			t.AddTags(e.Conn.Tags().List()...)
 		}
+
+		if i, ok := item.(endpointidable); ok {
+			i.SetEndpointID(e.Conn.Domain())
+		}
 	}
 
 	e.EventStore.Save(ctx, item)
@@ -761,8 +774,32 @@ func (e *EventStoreMetaInjector) ServiceType() servicespkg.ServiceType {
 	return eventstore.TypeEventStore
 }
 
+// ObjectStoreMetaInjector implements the object store interface and adds connection metadata to artifacts
+// before they are submitted to the object store.
+type ObjectStoreMetaInjector struct {
+	Conn        *Connection
+	ObjectStore objectstore.ObjectStore
+}
+
+func (e *ObjectStoreMetaInjector) Put(ctx context.Context, artifact *eventstore.Artifact) {
+	if artifact != nil && e.Conn != nil {
+		artifact.SetConnectionID(e.Conn.ID())
+		artifact.SetEndpointID(e.Conn.Domain())
+	}
+
+	e.ObjectStore.Put(ctx, artifact)
+}
+
+func (e *ObjectStoreMetaInjector) ServiceType() servicespkg.ServiceType {
+	return objectstore.TypeObjectStore
+}
+
 type connidable interface {
 	SetConnectionID(id string)
+}
+
+type endpointidable interface {
+	SetEndpointID(id string)
 }
 
 type taggable interface {

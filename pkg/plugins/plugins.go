@@ -36,7 +36,6 @@ var NewHttpPlugin func(config map[string]any) HttpPlugin
 type HttpPlugin interface {
 	Init(logger *zap.Logger, config yaml.Node)
 	NewInstance(PluginContext, *services.ServiceRegistry) HttpPluginInstance
-	RequiredServices() []services.ServiceType
 	Destroy()
 	PluginType() PluginType
 }

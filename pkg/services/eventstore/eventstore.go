@@ -11,7 +11,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/qnet"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/tlsutils"
-	"go.uber.org/zap"
 )
 
 const (
@@ -40,14 +39,6 @@ type meta struct {
 	RequestId             string   `json:"requestId,omitzero"`
 	TLSProbeTypesDetected []string `json:"tlsProbeTypesDetected,omitzero"`
 	TLSIntrospected       bool     `json:"tlsProbeIntrospected,omitzero"`
-}
-
-func (m *meta) Fields() []zap.Field {
-	return []zap.Field{
-		zap.String("connectionId", m.ConnectionID),
-		zap.String("endpointId", m.EndpointId),
-		zap.String("requestId", m.RequestId),
-	}
 }
 
 func (m *meta) SetConnectionID(id string) {
@@ -189,19 +180,6 @@ type Artifact struct {
 	Data        []byte         `json:"data"`
 	ContentType string         `json:"contentType"`
 	Summary     map[string]any `json:"summary,omitempty"`
-}
-
-func (a *Artifact) Fields() []zap.Field {
-	f := []zap.Field{
-		zap.String("type", a.Type.String()),
-		zap.String("contentType", a.ContentType),
-		zap.Int("bytes", len(a.Data)),
-		zap.String("digest", a.Digest()),
-	}
-
-	f = append(f, a.meta.Fields()...)
-
-	return f
 }
 
 // Digest computes the SHA-1 hash of binary data from a byte slice

@@ -115,10 +115,6 @@ func (f *factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceR
 	return i
 }
 
-func (f *factory) RequiredServices() []services.ServiceType {
-	return []services.ServiceType{rulekitsvc.TypeRulekit}
-}
-
 func (f *factory) Destroy() {
 	f.logger.Debug("plugin destroyed")
 }

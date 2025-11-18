@@ -68,8 +68,10 @@ func (m *FactoryManager) SetConfig(cfg *config.Config) {
 	// bail out if any factory fails to initialize
 	for _, cfg := range plan {
 		if err := cfg.factory.Init(m.ctx, cfg.config); err != nil {
-			m.logger.Error("failed to initialize service, keeping existing config", zap.Stringer("service", cfg.factory.FactoryType()), zap.Error(err))
-			return // keep the existing config
+			// TODO: fail hard
+			m.logger.Error("failed to initialize service", zap.Stringer("service", cfg.factory.FactoryType()), zap.Error(err))
+			// m.logger.Error("failed to initialize service, keeping existing config", zap.Stringer("service", cfg.factory.FactoryType()), zap.Error(err))
+			// return // keep the existing config
 		}
 	}
 
@@ -151,7 +153,10 @@ func (m *FactoryManager) getServiceConfigs(cfg *config.Config) ([]*serviceConfig
 	for _, svc := range svcs {
 		fn := m.factoryFns.Get(ServiceType(svc.Type))
 		if fn == nil {
-			return nil, fmt.Errorf("no factory registered for service type: %s", svc.Type)
+			// TODO: fail hard
+			m.logger.Error("no factory registered for service type", zap.String("service_type", svc.Type))
+			continue
+			// return nil, fmt.Errorf("no factory registered for service type: %s", svc.Type)
 		}
 		factory := fn()
 

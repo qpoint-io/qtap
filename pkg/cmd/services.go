@@ -13,6 +13,7 @@ import (
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
 	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
+	qscannoop "github.com/qpoint-io/qtap/pkg/services/qscan/noop"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 )
@@ -34,6 +35,7 @@ var (
 		func() services.Factory { return &rulekitsvc.Factory{} },
 		func() services.Factory { return &connmeta.Factory{} },
 		func() services.Factory { return &reporter.Factory{} },
+		func() services.Factory { return &qscannoop.Factory{} },
 	}
 
 	// extraServiceConfigs are service configs that are added to all configs.

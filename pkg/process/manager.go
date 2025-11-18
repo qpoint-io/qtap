@@ -199,7 +199,7 @@ func (m *Manager) Stop() error {
 }
 
 func (m *Manager) preloadProcs(ctx context.Context) error {
-	ctx, span := tracer.Start(context.TODO(), "Manager.preloadProcs", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Manager.preloadProcs")
 	defer span.End()
 
 	// load all of the procs
@@ -228,7 +228,7 @@ func (m *Manager) preloadProcs(ctx context.Context) error {
 }
 
 func (m *Manager) addProc(ctx context.Context, p *Process) error {
-	ctx, span := tracer.Start(context.TODO(), "Manager.addProc", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Manager.addProc")
 	span.SetAttributes(attribute.Int("pid", p.Pid))
 	defer span.End()
 
@@ -359,7 +359,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 }
 
 func (m *Manager) removeProc(ctx context.Context, p *Process) error {
-	ctx, span := tracer.Start(context.TODO(), "Manager.removeProc", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Manager.removeProc")
 	span.SetAttributes(attribute.Int("pid", p.Pid), attribute.Int("exit_code", p.ExitCode))
 	defer span.End()
 

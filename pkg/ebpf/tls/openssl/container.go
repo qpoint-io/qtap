@@ -9,7 +9,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -54,7 +53,6 @@ func NewContainer(logger *zap.Logger, probeFn func() []*common.Uprobe) *Containe
 func (c *Container) Init(ctx context.Context, p *process.Process) error {
 	ctx, span := tracer.Start(context.TODO(), "Container.Init",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
-		trace.WithNewRoot(),
 	)
 	span.SetAttributes(attribute.String("container_id", p.ContainerID))
 	defer span.End()
@@ -75,7 +73,7 @@ func (c *Container) Init(ctx context.Context, p *process.Process) error {
 
 	// initialize targets for the libs
 	for _, lib := range libs {
-		err := telemetry.TraceFn(tracer, ctx, "AttachSharedTarget", func(ctx context.Context, span trace.Span) error {
+		err := tracer.StartFn(ctx, "AttachSharedTarget", nil, func(ctx context.Context, span trace.Span) error {
 			span.SetAttributes(attribute.String("lib", lib))
 			// create name by stripping off the p.Root
 			name := strings.TrimPrefix(lib, p.Root)

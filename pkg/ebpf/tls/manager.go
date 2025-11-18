@@ -9,7 +9,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -72,7 +71,7 @@ func (m *TlsManager) Stop() error {
 }
 
 func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TlsManager.ProcessStarted", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStarted")
 	defer span.End()
 
 	// start a new scan, cancelling any in-progress scan and waiting for it to finish
@@ -133,7 +132,7 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 }
 
 func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TlsManager.ProcessReplaced", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessReplaced")
 	defer span.End()
 
 	proc.CancelScan(process.ErrProcessReplaced)
@@ -156,7 +155,7 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 }
 
 func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TlsManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStopped")
 	defer span.End()
 
 	// cancel any in-progress scan since the process is stopping

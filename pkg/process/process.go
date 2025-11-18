@@ -23,7 +23,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -134,7 +133,7 @@ func NewProcess(pid int, exeFilename string, logger *zap.Logger) *Process {
 }
 
 func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
-	ctx, span := tracer.Start(context.TODO(), "AllProcesses", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "AllProcesses") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	ps, err := AllProcs("/proc")
@@ -164,7 +163,7 @@ func AllProcesses(ctx context.Context, logger *zap.Logger) ([]*Process, error) {
 }
 
 func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq.Map[string, bool]) error {
-	ctx, span := tracer.Start(context.TODO(), "Process.Discover", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Process.Discover")
 	span.SetAttributes(
 		attribute.Int("pid", p.Pid),
 		attribute.String("mountPoint", mountPoint),
@@ -343,7 +342,7 @@ func (p *Process) RootFS() string {
 }
 
 func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
-	ctx, span := tracer.Start(context.TODO(), "Process.FindSharedLibrary", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "Process.FindSharedLibrary") //nolint:ineffassign,wastedassign,staticcheck
 	span.SetAttributes(attribute.String("prefix", libNamePrefix))
 	defer span.End()
 
@@ -466,7 +465,7 @@ func (p *Process) Unlock() {
 // StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
 // The caller MUST defer FinishScan() to signal completion.
 func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
-	ctx, span := tracer.Start(context.TODO(), "Process.StartScan", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Process.StartScan")
 	defer span.End()
 
 	p.scanMu.Lock()
@@ -571,7 +570,7 @@ func (p *Process) discoverTags() error {
 
 // getRootID returns the unique identifier of the process' root filesystem
 func (p *Process) getRootID(ctx context.Context) (uint64, error) {
-	ctx, span := tracer.Start(context.TODO(), "Process.getRootID", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "Process.getRootID") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	rootInfo, err := os.Stat(p.Root)

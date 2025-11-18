@@ -59,7 +59,7 @@ func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.T
 }
 
 func (m *Manager) Start(ctx context.Context) error {
-	ctx, span := tracer.Start(context.TODO(), "Manager.Start", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "Manager.Start")
 	defer span.End()
 
 	// attach the tracepoints

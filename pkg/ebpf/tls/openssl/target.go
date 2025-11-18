@@ -10,7 +10,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -62,7 +61,7 @@ func NewOpenSSLTarget(logger *zap.Logger, name, containerID, location string, ef
 }
 
 func (t *OpenSSLTarget) Start(ctx context.Context) error {
-	ctx, span := tracer.Start(context.TODO(), "OpenSSLTarget.Start", trace.WithLinks(trace.LinkFromContext(ctx)))
+	ctx, span := tracer.WithoutCancel(ctx, "OpenSSLTarget.Start")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("name", t.name),

@@ -7,7 +7,6 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = telemetry.Tracer()
@@ -38,7 +37,7 @@ func NewUretprobe(function string, prog *ebpf.Program) *Uprobe {
 }
 
 func (k *Uprobe) Attach(ctx context.Context, exe *link.Executable, addr uint64) error {
-	ctx, span := tracer.Start(context.TODO(), "Uprobe.Attach", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "Uprobe.Attach") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	if exe == nil {
 		return errors.New("executable is nil")

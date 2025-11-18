@@ -15,19 +15,35 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func Tracer() trace.Tracer {
-	pkg, _ := callerInfo(1)
-	return otel.Tracer(pkg)
+type TraceProvider struct {
+	tracer trace.Tracer
 }
 
-func TraceFn(
-	tracer trace.Tracer,
+func Tracer() *TraceProvider {
+	pkg, _ := callerInfo(1)
+	return &TraceProvider{
+		tracer: otel.Tracer(pkg),
+	}
+}
+
+func (tp *TraceProvider) Start(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	return tp.tracer.Start(ctx, name, opts...)
+}
+
+// WithoutCancel starts a new span as a child of the parent context while detaching the cancel function from the parent context.
+func (tp *TraceProvider) WithoutCancel(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	ctx, span := tp.tracer.Start(ctx, name, opts...)
+	ctx = context.WithoutCancel(ctx)
+	return ctx, span
+}
+
+func (tp *TraceProvider) StartFn(
 	ctx context.Context,
 	name string,
+	opts []trace.SpanStartOption,
 	fn func(ctx context.Context, span trace.Span) error,
-	opts ...trace.SpanStartOption,
 ) error {
-	ctx, span := tracer.Start(ctx, name, opts...)
+	ctx, span := tp.Start(ctx, name, opts...)
 	defer span.End()
 	err := fn(ctx, span)
 	if err != nil {

@@ -12,7 +12,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -121,7 +120,7 @@ func (m *TraceManager) Stop() error {
 }
 
 func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStarted", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "TraceManager.ProcessStarted") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles
@@ -156,7 +155,7 @@ func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process
 }
 
 func (m *TraceManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
-	ctx, span := tracer.Start(context.TODO(), "TraceManager.ProcessStopped", trace.WithLinks(trace.LinkFromContext(ctx))) //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithoutCancel(ctx, "TraceManager.ProcessStopped") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	// nothing to do if we don't have any proc toggles

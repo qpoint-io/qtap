@@ -35,7 +35,7 @@ func (na NetAddr) Network() string {
 func (na NetAddr) String() string {
 	switch na.Family {
 	case NetFamily_IPv4, NetFamily_IPv6:
-		return net.JoinHostPort(na.IP.String(), strconv.Itoa(int(na.Port)))
+		return net.JoinHostPort(IPString(na.IP), strconv.Itoa(int(na.Port)))
 	default:
 		return "unknown"
 	}
@@ -81,4 +81,11 @@ func (na NetAddr) ControlValues() map[string]any {
 		"ip":   na.IP,
 		"port": int(na.Port),
 	}
+}
+
+func IPString(ip net.IP) string {
+	if len(ip) == 0 {
+		return ""
+	}
+	return ip.String()
 }

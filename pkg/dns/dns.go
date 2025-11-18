@@ -3,6 +3,8 @@ package dns
 import (
 	"net"
 	"syscall"
+
+	"github.com/qpoint-io/qtap/pkg/qnet"
 )
 
 // DNS record entry
@@ -36,5 +38,5 @@ func (r Record) IP() net.IP {
 }
 
 func (r Record) IpString() string {
-	return r.IP().String()
+	return qnet.IPString(r.IP())
 }

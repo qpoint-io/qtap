@@ -137,7 +137,7 @@ func (a netAddr) AddrString() string {
 	case a.Port == 0 && a.SaFamily == syscall.AF_INET6:
 		return "::"
 	default:
-		return net.IP(a.Addr[:a.AddrSize()]).String()
+		return qnet.IPString(net.IP(a.Addr[:a.AddrSize()]))
 	}
 }
 

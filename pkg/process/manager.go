@@ -365,3 +365,9 @@ func (m *Manager) removeProc(p *Process) error {
 
 	return nil
 }
+
+// SnapshotProcesses takes a snapshot of all the current processes and calls the given function for each process.
+// The function can return false to stop the iteration.
+func (m *Manager) SnapshotProcesses(fn func(pid int, p *Process) bool) {
+	m.procs.Iter(fn)
+}

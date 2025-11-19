@@ -37,3 +37,7 @@ type ObjectStore struct {
 }
 
 func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {}
+
+func (s *ObjectStore) ServiceEndpoints() []string {
+	return []string{}
+}

@@ -25,6 +25,7 @@ type EventStore struct {
 	eventstore.BaseEventStore
 	axiomClient *axiom.Client
 	dataset     string
+	endpoint    string
 }
 
 // Save submits an event to Axiom
@@ -118,4 +119,8 @@ func toMap(v any) (map[string]any, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+func (s *EventStore) ServiceEndpoints() []string {
+	return []string{}
 }

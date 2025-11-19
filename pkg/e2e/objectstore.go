@@ -54,3 +54,7 @@ func (o *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 	// forward directly to the e2e event store
 	o.eventStore.Save(ctx, artifact)
 }
+
+func (o *ObjectStore) ServiceEndpoints() []string {
+	return []string{}
+}

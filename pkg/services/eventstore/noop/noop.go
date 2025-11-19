@@ -39,3 +39,7 @@ type EventStore struct {
 
 // Save stores an event
 func (s *EventStore) Save(ctx context.Context, item any) {}
+
+func (s *EventStore) ServiceEndpoints() []string {
+	return []string{}
+}

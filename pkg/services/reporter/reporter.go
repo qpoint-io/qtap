@@ -115,6 +115,10 @@ func (s *service) ServiceType() services.ServiceType {
 	return Type
 }
 
+func (s *service) ServiceEndpoints() []string {
+	return []string{}
+}
+
 func toEventStoreConnection(conn *connection.Connection) *eventstore.Connection {
 	c := &eventstore.Connection{
 		Finalized: conn.CloseEvent != nil,

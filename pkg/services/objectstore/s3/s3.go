@@ -28,9 +28,17 @@ type ObjectStore struct {
 	objectstore.BaseObjectStore
 	put        func(logger *zap.Logger, artifact *eventstore.Artifact)
 	eventStore eventstore.EventStore
+	endpoint   string
 }
 
 func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 	logger := s.Log().With(s.LogFields(artifact)...)
 	go s.put(logger, artifact)
+}
+
+func (s *ObjectStore) ServiceEndpoints() []string {
+	if s.endpoint == "" {
+		return []string{}
+	}
+	return []string{s.endpoint}
 }

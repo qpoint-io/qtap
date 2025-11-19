@@ -774,6 +774,10 @@ func (e *EventStoreMetaInjector) ServiceType() servicespkg.ServiceType {
 	return eventstore.TypeEventStore
 }
 
+func (e *EventStoreMetaInjector) ServiceEndpoints() []string {
+	return e.EventStore.ServiceEndpoints()
+}
+
 // ObjectStoreMetaInjector implements the object store interface and adds connection metadata to artifacts
 // before they are submitted to the object store.
 type ObjectStoreMetaInjector struct {
@@ -792,6 +796,10 @@ func (e *ObjectStoreMetaInjector) Put(ctx context.Context, artifact *eventstore.
 
 func (e *ObjectStoreMetaInjector) ServiceType() servicespkg.ServiceType {
 	return objectstore.TypeObjectStore
+}
+
+func (e *ObjectStoreMetaInjector) ServiceEndpoints() []string {
+	return e.ObjectStore.ServiceEndpoints()
 }
 
 type connidable interface {

@@ -24,6 +24,7 @@ type EventStore struct {
 	logger      log.Logger
 	serviceName string
 	environment string
+	endpoint    string
 }
 
 // Save submits an event to OpenTelemetry
@@ -199,4 +200,11 @@ func (s *EventStore) extractTimestamp(item any) time.Time {
 	default:
 		return time.Now()
 	}
+}
+
+func (s *EventStore) ServiceEndpoints() []string {
+	if s.endpoint == "" {
+		return []string{}
+	}
+	return []string{s.endpoint}
 }

@@ -149,6 +149,10 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 	s.save(s.conn, item)
 }
 
+func (s *EventStore) ServiceEndpoints() []string {
+	return []string{}
+}
+
 type Events struct {
 	Requests    []*eventstore.Request
 	Issues      []*eventstore.Issue

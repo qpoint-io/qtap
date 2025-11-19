@@ -88,3 +88,7 @@ func (s *service) Values() rulekit.KV {
 
 	return s.conn.ControlValues()
 }
+
+func (s *service) ServiceEndpoints() []string {
+	return []string{}
+}

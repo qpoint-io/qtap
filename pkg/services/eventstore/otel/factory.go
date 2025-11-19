@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -50,6 +51,7 @@ type Factory struct {
 	logProvider *sdklog.LoggerProvider
 	serviceName string
 	environment string
+	endpoint    string
 }
 
 var mustacheRegex = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
@@ -95,6 +97,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	if c.Endpoint != "" {
 		endpoint = expandEnvVarsInBraces(c.Endpoint)
 	}
+	f.endpoint = extractHostname(endpoint)
 
 	// Service name and environment from config
 	f.serviceName = "qtap"
@@ -160,6 +163,7 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 		logger:      logger,
 		serviceName: f.serviceName,
 		environment: f.environment,
+		endpoint:    f.endpoint,
 	}
 
 	return es, nil
@@ -244,6 +248,19 @@ func (f *Factory) createStdoutExporter(_ config.EventStoreOTelConfig) (sdklog.Ex
 	}
 
 	return stdoutlog.New(opts...)
+}
+
+// extractHostname extracts the hostname from an endpoint string
+func extractHostname(endpoint string) string {
+	if endpoint == "" {
+		return ""
+	}
+	// Try parsing as URL first
+	if u, err := url.Parse(endpoint); err == nil && u.Host != "" {
+		return u.Host
+	}
+	// If it's already hostname:port format, return as is
+	return endpoint
 }
 
 // Close cleans up resources

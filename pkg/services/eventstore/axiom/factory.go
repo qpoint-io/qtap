@@ -72,6 +72,7 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 	return &EventStore{
 		axiomClient: f.axiomClient,
 		dataset:     f.dataset,
+		endpoint:    "",
 	}, nil
 }
 

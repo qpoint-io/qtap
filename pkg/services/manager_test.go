@@ -25,6 +25,10 @@ func (m *mockService) ServiceType() ServiceType {
 	return m.serviceType
 }
 
+func (m *mockService) ServiceEndpoints() []string {
+	return []string{}
+}
+
 // mockFactory implements the Factory interface
 type mockFactory struct {
 	factoryType ServiceType

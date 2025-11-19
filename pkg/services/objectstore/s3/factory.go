@@ -31,7 +31,6 @@ type Factory struct {
 	objectstore        S3ObjectStorer
 	accessURL          string
 	eventStoreSelector config.EventStoreSelector
-	endpoint           string
 }
 
 func (f *Factory) Init(ctx context.Context, cfg any) error {
@@ -51,7 +50,6 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		// default to amazon endpoint
 		c.ObjectStoreS3Config.Endpoint = "s3.amazonaws.com"
 	}
-	f.endpoint = c.ObjectStoreS3Config.Endpoint
 	if c.ObjectStoreS3Config.Region == "" {
 		// default to us-east-1
 		c.ObjectStoreS3Config.Region = "us-east-1"
@@ -117,7 +115,6 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 			}
 		},
 		eventStore: eventStore,
-		endpoint:   f.endpoint,
 	}, nil
 }
 

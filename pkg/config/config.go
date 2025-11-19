@@ -22,20 +22,17 @@ type Stack struct {
 type Services struct {
 	EventStores  []ServiceEventStore  `yaml:"event_stores"`
 	ObjectStores []ServiceObjectStore `yaml:"object_stores"`
-	QscanClient  *ServiceQscan        `yaml:"qscan"`
 }
 
 // All returns all service configs.
 // For event stores and object stores, the first ones are set as the default.
 func (s Services) All() []*ServiceConfig {
-	qscans := s.GetQscans()
 	eventStores := s.GetEventStores()
 	objectStores := s.GetObjectStores()
 
-	configs := make([]*ServiceConfig, 0, len(eventStores)+len(objectStores)+len(qscans))
+	configs := make([]*ServiceConfig, 0, len(eventStores)+len(objectStores))
 	configs = append(configs, eventStores...)
 	configs = append(configs, objectStores...)
-	configs = append(configs, qscans...)
 	return configs
 }
 
@@ -49,19 +46,6 @@ type ServiceConfig struct {
 	Config any
 	// Default indicates that this service should be used as the default for its service type.
 	Default bool
-}
-
-func (s Services) GetQscans() []*ServiceConfig {
-	qc := s.QscanClient
-	if qc == nil {
-		qc = &ServiceQscan{Type: QscanType_DISABLED}
-	}
-
-	return []*ServiceConfig{{
-		Type:    qc.ServiceType(),
-		Config:  qc,
-		Default: true,
-	}}
 }
 
 func (s Services) HasAnyEventStores() bool {

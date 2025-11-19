@@ -465,13 +465,6 @@ func TestServiceConfigs(t *testing.T) {
 						Type: ObjectStoreType_DISABLED,
 					},
 				},
-				{
-					Type:    "qscan.noop",
-					Default: true,
-					Config: &ServiceQscan{
-						Type: QscanType_DISABLED,
-					},
-				},
 			},
 		},
 		{
@@ -496,14 +489,6 @@ func TestServiceConfigs(t *testing.T) {
 						// no id
 						{
 							Type: ObjectStoreType_S3,
-						},
-					},
-					QscanClient: &ServiceQscan{
-						Type: QscanType_Client,
-						URL:  "https://qscan.qpoint.io",
-						Token: ValueSource{
-							Type:  ValueSourceType_TEXT,
-							Value: "token",
 						},
 					},
 				},
@@ -539,19 +524,6 @@ func TestServiceConfigs(t *testing.T) {
 					Type: "objectstore.s3",
 					Config: ServiceObjectStore{
 						Type: ObjectStoreType_S3,
-					},
-				},
-				// qscans
-				{
-					Type:    "qscan.client",
-					Default: true,
-					Config: &ServiceQscan{
-						Type: "client",
-						URL:  "https://qscan.qpoint.io",
-						Token: ValueSource{
-							Type:  ValueSourceType_TEXT,
-							Value: "token",
-						},
 					},
 				},
 			},

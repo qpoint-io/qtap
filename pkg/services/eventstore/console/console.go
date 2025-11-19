@@ -51,7 +51,3 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 			zap.Any("item", item))
 	}
 }
-
-func (s *EventStore) ServiceEndpoints() []string {
-	return []string{}
-}

@@ -77,7 +77,3 @@ func (s *service) Protocol() string {
 func (s *service) Process() *process.Process {
 	return s.conn.Process()
 }
-
-func (s *service) ServiceEndpoints() []string {
-	return []string{}
-}

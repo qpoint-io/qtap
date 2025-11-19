@@ -24,7 +24,3 @@ func (f *Factory) FactoryType() services.ServiceType {
 func (f *Factory) ServiceType() services.ServiceType {
 	return services.ServiceType("qscan")
 }
-
-func (f *Factory) ServiceEndpoints() []string {
-	return []string{}
-}

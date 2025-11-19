@@ -20,10 +20,6 @@ type Service interface {
 	//
 	// For example, an eventstore that prints to the console would have a ServiceType of "eventstore".
 	ServiceType() ServiceType
-	// ServiceEndpoints returns the endpoints that this service is responsible for.
-	//
-	// For example, an eventstore that prints to the console would have a ServiceEndpoints of []string{"api-pulse.qpoint.io"}.
-	ServiceEndpoints() []string
 }
 
 // FactoryFn creates a service factory

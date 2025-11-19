@@ -67,17 +67,3 @@ func (mr *MockObjectStoreMockRecorder) ServiceType() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ServiceType", reflect.TypeOf((*MockObjectStore)(nil).ServiceType))
 }
-
-// ServiceEndpoints mocks base method.
-func (m *MockObjectStore) ServiceEndpoints() []string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ServiceEndpoints")
-	ret0, _ := ret[0].([]string)
-	return ret0
-}
-
-// ServiceEndpoints indicates an expected call of ServiceEndpoints.
-func (mr *MockObjectStoreMockRecorder) ServiceEndpoints() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ServiceEndpoints", reflect.TypeOf((*MockObjectStore)(nil).ServiceEndpoints))
-}

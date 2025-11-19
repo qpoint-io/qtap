@@ -45,7 +45,3 @@ func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 
 	s.Log().Info("object store submission", fields...)
 }
-
-func (s *ObjectStore) ServiceEndpoints() []string {
-	return []string{}
-}

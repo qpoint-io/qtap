@@ -81,7 +81,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, requestID string, bu
 	}
 
 	if svc, err := services.GetService[connmeta.Service](ctx, svcs, connmeta.Type, ""); err != nil {
-		c.logger.Error("failed to get connmeta", zap.Error(err))
+		c.logger.DPanic("failed to get connmeta service", zap.Error(err))
 	} else {
 		c.meta.Service = svc
 	}

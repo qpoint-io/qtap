@@ -121,8 +121,10 @@ func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.Service
 	fi.objectstore = os
 
 	if rk, err := services.GetService[rulekitsvc.Service](ctx, svcs, rulekitsvc.TypeRulekit, ""); err != nil {
-		f.logger.Error("failed to get rulekit", zap.Error(err))
-		// rulekit is optional, so we can continue and ignore any configured rules
+		if len(f.config.Rules) > 0 {
+			// only log an error if it's relevant
+			f.logger.Error("failed to get rulekit, configured rules will be ignored", zap.Error(err))
+		}
 	} else {
 		fi.rulekit = rk
 	}

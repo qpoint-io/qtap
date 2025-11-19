@@ -27,6 +27,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
+	qscannoop "github.com/qpoint-io/qtap/pkg/services/qscan/noop"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
@@ -95,6 +96,8 @@ func mainSetup() error {
 
 		// Objectstore services
 		func() services.Factory { return e2ectx.ObjectStore },
+
+		func() services.Factory { return &qscannoop.Factory{} },
 
 		// Add more services here...
 		func() services.Factory { return &rulekitsvc.Factory{} },

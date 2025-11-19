@@ -42,17 +42,14 @@ func (s Services) All() []*ServiceConfig {
 }
 
 type ServiceConfig struct {
-	// ID is optional.
-	// If not set, the service will be registered as the default for its service type.
+	// ID is optionally used to identify this specific service instance by other services or plugins.
 	ID string
-	// Type is th factory type.
+	// Type is the factory type.
 	// For example, "eventstore.console".
 	Type string
 	// Config is passed to the factory's Init method.
 	Config any
-
-	// Default indicates that this service should be used as the default for its service type
-	// even if an ID is provided.
+	// Default indicates that this service should be used as the default for its service type.
 	Default bool
 }
 
@@ -81,20 +78,13 @@ func (s Services) GetEventStores() []*ServiceConfig {
 
 	configs := make([]*ServiceConfig, len(stores))
 	for i, store := range stores {
-		isDefault := i == 0
-		id := store.ID
-		if id == "" && !isDefault {
-			// the service registry will treat event stores without an ID as the default.
-			// however, we want to explicitly set the first event store as the default regardless of IDs.
-			// => if this is not the first event store, generate a unique ID for it
-			id = fmt.Sprintf("eventstore-%d", i)
-		}
+		isDefault := i == 0 // the first event store in the config is the default
 
 		configs[i] = &ServiceConfig{
 			Type:    store.ServiceType(),
 			Config:  store,
 			Default: isDefault,
-			ID:      id,
+			ID:      store.ID,
 		}
 	}
 	return configs
@@ -120,20 +110,13 @@ func (s Services) GetObjectStores() []*ServiceConfig {
 
 	configs := make([]*ServiceConfig, len(stores))
 	for i, store := range stores {
-		isDefault := i == 0
-		id := store.ID
-		if id == "" && !isDefault {
-			// the service registry will treat object stores without an ID as the default.
-			// however, we want to explicitly set the first object store as the default regardless of IDs.
-			// => if this is not the first object store, generate a unique ID for it
-			id = fmt.Sprintf("objectstore-%d", i)
-		}
+		isDefault := i == 0 // the first object store in the config is the default
 
 		configs[i] = &ServiceConfig{
 			Type:    store.ServiceType(),
 			Config:  store,
 			Default: isDefault,
-			ID:      id,
+			ID:      store.ID,
 		}
 	}
 	return configs

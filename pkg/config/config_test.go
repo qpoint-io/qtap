@@ -576,7 +576,6 @@ func TestServiceConfigs(t *testing.T) {
 				},
 				{
 					Type: "eventstore.axiom",
-					ID:   "eventstore-1", // auto assigned ID
 					Config: ServiceEventStore{
 						Type: EventStoreType_AXIOM,
 					},
@@ -593,7 +592,6 @@ func TestServiceConfigs(t *testing.T) {
 				},
 				{
 					Type: "objectstore.s3",
-					ID:   "objectstore-1", // auto assigned ID
 					Config: ServiceObjectStore{
 						Type: ObjectStoreType_S3,
 					},

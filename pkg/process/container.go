@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/kamaln7/resolvable"
@@ -116,7 +117,7 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	p.Container = resolvable.New(func(context.Context) (*Container, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
-			return nil, nil
+			return nil, errors.New("container not found")
 		}
 		return &Container{
 			ID:          container.ID,
@@ -135,11 +136,11 @@ func (e *ContainerEnricher) ProcessStarted(p *Process) error {
 	p.Pod = resolvable.New(func(context.Context) (*Pod, error) {
 		container := e.containerManager.GetByID(p.ContainerID)
 		if container == nil {
-			return nil, nil
+			return nil, errors.New("container not found")
 		}
 		pod := container.Pod()
 		if pod == nil || pod.Name == "" {
-			return nil, nil
+			return nil, errors.New("pod not found")
 		}
 		return &Pod{
 			Name:        pod.Name,

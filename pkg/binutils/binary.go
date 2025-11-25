@@ -7,28 +7,27 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
-
-	"github.com/kamaln7/resolvable"
 )
 
 // Binary represents a pre-parsed ELF binary with all data needed for TLS probe scanning.
 // All fields are immutable after construction, making it safe for concurrent access.
+// The underlying file descriptor is kept open for uprobe attachment.
 type Binary struct {
+	// Hash is a unique identifier for this binary (computed from content + metadata)
+	Hash string
+
 	// ef is the parsed ELF file
 	ef *elf.File
-	// mu protects the ELF data
-	mu sync.Mutex
+
+	// Pre-parsed symbol tables (immutable, safe for concurrent access)
+	Symtab []elf.Symbol
+	Dynsym []elf.Symbol
 
 	// Sections from the ELF file
 	Sections []*elf.Section
 
-	// Symbol tables
-	Symtab resolvable.V[[]elf.Symbol]
-	Dynsym resolvable.V[[]elf.Symbol]
-
 	// LinkedLibs contains the names of dynamically linked libraries
-	LinkedLibs resolvable.V[[]string]
+	LinkedLibs []string
 }
 
 // ParseBinary opens and parses an ELF binary, pre-loading all data needed for TLS scanning.
@@ -57,49 +56,20 @@ func ParseBinary(ctx context.Context, fd *os.File) (*Binary, error) {
 		Sections: ef.Sections,
 	}
 
-	pb.Symtab = resolvable.New(
-		func(ctx context.Context) ([]elf.Symbol, error) {
-			// Symbols() is thread-safe
-			symbols, err := ef.Symbols()
-			if err != nil {
-				if errors.Is(err, elf.ErrNoSymbols) {
-					return nil, nil
-				}
-				return nil, fmt.Errorf("getting static symbols: %w", err)
-			}
-			return symbols, nil
-		},
-		resolvable.WithRetry(),
-	).WithContext(context.TODO())
+	// Compute hash
+	pb.Hash, err = computeBinaryHash(fd)
+	if err != nil {
+		fd.Close()
+		return nil, fmt.Errorf("computing hash: %w", err)
+	}
 
-	pb.Dynsym = resolvable.New(
-		func(ctx context.Context) ([]elf.Symbol, error) {
-			// DynamicSymbols() is not thread-safe
-			pb.mu.Lock()
-			defer pb.mu.Unlock()
-
-			symbols, err := ef.DynamicSymbols()
-			if err != nil {
-				if errors.Is(err, elf.ErrNoSymbols) {
-					return nil, nil
-				}
-				return nil, fmt.Errorf("getting dynamic symbols: %w", err)
-			}
-			return symbols, nil
-		},
-		resolvable.WithRetry(),
-	).WithContext(context.TODO())
+	// Pre-parse symbol tables (thread-safety: these allocate fresh slices)
+	// Symbols() is thread-safe, DynamicSymbols() has lazy init so we call it here
+	pb.Symtab, _ = ef.Symbols()
+	pb.Dynsym, _ = ef.DynamicSymbols()
 
 	// Pre-load linked libraries
-	pb.LinkedLibs = resolvable.New(
-		func(ctx context.Context) ([]string, error) {
-			pb.mu.Lock()
-			defer pb.mu.Unlock()
-
-			return ef.ImportedLibraries()
-		},
-		resolvable.WithRetry(),
-	).WithContext(context.TODO())
+	pb.LinkedLibs, _ = ef.ImportedLibraries()
 
 	return pb, nil
 }
@@ -112,58 +82,38 @@ func (pb *Binary) ElfFile() *elf.File {
 }
 
 // HasSymbol checks if a symbol with the given name exists in either symbol table.
-func (pb *Binary) HasSymbol(name string) (bool, error) {
-	symtab, err := pb.Symtab()
-	if err != nil {
-		return false, fmt.Errorf("getting static symbols: %w", err)
-	}
-	for _, s := range symtab {
+func (pb *Binary) HasSymbol(name string) bool {
+	for _, s := range pb.Symtab {
 		if s.Name == name {
-			return true, nil
+			return true
 		}
 	}
-
-	dynsym, err := pb.Dynsym()
-	if err != nil {
-		return false, fmt.Errorf("getting dynamic symbols: %w", err)
-	}
-	for _, s := range dynsym {
+	for _, s := range pb.Dynsym {
 		if s.Name == name {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 // FindSymbols returns all symbols matching the given predicate from both symbol tables.
-func (pb *Binary) FindSymbols(predicate func(elf.Symbol) bool) ([]elf.Symbol, error) {
+func (pb *Binary) FindSymbols(predicate func(elf.Symbol) bool) []elf.Symbol {
 	var result []elf.Symbol
-
-	symtab, err := pb.Symtab()
-	if err != nil {
-		return nil, fmt.Errorf("getting static symbols: %w", err)
-	}
-	for _, s := range symtab {
+	for _, s := range pb.Symtab {
 		if predicate(s) {
 			result = append(result, s)
 		}
 	}
-
-	dynsym, err := pb.Dynsym()
-	if err != nil {
-		return nil, fmt.Errorf("getting dynamic symbols: %w", err)
-	}
-	for _, s := range dynsym {
+	for _, s := range pb.Dynsym {
 		if predicate(s) {
 			result = append(result, s)
 		}
 	}
-
-	return result, nil
+	return result
 }
 
 // FindSymbolsByName returns all symbols matching any of the given search criteria.
-func (pb *Binary) FindSymbolsByName(targets []SymbolSearch) ([]elf.Symbol, error) {
+func (pb *Binary) FindSymbolsByName(targets []SymbolSearch) []elf.Symbol {
 	return pb.FindSymbols(func(s elf.Symbol) bool {
 		return MatchSymbol(s.Name, targets)
 	})
@@ -263,15 +213,11 @@ func (pb *Binary) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Symbol {
 }
 
 // HasLinkedLibrary checks if the binary links against a library matching the pattern.
-func (pb *Binary) HasLinkedLibrary(pattern string, strategy MatchStrategy) (bool, error) {
-	libs, err := pb.LinkedLibs()
-	if err != nil {
-		return false, fmt.Errorf("getting linked libraries: %w", err)
-	}
-	for _, lib := range libs {
+func (pb *Binary) HasLinkedLibrary(pattern string, strategy MatchStrategy) bool {
+	for _, lib := range pb.LinkedLibs {
 		if match(lib, pattern, strategy) {
-			return true, nil
+			return true
 		}
 	}
-	return false, nil
+	return false
 }

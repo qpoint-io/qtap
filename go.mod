@@ -5,6 +5,7 @@ go 1.25.3
 require (
 	github.com/andybalholm/brotli v1.1.1
 	github.com/axiomhq/axiom-go v0.23.3
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/charmbracelet/glamour v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cilium/ebpf v0.16.0
@@ -92,7 +93,6 @@ require (
 	github.com/catenacyber/perfsprint v0.9.1 // indirect
 	github.com/ccojocar/zxcvbn-go v1.0.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charithe/durationcheck v0.0.10 // indirect
 	github.com/charmbracelet/bubbles v0.20.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.4 // indirect

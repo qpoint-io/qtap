@@ -10,10 +10,10 @@ import (
 	"os"
 )
 
-// ParsedBinary represents a pre-parsed ELF binary with all data needed for TLS probe scanning.
+// Binary represents a pre-parsed ELF binary with all data needed for TLS probe scanning.
 // All fields are immutable after construction, making it safe for concurrent access.
 // The underlying file descriptor is kept open for uprobe attachment.
-type ParsedBinary struct {
+type Binary struct {
 	// Path is the original path to the binary
 	Path string
 
@@ -40,7 +40,7 @@ type ParsedBinary struct {
 // ParseBinary opens and parses an ELF binary, pre-loading all data needed for TLS scanning.
 // The returned ParsedBinary keeps the file descriptor open for uprobe attachment.
 // Caller must call Close() when done.
-func ParseBinary(ctx context.Context, path string) (*ParsedBinary, error) {
+func ParseBinary(ctx context.Context, path string) (*Binary, error) {
 	fd, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
@@ -63,7 +63,7 @@ func ParseBinary(ctx context.Context, path string) (*ParsedBinary, error) {
 		return nil, fmt.Errorf("parsing ELF: %w", err)
 	}
 
-	pb := &ParsedBinary{
+	pb := &Binary{
 		Path:     path,
 		fd:       fd,
 		ef:       ef,
@@ -89,7 +89,7 @@ func ParseBinary(ctx context.Context, path string) (*ParsedBinary, error) {
 }
 
 // Close releases all resources associated with the parsed binary.
-func (pb *ParsedBinary) Close() error {
+func (pb *Binary) Close() error {
 	if pb.fd != nil {
 		return pb.fd.Close()
 	}
@@ -98,19 +98,19 @@ func (pb *ParsedBinary) Close() error {
 
 // FilePath returns the path to use for uprobe attachment.
 // This is the path that was used to open the file.
-func (pb *ParsedBinary) FilePath() string {
+func (pb *Binary) FilePath() string {
 	return pb.Path
 }
 
 // ElfFile returns the underlying elf.File for advanced operations.
 // Note: Some elf.File methods are not thread-safe (e.g., DynamicSymbols).
 // Use the pre-parsed fields (Symtab, Dynsym) for thread-safe access.
-func (pb *ParsedBinary) ElfFile() *elf.File {
+func (pb *Binary) ElfFile() *elf.File {
 	return pb.ef
 }
 
 // HasSymbol checks if a symbol with the given name exists in either symbol table.
-func (pb *ParsedBinary) HasSymbol(name string) bool {
+func (pb *Binary) HasSymbol(name string) bool {
 	for _, s := range pb.Symtab {
 		if s.Name == name {
 			return true
@@ -125,7 +125,7 @@ func (pb *ParsedBinary) HasSymbol(name string) bool {
 }
 
 // FindSymbols returns all symbols matching the given predicate from both symbol tables.
-func (pb *ParsedBinary) FindSymbols(predicate func(elf.Symbol) bool) []elf.Symbol {
+func (pb *Binary) FindSymbols(predicate func(elf.Symbol) bool) []elf.Symbol {
 	var result []elf.Symbol
 	for _, s := range pb.Symtab {
 		if predicate(s) {
@@ -141,7 +141,7 @@ func (pb *ParsedBinary) FindSymbols(predicate func(elf.Symbol) bool) []elf.Symbo
 }
 
 // FindSymbolsByName returns all symbols matching any of the given search criteria.
-func (pb *ParsedBinary) FindSymbolsByName(targets []SymbolSearch) []elf.Symbol {
+func (pb *Binary) FindSymbolsByName(targets []SymbolSearch) []elf.Symbol {
 	return pb.FindSymbols(func(s elf.Symbol) bool {
 		return MatchSymbol(s.Name, targets)
 	})
@@ -149,7 +149,7 @@ func (pb *ParsedBinary) FindSymbolsByName(targets []SymbolSearch) []elf.Symbol {
 
 // SectionData returns the data for a section by name.
 // This method is thread-safe as Section.Data() allocates a fresh buffer.
-func (pb *ParsedBinary) SectionData(name string) ([]byte, error) {
+func (pb *Binary) SectionData(name string) ([]byte, error) {
 	sec := pb.ef.Section(name)
 	if sec == nil {
 		return nil, fmt.Errorf("section %s not found", name)
@@ -159,7 +159,7 @@ func (pb *ParsedBinary) SectionData(name string) ([]byte, error) {
 
 // SearchString searches for a string with the given prefix in common string sections.
 // Returns the full string if found, or an error if not found.
-func (pb *ParsedBinary) SearchString(prefix string, strategy MatchStrategy) (string, error) {
+func (pb *Binary) SearchString(prefix string, strategy MatchStrategy) (string, error) {
 	// Search in common string sections
 	sections := []string{".rodata", ".data", ".dynstr", ".strtab"}
 
@@ -214,7 +214,7 @@ func searchStringInData(data []byte, target string, strategy MatchStrategy) stri
 
 // CalculateUprobeAddresses calculates the file offsets for uprobe attachment.
 // This converts virtual addresses to file offsets using program headers.
-func (pb *ParsedBinary) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Symbol {
+func (pb *Binary) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Symbol {
 	results := make([]elf.Symbol, len(symbols))
 	copy(results, symbols)
 
@@ -241,7 +241,7 @@ func (pb *ParsedBinary) CalculateUprobeAddresses(symbols []elf.Symbol) []elf.Sym
 }
 
 // HasLinkedLibrary checks if the binary links against a library matching the pattern.
-func (pb *ParsedBinary) HasLinkedLibrary(pattern string, strategy MatchStrategy) bool {
+func (pb *Binary) HasLinkedLibrary(pattern string, strategy MatchStrategy) bool {
 	for _, lib := range pb.LinkedLibs {
 		if match(lib, pattern, strategy) {
 			return true
@@ -252,6 +252,6 @@ func (pb *ParsedBinary) HasLinkedLibrary(pattern string, strategy MatchStrategy)
 
 // ReaderAt returns an io.ReaderAt for the underlying file.
 // This is useful for thread-safe random access reads.
-func (pb *ParsedBinary) ReaderAt() io.ReaderAt {
+func (pb *Binary) ReaderAt() io.ReaderAt {
 	return pb.fd
 }

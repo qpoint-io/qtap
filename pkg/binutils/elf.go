@@ -26,10 +26,7 @@ var (
 	ErrFileClosed   = errors.New("file is closed")
 )
 
-const (
-	chunkSize  = 1024
-	bufferSize = 4096
-)
+const bufferSize = 4096
 
 // enum for symbol match strategy
 type MatchStrategy int
@@ -58,10 +55,9 @@ type Elf struct {
 	file *os.File
 
 	// Thread-safe lazy initialization of elf.File
-	elfOnce sync.Once
-	ef      *elf.File
-	efErr   error
-
+	elfOnce  sync.Once
+	ef       *elf.File
+	efErr    error
 	isClosed atomic.Bool
 }
 
@@ -111,7 +107,6 @@ func (e *Elf) Close() error {
 	if e.file != nil {
 		return e.file.Close()
 	}
-
 	return nil
 }
 

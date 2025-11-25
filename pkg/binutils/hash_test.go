@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestComputeBinaryHash(t *testing.T) {
@@ -13,34 +16,23 @@ func TestComputeBinaryHash(t *testing.T) {
 
 	// Test with small file (less than hashSampleSize)
 	smallContent := []byte("hello world test content")
-	if err := os.WriteFile(tmpFile, smallContent, 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, smallContent, 0644)
+	require.NoError(t, err)
 
 	f, err := os.Open(tmpFile)
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	hash, err := computeBinaryHash(f)
-	if err != nil {
-		t.Errorf("computeBinaryHash() error = %v, want nil", err)
-	}
-	if hash == "" {
-		t.Error("computeBinaryHash() returned empty hash")
-	}
-	if len(hash) != 64 { // SHA256 hex is 64 chars
-		t.Errorf("computeBinaryHash() hash length = %d, want 64", len(hash))
-	}
+	require.NoError(t, err)
+	assert.NotEmpty(t, hash)
+	assert.Len(t, hash, 64) // SHA256 hex is 64 chars
 
 	// Test consistency - same file should produce same hash
 	f2, _ := os.Open(tmpFile)
 	defer f2.Close()
 	hash2, _ := computeBinaryHash(f2)
-	if hash != hash2 {
-		t.Errorf("computeBinaryHash() not consistent: got %s then %s", hash, hash2)
-	}
+	assert.Equal(t, hash, hash2)
 }
 
 func TestComputeBinaryHashLargeFile(t *testing.T) {
@@ -53,23 +45,16 @@ func TestComputeBinaryHashLargeFile(t *testing.T) {
 	for i := range largeContent {
 		largeContent[i] = byte(i % 256)
 	}
-	if err := os.WriteFile(tmpFile, largeContent, 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, largeContent, 0644)
+	require.NoError(t, err)
 
 	f, err := os.Open(tmpFile)
-	if err != nil {
-		t.Fatalf("failed to open test file: %v", err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 
 	hash, err := computeBinaryHash(f)
-	if err != nil {
-		t.Errorf("computeBinaryHash() error = %v, want nil", err)
-	}
-	if hash == "" {
-		t.Error("computeBinaryHash() returned empty hash")
-	}
+	require.NoError(t, err)
+	assert.NotEmpty(t, hash)
 }
 
 func TestComputeBinaryHashDifferentFiles(t *testing.T) {
@@ -77,12 +62,10 @@ func TestComputeBinaryHashDifferentFiles(t *testing.T) {
 	file1 := filepath.Join(tmpDir, "file1")
 	file2 := filepath.Join(tmpDir, "file2")
 
-	if err := os.WriteFile(file1, []byte("content one"), 0644); err != nil {
-		t.Fatalf("failed to write file1: %v", err)
-	}
-	if err := os.WriteFile(file2, []byte("content two"), 0644); err != nil {
-		t.Fatalf("failed to write file2: %v", err)
-	}
+	err := os.WriteFile(file1, []byte("content one"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(file2, []byte("content two"), 0644)
+	require.NoError(t, err)
 
 	f1, _ := os.Open(file1)
 	defer f1.Close()
@@ -92,9 +75,7 @@ func TestComputeBinaryHashDifferentFiles(t *testing.T) {
 	hash1, _ := computeBinaryHash(f1)
 	hash2, _ := computeBinaryHash(f2)
 
-	if hash1 == hash2 {
-		t.Error("computeBinaryHash() should produce different hashes for different files")
-	}
+	assert.NotEqual(t, hash1, hash2)
 }
 
 func TestComputeFullHash(t *testing.T) {
@@ -102,33 +83,22 @@ func TestComputeFullHash(t *testing.T) {
 	tmpFile := filepath.Join(tmpDir, "testfile")
 
 	content := []byte("test content for full hash")
-	if err := os.WriteFile(tmpFile, content, 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	err := os.WriteFile(tmpFile, content, 0644)
+	require.NoError(t, err)
 
 	hash, err := ComputeFullHash(tmpFile)
-	if err != nil {
-		t.Errorf("ComputeFullHash() error = %v, want nil", err)
-	}
-	if hash == "" {
-		t.Error("ComputeFullHash() returned empty hash")
-	}
-	if len(hash) != 64 {
-		t.Errorf("ComputeFullHash() hash length = %d, want 64", len(hash))
-	}
+	require.NoError(t, err)
+	assert.NotEmpty(t, hash)
+	assert.Len(t, hash, 64)
 
 	// Test consistency
 	hash2, _ := ComputeFullHash(tmpFile)
-	if hash != hash2 {
-		t.Errorf("ComputeFullHash() not consistent: got %s then %s", hash, hash2)
-	}
+	assert.Equal(t, hash, hash2)
 }
 
 func TestComputeFullHashNonExistentFile(t *testing.T) {
 	_, err := ComputeFullHash("/nonexistent/file/path")
-	if err == nil {
-		t.Error("ComputeFullHash() should error on non-existent file")
-	}
+	assert.Error(t, err)
 }
 
 func TestComputeFullHashDifferentFiles(t *testing.T) {
@@ -136,18 +106,13 @@ func TestComputeFullHashDifferentFiles(t *testing.T) {
 	file1 := filepath.Join(tmpDir, "file1")
 	file2 := filepath.Join(tmpDir, "file2")
 
-	if err := os.WriteFile(file1, []byte("content one"), 0644); err != nil {
-		t.Fatalf("failed to write file1: %v", err)
-	}
-	if err := os.WriteFile(file2, []byte("content two"), 0644); err != nil {
-		t.Fatalf("failed to write file2: %v", err)
-	}
+	err := os.WriteFile(file1, []byte("content one"), 0644)
+	require.NoError(t, err)
+	err = os.WriteFile(file2, []byte("content two"), 0644)
+	require.NoError(t, err)
 
 	hash1, _ := ComputeFullHash(file1)
 	hash2, _ := ComputeFullHash(file2)
 
-	if hash1 == hash2 {
-		t.Error("ComputeFullHash() should produce different hashes for different files")
-	}
+	assert.NotEqual(t, hash1, hash2)
 }
-

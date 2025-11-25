@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewElf(t *testing.T) {
@@ -13,28 +16,18 @@ func TestNewElf(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
-	if e.exe != elfPath {
-		t.Errorf("NewElf() exe = %s, want %s", e.exe, elfPath)
-	}
-	if e.file == nil {
-		t.Error("NewElf() file is nil")
-	}
-	if e.isClosed.Load() {
-		t.Error("NewElf() should not be closed")
-	}
+	assert.Equal(t, elfPath, e.exe)
+	assert.NotNil(t, e.file)
+	assert.False(t, e.isClosed.Load())
 }
 
 func TestNewElfNonExistent(t *testing.T) {
 	ctx := t.Context()
 	_, err := NewElf(ctx, "/nonexistent/file", "", false)
-	if err == nil {
-		t.Error("NewElf() should error on non-existent file")
-	}
+	assert.Error(t, err)
 }
 
 func TestNewElfNotElf(t *testing.T) {
@@ -42,9 +35,7 @@ func TestNewElfNotElf(t *testing.T) {
 	notElf := createNonElfTestFile(t)
 
 	_, err := NewElf(ctx, notElf, "", false)
-	if err == nil {
-		t.Error("NewElf() should error on non-ELF file")
-	}
+	assert.Error(t, err)
 }
 
 func TestNewElfContainer(t *testing.T) {
@@ -55,9 +46,7 @@ func TestNewElfContainer(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Create the ELF in a subdir to test container path joining
 	e, err := NewElf(ctx, elfPath, "", false) // non-container mode
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Now test container mode by checking getFilePath behavior
@@ -67,9 +56,7 @@ func TestNewElfContainer(t *testing.T) {
 		isContainer: true,
 	}
 	expected := tmpDir + "/test.elf"
-	if e2.getFilePath() != expected {
-		t.Errorf("getFilePath() = %s, want %s", e2.getFilePath(), expected)
-	}
+	assert.Equal(t, expected, e2.getFilePath())
 }
 
 func TestElfClose(t *testing.T) {
@@ -77,22 +64,14 @@ func TestElfClose(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	// First close should succeed
-	if err := e.Close(); err != nil {
-		t.Errorf("Close() error = %v", err)
-	}
-	if !e.isClosed.Load() {
-		t.Error("Close() should mark file as closed")
-	}
+	require.NoError(t, e.Close())
+	assert.True(t, e.isClosed.Load())
 
 	// Second close should be idempotent
-	if err := e.Close(); err != nil {
-		t.Errorf("Close() second call error = %v", err)
-	}
+	require.NoError(t, e.Close())
 }
 
 func TestElfElf(t *testing.T) {
@@ -100,24 +79,16 @@ func TestElfElf(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	ef, err := e.Elf(ctx)
-	if err != nil {
-		t.Errorf("Elf() error = %v", err)
-	}
-	if ef == nil {
-		t.Error("Elf() returned nil")
-	}
+	require.NoError(t, err)
+	assert.NotNil(t, ef)
 
 	// Second call should return same instance (lazy init)
 	ef2, _ := e.Elf(ctx)
-	if ef != ef2 {
-		t.Error("Elf() should return same instance on multiple calls")
-	}
+	assert.Same(t, ef, ef2)
 }
 
 func TestElfElfClosed(t *testing.T) {
@@ -125,16 +96,12 @@ func TestElfElfClosed(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	e.Close()
 
 	_, err = e.Elf(ctx)
-	if err != ErrFileClosed {
-		t.Errorf("Elf() on closed file error = %v, want ErrFileClosed", err)
-	}
+	require.ErrorIs(t, err, ErrFileClosed)
 }
 
 func TestElfElfNoFile(t *testing.T) {
@@ -142,9 +109,7 @@ func TestElfElfNoFile(t *testing.T) {
 	e := &Elf{exe: "dummy"}
 
 	_, err := e.Elf(ctx)
-	if err != ErrNoFileLoaded {
-		t.Errorf("Elf() with no file error = %v, want ErrNoFileLoaded", err)
-	}
+	require.ErrorIs(t, err, ErrNoFileLoaded)
 }
 
 func TestElfGetSections(t *testing.T) {
@@ -152,18 +117,12 @@ func TestElfGetSections(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	sections := e.GetSections(ctx)
-	if sections == nil {
-		t.Error("GetSections() returned nil")
-	}
-	if len(sections) == 0 {
-		t.Error("GetSections() returned empty slice")
-	}
+	assert.NotNil(t, sections)
+	assert.NotEmpty(t, sections)
 }
 
 func TestElfSearchSymbols(t *testing.T) {
@@ -171,9 +130,7 @@ func TestElfSearchSymbols(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Search for existing symbol
@@ -182,15 +139,9 @@ func TestElfSearchSymbols(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("SearchSymbols() error = %v", err)
-	}
-	if len(symbols) != 1 {
-		t.Errorf("SearchSymbols() found %d symbols, want 1", len(symbols))
-	}
-	if len(symbols) > 0 && symbols[0].Name != "test_symbol" {
-		t.Errorf("SearchSymbols() found %s, want test_symbol", symbols[0].Name)
-	}
+	require.NoError(t, err)
+	require.Len(t, symbols, 1)
+	assert.Equal(t, "test_symbol", symbols[0].Name)
 }
 
 func TestElfSearchSymbolsPrefix(t *testing.T) {
@@ -198,9 +149,7 @@ func TestElfSearchSymbolsPrefix(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Search with prefix strategy
@@ -209,13 +158,9 @@ func TestElfSearchSymbolsPrefix(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("SearchSymbols() error = %v", err)
-	}
+	require.NoError(t, err)
 	// Should find SSL_read and SSL_write (but stops at 1 since targets has len 1)
-	if len(symbols) < 1 {
-		t.Errorf("SearchSymbols() found %d symbols, want at least 1", len(symbols))
-	}
+	assert.GreaterOrEqual(t, len(symbols), 1)
 }
 
 func TestElfSearchSymbolsNoMatch(t *testing.T) {
@@ -223,9 +168,7 @@ func TestElfSearchSymbolsNoMatch(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -233,12 +176,8 @@ func TestElfSearchSymbolsNoMatch(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("SearchSymbols() error = %v", err)
-	}
-	if len(symbols) != 0 {
-		t.Errorf("SearchSymbols() found %d symbols, want 0", len(symbols))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, symbols)
 }
 
 func TestElfSearchSymbolsMultiple(t *testing.T) {
@@ -246,9 +185,7 @@ func TestElfSearchSymbolsMultiple(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Search for multiple symbols
@@ -259,12 +196,8 @@ func TestElfSearchSymbolsMultiple(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("SearchSymbols() error = %v", err)
-	}
-	if len(symbols) != 3 {
-		t.Errorf("SearchSymbols() found %d symbols, want 3", len(symbols))
-	}
+	require.NoError(t, err)
+	assert.Len(t, symbols, 3)
 }
 
 func TestElfContainsAnySymbols(t *testing.T) {
@@ -272,9 +205,7 @@ func TestElfContainsAnySymbols(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Test with existing symbol
@@ -283,12 +214,8 @@ func TestElfContainsAnySymbols(t *testing.T) {
 	}
 
 	found, err := e.ContainsAnySymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("ContainsAnySymbols() error = %v", err)
-	}
-	if !found {
-		t.Error("ContainsAnySymbols() should find existing symbol")
-	}
+	require.NoError(t, err)
+	assert.True(t, found)
 }
 
 func TestElfContainsAnySymbolsNotFound(t *testing.T) {
@@ -296,9 +223,7 @@ func TestElfContainsAnySymbolsNotFound(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -306,12 +231,8 @@ func TestElfContainsAnySymbolsNotFound(t *testing.T) {
 	}
 
 	found, err := e.ContainsAnySymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("ContainsAnySymbols() error = %v", err)
-	}
-	if found {
-		t.Error("ContainsAnySymbols() should not find non-existent symbol")
-	}
+	require.NoError(t, err)
+	assert.False(t, found)
 }
 
 func TestElfContainsAnySymbolsUnsupportedSection(t *testing.T) {
@@ -319,9 +240,7 @@ func TestElfContainsAnySymbolsUnsupportedSection(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -330,9 +249,7 @@ func TestElfContainsAnySymbolsUnsupportedSection(t *testing.T) {
 
 	// Use an unsupported section type
 	_, err = e.ContainsAnySymbols(ctx, targets, elf.SHT_NULL)
-	if err == nil {
-		t.Error("ContainsAnySymbols() should error on unsupported section type")
-	}
+	assert.Error(t, err)
 }
 
 func TestElfCalculateUprobeAddresses(t *testing.T) {
@@ -340,26 +257,20 @@ func TestElfCalculateUprobeAddresses(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Test with empty symbols
 	symbols := []elf.Symbol{}
 	result := e.CalculateUprobeAddresses(ctx, symbols)
-	if len(result) != 0 {
-		t.Errorf("CalculateUprobeAddresses() with empty input returned %d symbols", len(result))
-	}
+	assert.Empty(t, result)
 
 	// Test with a mock symbol
 	symbols = []elf.Symbol{
 		{Name: "test", Value: 0x1000},
 	}
 	result = e.CalculateUprobeAddresses(ctx, symbols)
-	if len(result) != 1 {
-		t.Errorf("CalculateUprobeAddresses() returned %d symbols, want 1", len(result))
-	}
+	assert.Len(t, result, 1)
 }
 
 func TestElfLdd(t *testing.T) {
@@ -405,12 +316,8 @@ func TestIsElfNoFile(t *testing.T) {
 	e := &Elf{exe: "dummy"}
 
 	isElf, err := e.isELF()
-	if err != ErrNoFileLoaded {
-		t.Errorf("isELF() with no file error = %v, want ErrNoFileLoaded", err)
-	}
-	if isElf {
-		t.Error("isELF() should return false when no file loaded")
-	}
+	require.ErrorIs(t, err, ErrNoFileLoaded)
+	assert.False(t, isElf)
 }
 
 func TestReadStringAt(t *testing.T) {
@@ -419,20 +326,12 @@ func TestReadStringAt(t *testing.T) {
 	reader := &mockReaderAt{data: data}
 
 	str, err := readStringAt(reader, 0)
-	if err != nil {
-		t.Errorf("readStringAt() error = %v", err)
-	}
-	if str != "hello" {
-		t.Errorf("readStringAt() = %s, want 'hello'", str)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "hello", str)
 
 	str, err = readStringAt(reader, 6)
-	if err != nil {
-		t.Errorf("readStringAt() at offset 6 error = %v", err)
-	}
-	if str != "world" {
-		t.Errorf("readStringAt() at offset 6 = %s, want 'world'", str)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "world", str)
 }
 
 type mockReaderAt struct {
@@ -469,18 +368,14 @@ func TestMatchSymbolAt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := matchSymbolAt(reader, tt.offset, tt.target, tt.strategy)
-			if got != tt.want {
-				t.Errorf("matchSymbolAt() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestMatchInvalidStrategy(t *testing.T) {
 	result := match("test", "test", MatchStrategy(999))
-	if result {
-		t.Error("match() with invalid strategy should return false")
-	}
+	assert.False(t, result)
 }
 
 func TestSearchSymbolsNoFileLoaded(t *testing.T) {
@@ -488,9 +383,7 @@ func TestSearchSymbolsNoFileLoaded(t *testing.T) {
 	e := &Elf{exe: "dummy"}
 
 	_, err := e.SearchSymbols(ctx, []SymbolSearch{{Name: "test"}}, elf.SHT_SYMTAB)
-	if err != ErrNoFileLoaded {
-		t.Errorf("SearchSymbols() with no file error = %v, want ErrNoFileLoaded", err)
-	}
+	require.ErrorIs(t, err, ErrNoFileLoaded)
 }
 
 func TestElfSearchSymbols32(t *testing.T) {
@@ -498,9 +391,7 @@ func TestElfSearchSymbols32(t *testing.T) {
 	elfPath := createTestElf32(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Search for existing symbol in 32-bit ELF
@@ -509,15 +400,9 @@ func TestElfSearchSymbols32(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("SearchSymbols() ELF32 error = %v", err)
-	}
-	if len(symbols) != 1 {
-		t.Errorf("SearchSymbols() ELF32 found %d symbols, want 1", len(symbols))
-	}
-	if len(symbols) > 0 && symbols[0].Name != "test_symbol_32" {
-		t.Errorf("SearchSymbols() ELF32 found %s, want test_symbol_32", symbols[0].Name)
-	}
+	require.NoError(t, err)
+	require.Len(t, symbols, 1)
+	assert.Equal(t, "test_symbol_32", symbols[0].Name)
 }
 
 func TestElfContainsAnySymbols32(t *testing.T) {
@@ -525,9 +410,7 @@ func TestElfContainsAnySymbols32(t *testing.T) {
 	elfPath := createTestElf32(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -535,12 +418,8 @@ func TestElfContainsAnySymbols32(t *testing.T) {
 	}
 
 	found, err := e.ContainsAnySymbols(ctx, targets, elf.SHT_SYMTAB)
-	if err != nil {
-		t.Errorf("ContainsAnySymbols() ELF32 error = %v", err)
-	}
-	if !found {
-		t.Error("ContainsAnySymbols() ELF32 should find existing symbol")
-	}
+	require.NoError(t, err)
+	assert.True(t, found)
 }
 
 func TestElfContainsAnySymbolsDynsym(t *testing.T) {
@@ -548,9 +427,7 @@ func TestElfContainsAnySymbolsDynsym(t *testing.T) {
 	elfPath := createTestElfWithDynsym(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -558,12 +435,8 @@ func TestElfContainsAnySymbolsDynsym(t *testing.T) {
 	}
 
 	found, err := e.ContainsAnySymbols(ctx, targets, elf.SHT_DYNSYM)
-	if err != nil {
-		t.Errorf("ContainsAnySymbols() DYNSYM error = %v", err)
-	}
-	if !found {
-		t.Error("ContainsAnySymbols() should find dynamic symbol")
-	}
+	require.NoError(t, err)
+	assert.True(t, found)
 }
 
 func TestElfContainsAnySymbolsBothSections(t *testing.T) {
@@ -571,9 +444,7 @@ func TestElfContainsAnySymbolsBothSections(t *testing.T) {
 	elfPath := createTestElf(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -582,12 +453,8 @@ func TestElfContainsAnySymbolsBothSections(t *testing.T) {
 
 	// Test checking both SYMTAB and DYNSYM
 	found, err := e.ContainsAnySymbols(ctx, targets, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
-	if err != nil {
-		t.Errorf("ContainsAnySymbols() both sections error = %v", err)
-	}
-	if !found {
-		t.Error("ContainsAnySymbols() should find symbol in SYMTAB")
-	}
+	require.NoError(t, err)
+	assert.True(t, found)
 }
 
 func TestElfCalculateUprobeAddressesWithProgHeaders(t *testing.T) {
@@ -595,9 +462,7 @@ func TestElfCalculateUprobeAddressesWithProgHeaders(t *testing.T) {
 	elfPath := createTestElfWithProgHeaders(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Symbol at VA 0x401000 should map to file offset 0x1000
@@ -607,12 +472,8 @@ func TestElfCalculateUprobeAddressesWithProgHeaders(t *testing.T) {
 	}
 
 	result := e.CalculateUprobeAddresses(ctx, symbols)
-	if len(result) != 1 {
-		t.Fatalf("CalculateUprobeAddresses() returned %d symbols, want 1", len(result))
-	}
-	if result[0].Value != 0x1000 {
-		t.Errorf("CalculateUprobeAddresses() value = 0x%x, want 0x1000", result[0].Value)
-	}
+	require.Len(t, result, 1)
+	assert.Equal(t, uint64(0x1000), result[0].Value)
 }
 
 func TestElfSearchSymbolsDynsym(t *testing.T) {
@@ -620,9 +481,7 @@ func TestElfSearchSymbolsDynsym(t *testing.T) {
 	elfPath := createTestElfWithDynsym(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	targets := []SymbolSearch{
@@ -630,12 +489,8 @@ func TestElfSearchSymbolsDynsym(t *testing.T) {
 	}
 
 	symbols, err := e.SearchSymbols(ctx, targets, elf.SHT_DYNSYM)
-	if err != nil {
-		t.Errorf("SearchSymbols() DYNSYM error = %v", err)
-	}
-	if len(symbols) != 1 {
-		t.Errorf("SearchSymbols() DYNSYM found %d symbols, want 1", len(symbols))
-	}
+	require.NoError(t, err)
+	assert.Len(t, symbols, 1)
 }
 
 // createTestElf creates a minimal valid ELF64 binary with symbols for testing.
@@ -901,12 +756,30 @@ func createTestElfWithRodata(t interface {
 	}
 	defer f.Close()
 
-	f.Write(ehdr)
-	f.Write(symtab)
-	f.Write(strtab)
-	f.Write(shstrtab)
-	f.Write(rodata)
-	f.Write(shdrs)
+	_, err = f.Write(ehdr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(symtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(strtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shstrtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(rodata)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shdrs)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
 
 	return elfPath
 }
@@ -1023,11 +896,26 @@ func createTestElf32(t interface {
 	}
 	defer f.Close()
 
-	f.Write(ehdr)
-	f.Write(symtab)
-	f.Write(strtab)
-	f.Write(shstrtab)
-	f.Write(shdrs)
+	_, err = f.Write(ehdr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(symtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(strtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shstrtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shdrs)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
 
 	return elfPath
 }
@@ -1126,12 +1014,30 @@ func createTestElfWithProgHeaders(t interface {
 	}
 	defer f.Close()
 
-	f.Write(ehdr)
-	f.Write(phdr)
-	f.Write(symtab)
-	f.Write(strtab)
-	f.Write(shstrtab)
-	f.Write(shdrs)
+	_, err = f.Write(ehdr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(phdr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(symtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(strtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shstrtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shdrs)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
 
 	return elfPath
 }
@@ -1235,12 +1141,30 @@ func createTestElfWithDynsym(t interface {
 	}
 	defer f.Close()
 
-	f.Write(ehdr)
-	f.Write(dynsym)
-	f.Write(dynstr)
-	f.Write(dynamic)
-	f.Write(shstrtab)
-	f.Write(shdrs)
+	_, err = f.Write(ehdr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(dynsym)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(dynstr)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(dynamic)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shstrtab)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
+	_, err = f.Write(shdrs)
+	if err != nil {
+		t.Fatalf("writing data: %v", err)
+	}
 
 	return elfPath
 }

@@ -1,9 +1,11 @@
 package binutils
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMatchFunction(t *testing.T) {
@@ -29,10 +31,7 @@ func TestMatchFunction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := match(tt.symName, tt.targetName, tt.strategy)
-			if result != tt.shouldMatch {
-				t.Errorf("match(%q, %q, %v) = %v, want %v",
-					tt.symName, tt.targetName, tt.strategy, result, tt.shouldMatch)
-			}
+			assert.Equal(t, tt.shouldMatch, result)
 		})
 	}
 }
@@ -85,10 +84,7 @@ func TestMatchSymbol(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := MatchSymbol(tt.symName, tt.targets)
-			if result != tt.wantResult {
-				t.Errorf("MatchSymbol(%q, %v) = %v, want %v",
-					tt.symName, tt.targets, result, tt.wantResult)
-			}
+			assert.Equal(t, tt.wantResult, result)
 		})
 	}
 }
@@ -107,9 +103,7 @@ func TestSymbolSearchBytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ss := SymbolSearch{Name: tt.symName}
 			result := string(ss.Bytes())
-			if result != tt.expected {
-				t.Errorf("SymbolSearch.Bytes() = %q, want %q", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -146,9 +140,7 @@ func TestElfGetFilePath(t *testing.T) {
 				isContainer: tt.isContainer,
 			}
 			result := e.getFilePath()
-			if result != tt.expected {
-				t.Errorf("Elf.getFilePath() = %q, want %q", result, tt.expected)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -161,9 +153,7 @@ func TestElfCloseAlreadyClosed(t *testing.T) {
 	e.isClosed.Store(true)
 
 	// Test closing an already closed Elf
-	if err := e.Close(); err != nil {
-		t.Errorf("Elf.Close() error = %v, want nil for already closed file", err)
-	}
+	require.NoError(t, e.Close())
 }
 
 func TestElfCloseNilFile(t *testing.T) {
@@ -174,14 +164,10 @@ func TestElfCloseNilFile(t *testing.T) {
 	}
 
 	// Test closing the file
-	if err := e.Close(); err != nil {
-		t.Errorf("Elf.Close() error = %v, want nil for nil file", err)
-	}
+	require.NoError(t, e.Close())
 
 	// Test that the file is marked as closed
-	if !e.isClosed.Load() {
-		t.Errorf("Elf.isClosed = %v, want true", e.isClosed.Load())
-	}
+	assert.True(t, e.isClosed.Load())
 }
 
 func TestElfSearchString(t *testing.T) {
@@ -189,34 +175,22 @@ func TestElfSearchString(t *testing.T) {
 	elfPath := createTestElfWithRodata(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	// Test search for non-existent string
 	_, err = e.SearchString("definitely_nonexistent_string_xyz123", MatchStrategyExact)
-	if err == nil {
-		t.Error("SearchString() should error when string not found")
-	}
+	require.Error(t, err)
 
 	// Test search for string that exists in our test ELF
 	result, err := e.SearchString("Hello World", MatchStrategyExact)
-	if err != nil {
-		t.Errorf("SearchString() error = %v", err)
-	}
-	if result != "Hello World" {
-		t.Errorf("SearchString() = %q, want 'Hello World'", result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "Hello World", result)
 
 	// Test prefix search
 	result, err = e.SearchString("OpenSSL", MatchStrategyPrefix)
-	if err != nil {
-		t.Errorf("SearchString() prefix error = %v", err)
-	}
-	if result != "OpenSSL 1.1.1" {
-		t.Errorf("SearchString() prefix = %q, want 'OpenSSL 1.1.1'", result)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "OpenSSL 1.1.1", result)
 }
 
 func TestElfSearchStringClosed(t *testing.T) {
@@ -224,16 +198,12 @@ func TestElfSearchStringClosed(t *testing.T) {
 	elfPath := createTestElfWithRodata(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	e.Close()
 
 	_, err = e.SearchString("test", MatchStrategyExact)
-	if !errors.Is(err, ErrFileClosed) {
-		t.Errorf("SearchString() on closed file error = %v, want ErrFileClosed", err)
-	}
+	assert.ErrorIs(t, err, ErrFileClosed)
 }
 
 func TestElfSearchStringStrategies(t *testing.T) {
@@ -241,9 +211,7 @@ func TestElfSearchStringStrategies(t *testing.T) {
 	elfPath := createTestElfWithRodata(t)
 
 	e, err := NewElf(ctx, elfPath, "", false)
-	if err != nil {
-		t.Fatalf("NewElf() error = %v", err)
-	}
+	require.NoError(t, err)
 	defer e.Close()
 
 	tests := []struct {
@@ -262,8 +230,10 @@ func TestElfSearchStringStrategies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := e.SearchString(tt.search, tt.strategy)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SearchString(%q, %v) error = %v, wantErr %v", tt.search, tt.strategy, err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

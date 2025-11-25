@@ -2,6 +2,7 @@ package tlsutils
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -42,6 +43,14 @@ func (v TLSVersion) Float() float64 {
 	default:
 		return 0
 	}
+}
+
+func (v TLSVersion) MarshalText() ([]byte, error) {
+	return []byte(v.String()), nil
+}
+
+func (v TLSVersion) MarshalJSON() ([]byte, error) {
+	return json.Marshal(v.String())
 }
 
 // ParseClientHello parses a TLS client hello message from a byte slice.

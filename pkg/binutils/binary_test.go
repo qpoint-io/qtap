@@ -2,6 +2,7 @@ package binutils
 
 import (
 	"debug/elf"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,59 +12,35 @@ import (
 func TestParseBinary(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
-	assert.Equal(t, elfPath, pb.Path)
 	assert.NotEmpty(t, pb.Hash)
-	assert.NotNil(t, pb.fd)
 	assert.NotNil(t, pb.ef)
 	assert.NotNil(t, pb.Sections)
-}
-
-func TestParseBinaryNonExistent(t *testing.T) {
-	_, err := ParseBinary(t.Context(), "/nonexistent/file")
-	assert.Error(t, err)
 }
 
 func TestParseBinaryNotElf(t *testing.T) {
 	notElf := createNonElfTestFile(t)
 
-	_, err := ParseBinary(t.Context(), notElf)
-	assert.Error(t, err)
-}
-
-func TestParsedBinaryClose(t *testing.T) {
-	elfPath := createTestElf(t)
-
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(notElf)
 	require.NoError(t, err)
-
-	// First close should succeed
-	require.NoError(t, pb.Close())
-
-	// Second close should be safe (fd is now nil after first close)
-	pb.fd = nil
-	require.NoError(t, pb.Close())
-}
-
-func TestParsedBinaryFilePath(t *testing.T) {
-	elfPath := createTestElf(t)
-
-	pb, err := ParseBinary(t.Context(), elfPath)
-	require.NoError(t, err)
-	defer pb.Close()
-
-	assert.Equal(t, elfPath, pb.FilePath())
+	defer file.Close()
+	_, err = ParseBinary(t.Context(), file)
+	require.Error(t, err)
 }
 
 func TestParsedBinaryElfFile(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	ef := pb.ElfFile()
 	assert.NotNil(t, ef)
@@ -72,9 +49,11 @@ func TestParsedBinaryElfFile(t *testing.T) {
 func TestParsedBinaryHasSymbol(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test with non-existent symbol
 	assert.False(t, pb.HasSymbol("definitely_nonexistent_symbol_xyz"))
@@ -87,9 +66,11 @@ func TestParsedBinaryHasSymbol(t *testing.T) {
 func TestParsedBinaryFindSymbols(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test predicate that matches nothing
 	result := pb.FindSymbols(func(s elf.Symbol) bool {
@@ -107,9 +88,11 @@ func TestParsedBinaryFindSymbols(t *testing.T) {
 func TestParsedBinaryFindSymbolsByName(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test with existing targets
 	targets := []SymbolSearch{
@@ -129,9 +112,11 @@ func TestParsedBinaryFindSymbolsByName(t *testing.T) {
 func TestParsedBinarySectionData(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test with non-existent section
 	_, err = pb.SectionData("nonexistent_section")
@@ -146,9 +131,11 @@ func TestParsedBinarySectionData(t *testing.T) {
 func TestParsedBinarySearchStringWithRodata(t *testing.T) {
 	elfPath := createTestElfWithRodata(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test prefix search
 	result, err := pb.SearchString("OpenSSL", MatchStrategyPrefix)
@@ -164,9 +151,11 @@ func TestParsedBinarySearchStringWithRodata(t *testing.T) {
 func TestParsedBinarySearchStringNotFound(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test with non-existent string
 	_, err = pb.SearchString("definitely_nonexistent_string_xyz", MatchStrategyPrefix)
@@ -236,9 +225,11 @@ func TestSearchStringInData(t *testing.T) {
 func TestParsedBinaryCalculateUprobeAddresses(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Test with empty symbols
 	result := pb.CalculateUprobeAddresses([]elf.Symbol{})
@@ -255,9 +246,11 @@ func TestParsedBinaryCalculateUprobeAddresses(t *testing.T) {
 func TestParsedBinaryCalculateUprobeAddressesWithProgHeaders(t *testing.T) {
 	elfPath := createTestElfWithProgHeaders(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Symbol at VA 0x401000 should map to file offset 0x1000
 	symbols := []elf.Symbol{
@@ -272,9 +265,11 @@ func TestParsedBinaryCalculateUprobeAddressesWithProgHeaders(t *testing.T) {
 func TestParsedBinaryHasSymbolInDynsym(t *testing.T) {
 	elfPath := createTestElfWithDynsym(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Dynamic symbol should be found in Dynsym
 	assert.True(t, pb.HasSymbol("dynamic_symbol"))
@@ -283,9 +278,11 @@ func TestParsedBinaryHasSymbolInDynsym(t *testing.T) {
 func TestParsedBinaryHasLinkedLibrary(t *testing.T) {
 	elfPath := createTestElf(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Our synthetic ELF doesn't have linked libraries
 	found := pb.HasLinkedLibrary("nonexistent_lib", MatchStrategyExact)
@@ -295,9 +292,11 @@ func TestParsedBinaryHasLinkedLibrary(t *testing.T) {
 func TestParsedBinaryHasLinkedLibraryWithDynamic(t *testing.T) {
 	elfPath := createTestElfWithDynsym(t)
 
-	pb, err := ParseBinary(t.Context(), elfPath)
+	file, err := os.Open(elfPath)
 	require.NoError(t, err)
-	defer pb.Close()
+	defer file.Close()
+	pb, err := ParseBinary(t.Context(), file)
+	require.NoError(t, err)
 
 	// Check if we have linked libraries (may or may not work depending on ELF parsing)
 	if len(pb.LinkedLibs) > 0 {
@@ -317,23 +316,4 @@ func TestParsedBinaryHasLinkedLibraryWithDynamic(t *testing.T) {
 			t.Logf("HasLinkedLibrary() contains match: libs = %v", pb.LinkedLibs)
 		}
 	}
-}
-
-func TestParsedBinaryReaderAt(t *testing.T) {
-	elfPath := createTestElf(t)
-
-	pb, err := ParseBinary(t.Context(), elfPath)
-	require.NoError(t, err)
-	defer pb.Close()
-
-	reader := pb.ReaderAt()
-	assert.NotNil(t, reader)
-
-	// Test that we can read from it
-	buf := make([]byte, 4)
-	n, err := reader.ReadAt(buf, 0)
-	require.NoError(t, err)
-	assert.Equal(t, 4, n)
-	// Should be ELF magic bytes
-	assert.Equal(t, []byte{0x7f, 'E', 'L', 'F'}, buf)
 }

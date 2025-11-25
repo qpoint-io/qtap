@@ -6,7 +6,6 @@ import (
 	"debug/elf"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -14,14 +13,8 @@ import (
 // All fields are immutable after construction, making it safe for concurrent access.
 // The underlying file descriptor is kept open for uprobe attachment.
 type Binary struct {
-	// Path is the original path to the binary
-	Path string
-
 	// Hash is a unique identifier for this binary (computed from content + metadata)
 	Hash string
-
-	// fd is kept open for uprobe attachment via link.OpenExecutable
-	fd *os.File
 
 	// ef is the parsed ELF file
 	ef *elf.File
@@ -40,12 +33,7 @@ type Binary struct {
 // ParseBinary opens and parses an ELF binary, pre-loading all data needed for TLS scanning.
 // The returned ParsedBinary keeps the file descriptor open for uprobe attachment.
 // Caller must call Close() when done.
-func ParseBinary(ctx context.Context, path string) (*Binary, error) {
-	fd, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("opening file: %w", err)
-	}
-
+func ParseBinary(ctx context.Context, fd *os.File) (*Binary, error) {
 	// Verify it's an ELF file
 	var ident [4]byte
 	if _, err := fd.ReadAt(ident[:], 0); err != nil {
@@ -64,8 +52,6 @@ func ParseBinary(ctx context.Context, path string) (*Binary, error) {
 	}
 
 	pb := &Binary{
-		Path:     path,
-		fd:       fd,
 		ef:       ef,
 		Sections: ef.Sections,
 	}
@@ -86,20 +72,6 @@ func ParseBinary(ctx context.Context, path string) (*Binary, error) {
 	pb.LinkedLibs, _ = ef.ImportedLibraries()
 
 	return pb, nil
-}
-
-// Close releases all resources associated with the parsed binary.
-func (pb *Binary) Close() error {
-	if pb.fd != nil {
-		return pb.fd.Close()
-	}
-	return nil
-}
-
-// FilePath returns the path to use for uprobe attachment.
-// This is the path that was used to open the file.
-func (pb *Binary) FilePath() string {
-	return pb.Path
 }
 
 // ElfFile returns the underlying elf.File for advanced operations.
@@ -248,10 +220,4 @@ func (pb *Binary) HasLinkedLibrary(pattern string, strategy MatchStrategy) bool 
 		}
 	}
 	return false
-}
-
-// ReaderAt returns an io.ReaderAt for the underlying file.
-// This is useful for thread-safe random access reads.
-func (pb *Binary) ReaderAt() io.ReaderAt {
-	return pb.fd
 }

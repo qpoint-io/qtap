@@ -73,7 +73,7 @@ func (c *Container) Init(ctx context.Context, p *process.Process) error {
 
 	// initialize targets for the libs
 	for _, lib := range libs {
-		err := tracer.StartFn(ctx, "AttachSharedTarget", nil, func(ctx context.Context, span trace.Span) error {
+		err := tracer.Fn(ctx, "AttachSharedTarget", nil, func(ctx context.Context, span trace.Span) error {
 			span.SetAttributes(attribute.String("lib", lib))
 			// create name by stripping off the p.Root
 			name := strings.TrimPrefix(lib, p.Root)

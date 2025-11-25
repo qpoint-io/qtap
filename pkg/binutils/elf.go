@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/trace"
@@ -61,8 +62,7 @@ type Elf struct {
 	ef      *elf.File
 	efErr   error
 
-	isClosed bool
-	closeMu  sync.Mutex
+	isClosed atomic.Bool
 }
 
 // NewElf creates a new Elf instance
@@ -102,14 +102,11 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 }
 
 func (e *Elf) Close() error {
-	e.closeMu.Lock()
-	defer e.closeMu.Unlock()
-
-	if e.isClosed {
+	if e.isClosed.Load() {
 		return nil
 	}
 
-	e.isClosed = true
+	e.isClosed.Store(true)
 
 	if e.file != nil {
 		return e.file.Close()
@@ -142,11 +139,7 @@ func (e *Elf) isELF() (bool, error) {
 }
 
 func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
-	p.closeMu.Lock()
-	closed := p.isClosed
-	p.closeMu.Unlock()
-
-	if closed {
+	if p.isClosed.Load() {
 		return nil, ErrFileClosed
 	}
 	if p.file == nil {
@@ -155,13 +148,13 @@ func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
 
 	// Thread-safe lazy initialization
 	p.elfOnce.Do(func() {
-		_, span := tracer.Start(context.TODO(), "Elf.NewFile", trace.WithLinks(trace.LinkFromContext(ctx)))
-		defer span.End()
-
-		p.ef, p.efErr = elf.NewFile(p.file)
-		if p.efErr != nil {
-			p.efErr = fmt.Errorf("opening ELF: %w", p.efErr)
-		}
+		_ = tracer.FnWithoutCancel(ctx, "Elf.Elf", nil, func(ctx context.Context, span trace.Span) error {
+			p.ef, p.efErr = elf.NewFile(p.file)
+			if p.efErr != nil {
+				p.efErr = fmt.Errorf("opening ELF: %w", p.efErr)
+			}
+			return nil
+		})
 	})
 
 	return p.ef, p.efErr

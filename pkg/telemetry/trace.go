@@ -37,13 +37,28 @@ func (tp *TraceProvider) WithoutCancel(ctx context.Context, name string, opts ..
 	return ctx, span
 }
 
-func (tp *TraceProvider) StartFn(
+func (tp *TraceProvider) Fn(
 	ctx context.Context,
 	name string,
 	opts []trace.SpanStartOption,
 	fn func(ctx context.Context, span trace.Span) error,
 ) error {
 	ctx, span := tp.Start(ctx, name, opts...)
+	defer span.End()
+	err := fn(ctx, span)
+	if err != nil {
+		span.RecordError(err)
+	}
+	return err
+}
+
+func (tp *TraceProvider) FnWithoutCancel(
+	ctx context.Context,
+	name string,
+	opts []trace.SpanStartOption,
+	fn func(ctx context.Context, span trace.Span) error,
+) error {
+	ctx, span := tp.WithoutCancel(ctx, name, opts...)
 	defer span.End()
 	err := fn(ctx, span)
 	if err != nil {

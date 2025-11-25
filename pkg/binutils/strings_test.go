@@ -1,6 +1,7 @@
 package binutils
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -155,9 +156,9 @@ func TestElfGetFilePath(t *testing.T) {
 func TestElfCloseAlreadyClosed(t *testing.T) {
 	// Create an Elf that's already closed
 	e := &Elf{
-		exe:      "dummy",
-		isClosed: true,
+		exe: "dummy",
 	}
+	e.isClosed.Store(true)
 
 	// Test closing an already closed Elf
 	if err := e.Close(); err != nil {
@@ -178,7 +179,92 @@ func TestElfCloseNilFile(t *testing.T) {
 	}
 
 	// Test that the file is marked as closed
-	if !e.isClosed {
-		t.Errorf("Elf.isClosed = %v, want true", e.isClosed)
+	if !e.isClosed.Load() {
+		t.Errorf("Elf.isClosed = %v, want true", e.isClosed.Load())
+	}
+}
+
+func TestElfSearchString(t *testing.T) {
+	ctx := t.Context()
+	elfPath := createTestElfWithRodata(t)
+
+	e, err := NewElf(ctx, elfPath, "", false)
+	if err != nil {
+		t.Fatalf("NewElf() error = %v", err)
+	}
+	defer e.Close()
+
+	// Test search for non-existent string
+	_, err = e.SearchString("definitely_nonexistent_string_xyz123", MatchStrategyExact)
+	if err == nil {
+		t.Error("SearchString() should error when string not found")
+	}
+
+	// Test search for string that exists in our test ELF
+	result, err := e.SearchString("Hello World", MatchStrategyExact)
+	if err != nil {
+		t.Errorf("SearchString() error = %v", err)
+	}
+	if result != "Hello World" {
+		t.Errorf("SearchString() = %q, want 'Hello World'", result)
+	}
+
+	// Test prefix search
+	result, err = e.SearchString("OpenSSL", MatchStrategyPrefix)
+	if err != nil {
+		t.Errorf("SearchString() prefix error = %v", err)
+	}
+	if result != "OpenSSL 1.1.1" {
+		t.Errorf("SearchString() prefix = %q, want 'OpenSSL 1.1.1'", result)
+	}
+}
+
+func TestElfSearchStringClosed(t *testing.T) {
+	ctx := t.Context()
+	elfPath := createTestElfWithRodata(t)
+
+	e, err := NewElf(ctx, elfPath, "", false)
+	if err != nil {
+		t.Fatalf("NewElf() error = %v", err)
+	}
+
+	e.Close()
+
+	_, err = e.SearchString("test", MatchStrategyExact)
+	if !errors.Is(err, ErrFileClosed) {
+		t.Errorf("SearchString() on closed file error = %v, want ErrFileClosed", err)
+	}
+}
+
+func TestElfSearchStringStrategies(t *testing.T) {
+	ctx := t.Context()
+	elfPath := createTestElfWithRodata(t)
+
+	e, err := NewElf(ctx, elfPath, "", false)
+	if err != nil {
+		t.Fatalf("NewElf() error = %v", err)
+	}
+	defer e.Close()
+
+	tests := []struct {
+		name     string
+		search   string
+		strategy MatchStrategy
+		wantErr  bool
+	}{
+		{"Exact match", "Hello World", MatchStrategyExact, false},
+		{"Prefix match", "Hello", MatchStrategyPrefix, false},
+		{"Suffix match", "World", MatchStrategySuffix, false},
+		{"Contains match", "llo Wor", MatchStrategyContains, false},
+		{"Not found", "nonexistent_xyz", MatchStrategyExact, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := e.SearchString(tt.search, tt.strategy)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("SearchString(%q, %v) error = %v, wantErr %v", tt.search, tt.strategy, err, tt.wantErr)
+			}
+		})
 	}
 }

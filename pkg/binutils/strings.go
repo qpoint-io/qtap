@@ -2,7 +2,6 @@ package binutils
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"unicode"
@@ -11,8 +10,8 @@ import (
 const minStrLength = 4
 
 func (e *Elf) SearchString(searchStr string, strategy MatchStrategy) (string, error) {
-	if e.isClosed {
-		return "", errors.New("ELF file is closed")
+	if e.isClosed.Load() {
+		return "", ErrFileClosed
 	}
 
 	var buffer [bufferSize]byte

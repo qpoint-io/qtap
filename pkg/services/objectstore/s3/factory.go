@@ -109,9 +109,9 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 				url := templateURL(f.accessURL, m)
 				record := artifact.Record(url)
 				eventStore.Save(ctx, record)
-				logger.Info("artifact stored", zap.String("url", url))
+				logger.Debug("artifact stored", zap.String("url", url))
 			} else {
-				logger.Info("artifact stored")
+				logger.Debug("artifact stored")
 			}
 		},
 		eventStore: eventStore,

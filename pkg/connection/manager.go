@@ -126,7 +126,7 @@ func (m *Manager) HandleEvent(event Keyer) {
 		if conn.Process() == nil && conn.OpenEvent != nil {
 			proc := m.processManager.Get(int(conn.OpenEvent.PID))
 			if proc != nil {
-				m.logger.Info("discovered process", zap.Int("pid", proc.Pid))
+				m.logger.Debug("discovered process", zap.Int("pid", proc.Pid))
 				conn.SetProcess(proc)
 			}
 		}

@@ -120,13 +120,13 @@ func (f *EventStoreFactory) AwaitByCtxID(id string, numConnections int, timeout 
 
 		events := f.GetByCtxID(id)
 		if first {
-			ll.Info(fmt.Sprintf("waiting for %d connections", numConnections))
+			ll.Debug(fmt.Sprintf("waiting for %d connections", numConnections))
 		} else {
 			ll.Debug(fmt.Sprintf("waiting for %d connections (got %d)", numConnections, len(events.Connections)))
 		}
 
 		if len(events.Connections) >= numConnections {
-			ll.Info(fmt.Sprintf("found %d ≥ %d connections", len(events.Connections), numConnections))
+			ll.Debug(fmt.Sprintf("found %d ≥ %d connections", len(events.Connections), numConnections))
 			return events, nil
 		}
 		time.Sleep(100 * time.Millisecond)

@@ -46,7 +46,7 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 		ll.DPanic("event stores do not support artifacts", zap.Any("artifact", i))
 		return
 	default:
-		ll.Info("event store submission",
+		ll.Debug("event store submission",
 			zap.String("type", fmt.Sprintf("%T", item)),
 			zap.Any("item", item))
 	}

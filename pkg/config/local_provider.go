@@ -42,7 +42,7 @@ func NewLocalConfigProvider(logger *zap.Logger, configPath string) *LocalConfigP
 	if isURL {
 		// Create a temp file for caching downloaded configs
 		cacheFile = filepath.Join(os.TempDir(), fmt.Sprintf("qtap-config-%s.yaml", generateCacheKey(configPath)))
-		logger.Info("URL config detected, will cache to temp file",
+		logger.Debug("URL config detected, will cache to temp file",
 			zap.String("url", configPath),
 			zap.String("cache_file", cacheFile))
 	}

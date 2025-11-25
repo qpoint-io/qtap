@@ -25,7 +25,7 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 // run executes all tests in the suite
 func (r *TestSuiteRunner) run(t *testing.T, ctx *Context) {
 	r.Logger.Info("Running test suite", zap.String("suite", r.Suite.name))
-	r.Logger.Info("Total test cases", zap.Int("count", len(r.Suite.testCases)))
+	r.Logger.Debug("Total test cases", zap.Int("count", len(r.Suite.testCases)))
 
 	if len(r.Suite.skipped) > 0 {
 		for _, skip := range r.Suite.skipped {
@@ -138,7 +138,7 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 			containerID = containerID[:12]
 		}
 
-		r.Logger.Info("Waiting for process information", zap.String("container_id", containerID))
+		r.Logger.Debug("Waiting for process information", zap.String("container_id", containerID))
 		var pid int
 		select {
 		case pid = <-container.processPID:
@@ -147,11 +147,11 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 			return
 		}
 
-		r.Logger.Info("Waiting for process to be ready", zap.Int("pid", pid), zap.String("container_id", containerID))
+		r.Logger.Debug("Waiting for process to be ready", zap.Int("pid", pid), zap.String("container_id", containerID))
 		if err := tctx.WaitForProcess(NewProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
 			r.Logger.Warn("Failed to wait for process", zap.Error(err))
 		} else {
-			r.Logger.Info("🆕 creating readiness signal in container")
+			r.Logger.Debug("🆕 creating readiness signal in container")
 			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
 				r.Logger.Warn("Failed to create file in container", zap.Error(err))
 			}
@@ -160,7 +160,7 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 
 	var containerResult ContainerResult = <-container.resultCh
 
-	r.Logger.Info("⭕ Container result", zap.String("container_logs", containerResult.Combined()))
+	r.Logger.Debug("⭕ Container result", zap.String("container_logs", containerResult.Combined()))
 
 	// Check container exit code
 	if containerResult.ExitCode != 0 {

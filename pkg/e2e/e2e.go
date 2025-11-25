@@ -142,7 +142,7 @@ func (c *Context) TestCtx(t *testing.T) *TestContext {
 		T:      t,
 		L:      c.L.With(zap.String("ctxid", id)),
 	}
-	ctx.L.Info("🔧 test context created")
+	ctx.L.Debug("🔧 test context created")
 	return ctx
 }
 
@@ -206,7 +206,7 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	cmd.Env = []string{
 		fmt.Sprintf("QPOINT_TAGS=ctxid:%s,ctxid:%s", c.ID, id),
 	}
-	c.L.Info("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
+	c.L.Debug("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
 	out, err := cmd.CombinedOutput()
 	var code int
 	var exitErr *exec.ExitError
@@ -235,14 +235,14 @@ func (c *TestContext) Events(expectedConnections int) *Events {
 func (c *TestContext) WithConfig(t *testing.T, mut ConfigMutator, fn func(*testing.T)) {
 	t.Helper()
 	conf := c.e2ectx.TestConfig(mut)
-	c.L.Info("⚙️ setting test config")
+	c.L.Debug("⚙️ setting test config")
 	c.e2ectx.SetConfig(conf)
-	c.L.Info("✅ new config was propagated")
+	c.L.Debug("✅ new config was propagated")
 
 	defer func() {
-		c.L.Info("⚙️ restoring default config")
+		c.L.Debug("⚙️ restoring default config")
 		c.e2ectx.SetConfig(c.e2ectx.TestConfig(nil))
-		c.L.Info("✅ default config restored")
+		c.L.Debug("✅ default config restored")
 	}()
 
 	fn(t)

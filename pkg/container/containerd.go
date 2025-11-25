@@ -199,7 +199,7 @@ func (c *Containerd) buildContainerRecord(ctx context.Context, container contain
 	}
 	task, err := container.Task(ctx, nil)
 	if err != nil {
-		c.logger.Info("get task failed", zap.Error(err))
+		c.logger.Debug("get task failed", zap.Error(err))
 	}
 
 	name := getContainerName(info.Labels)
@@ -217,7 +217,7 @@ func (c *Containerd) buildContainerRecord(ctx context.Context, container contain
 	// set the rootfs path to the containerd runtime mount path
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
-		c.logger.Info("failed to get namespace from context", zap.Error(err))
+		c.logger.Debug("failed to get namespace from context", zap.Error(err))
 	} else {
 		cr.RootFS = fmt.Sprintf("/run/containerd/io.containerd.runtime.v2.task/%s/%s/rootfs",
 			ns, container.ID())

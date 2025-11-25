@@ -228,7 +228,7 @@ func (m *OpenSSLManager) ProcessStarted(p *process.Process) error {
 		p.AddDetectedTLSProbeType("openssl")
 
 		// debug
-		m.logger.Info("OpenSSL static symbols detected",
+		m.logger.Debug("OpenSSL static symbols detected",
 			zap.String("exe", p.Exe),
 			zap.String("container_id", p.ContainerID),
 			zap.Int("pid", p.Pid),

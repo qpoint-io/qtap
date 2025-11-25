@@ -26,7 +26,7 @@ func TestComputeBinaryHash(t *testing.T) {
 	hash, err := computeBinaryHash(f)
 	require.NoError(t, err)
 	assert.NotEmpty(t, hash)
-	assert.Len(t, hash, 64) // SHA256 hex is 64 chars
+	assert.Equal(t, "c3143f737fad1b17", hash)
 
 	// Test consistency - same file should produce same hash
 	f2, _ := os.Open(tmpFile)

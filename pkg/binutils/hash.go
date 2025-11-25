@@ -2,68 +2,82 @@ package binutils
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/cespare/xxhash/v2"
 )
 
 const (
-	// hashSampleSize is the number of bytes to sample from different parts of the file
-	// for fast hashing. We sample from start, middle, and end.
-	hashSampleSize = 32 * 1024 // 32KB per sample
+	// hashSampleSize is the number of bytes to sample from start/mid/end.
+	hashSampleSize = 32 * 1024
 )
 
-// computeBinaryHash computes a fast hash of a binary file.
-// It samples bytes from different parts of the file rather than hashing the entire file,
-// combined with file size for uniqueness.
-//
-// This approach is fast while still being effective at detecting different binaries.
-// For a more thorough hash, use computeFullHash.
+// computeBinaryHash generates a cache key using xxHash (fastest non-crypto hash).
+// It samples file content + file size.
 func computeBinaryHash(f *os.File) (string, error) {
 	stat, err := f.Stat()
 	if err != nil {
 		return "", fmt.Errorf("stat file: %w", err)
 	}
-
 	size := stat.Size()
-	h := sha256.New()
 
-	// Include file size in hash
-	fmt.Fprintf(h, "size:%d;", size)
+	// xxhash.New() creates a digest that implements hash.Hash64
+	digest := xxhash.New()
 
-	// Sample from start
+	// 1. Mix Size into the hash (Fundamental identity characteristic)
+	// We write it as raw binary data.
+	if err := binary.Write(digest, binary.LittleEndian, size); err != nil {
+		return "", err
+	}
+
 	buf := make([]byte, hashSampleSize)
-	n, err := f.ReadAt(buf, 0)
-	if err != nil && err != io.EOF {
+
+	// Helper to safely read and write chunks
+	sampleAt := func(offset int64) error {
+		n, err := f.ReadAt(buf, offset)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		if n > 0 {
+			_, err := digest.Write(buf[:n])
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// 2. Sample Start
+	// Always read the start (contains headers, magic numbers, build IDs)
+	if err := sampleAt(0); err != nil {
 		return "", fmt.Errorf("reading start: %w", err)
 	}
-	h.Write(buf[:n])
 
-	// Sample from middle (if file is large enough)
-	if size > hashSampleSize*2 {
+	// 3. Sample Middle
+	// Only if the file is large enough to avoid overlapping with start/end.
+	// (size > 3 samples) ensures distinct start, mid, and end blocks.
+	if size > hashSampleSize*3 {
 		midOffset := (size - int64(hashSampleSize)) / 2
-		n, err = f.ReadAt(buf, midOffset)
-		if err != nil && err != io.EOF {
+		if err := sampleAt(midOffset); err != nil {
 			return "", fmt.Errorf("reading middle: %w", err)
 		}
-		h.Write(buf[:n])
 	}
 
-	// Sample from end (if file is large enough)
+	// 4. Sample End
+	// Only if the file is larger than one sample block.
 	if size > hashSampleSize {
 		endOffset := size - int64(hashSampleSize)
-		if endOffset < 0 {
-			endOffset = 0
-		}
-		n, err = f.ReadAt(buf, endOffset)
-		if err != nil && err != io.EOF {
+		if err := sampleAt(endOffset); err != nil {
 			return "", fmt.Errorf("reading end: %w", err)
 		}
-		h.Write(buf[:n])
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	// Return as hex string (16 chars for 64-bit hash)
+	return fmt.Sprintf("%016x", digest.Sum64()), nil
 }
 
 // ComputeFullHash computes a full SHA256 hash of the file.
@@ -82,4 +96,3 @@ func ComputeFullHash(path string) (string, error) {
 
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-

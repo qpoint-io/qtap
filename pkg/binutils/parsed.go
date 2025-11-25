@@ -255,4 +255,3 @@ func (pb *ParsedBinary) HasLinkedLibrary(pattern string, strategy MatchStrategy)
 func (pb *ParsedBinary) ReaderAt() io.ReaderAt {
 	return pb.fd
 }
-

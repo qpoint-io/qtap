@@ -39,6 +39,17 @@ const (
 	PhaseResponse
 )
 
+func (p Phase) String() string {
+	switch p {
+	case PhaseRequest:
+		return "request"
+	case PhaseResponse:
+		return "response"
+	}
+
+	return ""
+}
+
 // TransactionState coordinates between request and response processors
 type TransactionState struct {
 	mu sync.Mutex
@@ -118,7 +129,7 @@ func NewParser(ctx context.Context, callbacks Callbacks) *Parser {
 func (p *Parser) ProcessEvent(phase Phase, data []byte) error {
 	span := trace.SpanFromContext(p.ctx)
 	span.AddEvent("http.parser.process_event", trace.WithAttributes(
-		attribute.Int("phase", int(phase)),
+		attribute.Stringer("phase", phase),
 		attribute.Int("data_size", len(data)),
 	))
 

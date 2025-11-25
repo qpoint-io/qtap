@@ -10,7 +10,7 @@ stacks:
       - type: http_metrics
       - type: access_logs
         config:
-          mode: full
+          mode: summary
           format: console
       - type: report_usage
 tap:

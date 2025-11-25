@@ -31,7 +31,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 
 func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	instances := f.instancesCreated.Add(1)
-	f.logger.Info(f.prefix+": new instance created.", zap.Uint64("instances created", instances))
+	f.logger.Debug(f.prefix+": new instance created.", zap.Uint64("instances created", instances))
 
 	return &filterInstance{
 		logger: f.logger,
@@ -46,7 +46,7 @@ func (f *Factory) Destroy() {
 	instances := f.instancesCreated.Load()
 	totalEgressReqBodySize := f.egressReqBodySize.Load()
 	totalEgressResBodySize := f.egressResBodySize.Load()
-	f.logger.Info(f.prefix+": plugin destroyed",
+	f.logger.Debug(f.prefix+": plugin destroyed",
 		zap.Uint64("instances created", instances),
 		zap.Uint64("total egress request body size", totalEgressReqBodySize),
 		zap.Uint64("total egress response body size", totalEgressResBodySize))
@@ -62,7 +62,7 @@ type filterInstance struct {
 
 func (h *filterInstance) RequestHeaders(headers plugins.Headers, endStream bool) plugins.HeadersStatus {
 	h.startTime = time.Now()
-	h.logger.Info(fmt.Sprintf("%s: request headers received. endstream: %v", h.prefix, endStream))
+	h.logger.Debug(fmt.Sprintf("%s: request headers received. endstream: %v", h.prefix, endStream))
 
 	return plugins.HeadersStatusContinue
 }
@@ -70,14 +70,14 @@ func (h *filterInstance) RequestHeaders(headers plugins.Headers, endStream bool)
 func (h *filterInstance) RequestBody(body plugins.BodyBuffer, endStream bool) plugins.BodyStatus {
 	totalSize := h.filter.egressReqBodySize.Add(uint64(body.Length()))
 
-	h.logger.Info(h.prefix+": request body received", zap.Int("body_size", body.Length()), zap.String("body", string(body.Copy())), zap.Bool("endstream", endStream))
-	h.logger.Info(h.prefix+": total egress request body size", zap.Uint64("size", totalSize))
+	h.logger.Debug(h.prefix+": request body received", zap.Int("body_size", body.Length()), zap.String("body", string(body.Copy())), zap.Bool("endstream", endStream))
+	h.logger.Debug(h.prefix+": total egress request body size", zap.Uint64("size", totalSize))
 
 	return plugins.BodyStatusContinue
 }
 
 func (h *filterInstance) ResponseHeaders(headers plugins.Headers, endStream bool) plugins.HeadersStatus {
-	h.logger.Info(h.prefix+": response headers received", zap.Bool("endstream", endStream))
+	h.logger.Debug(h.prefix+": response headers received", zap.Bool("endstream", endStream))
 
 	return plugins.HeadersStatusContinue
 }
@@ -85,14 +85,14 @@ func (h *filterInstance) ResponseHeaders(headers plugins.Headers, endStream bool
 func (h *filterInstance) ResponseBody(body plugins.BodyBuffer, endStream bool) plugins.BodyStatus {
 	totalSize := h.filter.egressResBodySize.Add(uint64(body.Length()))
 
-	h.logger.Info(h.prefix+": response body received", zap.Int("body_size", body.Length()), zap.String("body", string(body.Copy())), zap.Bool("endstream", endStream))
-	h.logger.Info(h.prefix+": total egress response body size", zap.Uint64("size", totalSize))
+	h.logger.Debug(h.prefix+": response body received", zap.Int("body_size", body.Length()), zap.String("body", string(body.Copy())), zap.Bool("endstream", endStream))
+	h.logger.Debug(h.prefix+": total egress response body size", zap.Uint64("size", totalSize))
 
 	return plugins.BodyStatusContinue
 }
 
 func (h *filterInstance) Destroy() {
-	h.logger.Info(h.prefix + ": plugin instance destroyed")
+	h.logger.Debug(h.prefix + ": plugin instance destroyed")
 }
 
 func (f *Factory) PluginType() plugins.PluginType {

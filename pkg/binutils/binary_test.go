@@ -18,7 +18,6 @@ func TestParseBinary(t *testing.T) {
 	pb, err := ParseBinary(t.Context(), file)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, pb.Hash)
 	assert.NotNil(t, pb.ef)
 	assert.NotNil(t, pb.Sections)
 }
@@ -56,11 +55,15 @@ func TestParsedBinaryHasSymbol(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test with non-existent symbol
-	assert.False(t, pb.HasSymbol("definitely_nonexistent_symbol_xyz"))
-
-	// Test with existing symbol from our test ELF
-	assert.True(t, pb.HasSymbol("test_symbol"))
-	assert.True(t, pb.HasSymbol("SSL_read"))
+	for sym, want := range map[string]bool{
+		"definitely_nonexistent_symbol_xyz": false,
+		"test_symbol":                       true,
+		"SSL_read":                          true,
+	} {
+		has, err := pb.HasSymbol(sym)
+		require.NoError(t, err)
+		assert.Equal(t, want, has)
+	}
 }
 
 func TestParsedBinaryFindSymbols(t *testing.T) {
@@ -73,15 +76,17 @@ func TestParsedBinaryFindSymbols(t *testing.T) {
 	require.NoError(t, err)
 
 	// Test predicate that matches nothing
-	result := pb.FindSymbols(func(s elf.Symbol) bool {
+	result, err := pb.FindSymbols(func(s elf.Symbol) bool {
 		return s.Name == "nonexistent_symbol_xyz"
 	})
+	require.NoError(t, err)
 	assert.Empty(t, result)
 
 	// Test predicate that matches specific symbol
-	result = pb.FindSymbols(func(s elf.Symbol) bool {
+	result, err = pb.FindSymbols(func(s elf.Symbol) bool {
 		return s.Name == "SSL_read"
 	})
+	require.NoError(t, err)
 	assert.Len(t, result, 1)
 }
 
@@ -98,14 +103,16 @@ func TestParsedBinaryFindSymbolsByName(t *testing.T) {
 	targets := []SymbolSearch{
 		{Name: "SSL_", MatchStrategy: MatchStrategyPrefix},
 	}
-	result := pb.FindSymbolsByName(targets)
+	result, err := pb.FindSymbolsByName(targets)
+	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(result), 1)
 
 	// Test with non-matching targets
 	targets = []SymbolSearch{
 		{Name: "nonexistent_symbol", MatchStrategy: MatchStrategyExact},
 	}
-	result = pb.FindSymbolsByName(targets)
+	result, err = pb.FindSymbolsByName(targets)
+	require.NoError(t, err)
 	assert.Empty(t, result)
 }
 
@@ -272,7 +279,9 @@ func TestParsedBinaryHasSymbolInDynsym(t *testing.T) {
 	require.NoError(t, err)
 
 	// Dynamic symbol should be found in Dynsym
-	assert.True(t, pb.HasSymbol("dynamic_symbol"))
+	has, err := pb.HasSymbol("dynamic_symbol")
+	require.NoError(t, err)
+	assert.True(t, has)
 }
 
 func TestParsedBinaryHasLinkedLibrary(t *testing.T) {
@@ -285,7 +294,8 @@ func TestParsedBinaryHasLinkedLibrary(t *testing.T) {
 	require.NoError(t, err)
 
 	// Our synthetic ELF doesn't have linked libraries
-	found := pb.HasLinkedLibrary("nonexistent_lib", MatchStrategyExact)
+	found, err := pb.HasLinkedLibrary("nonexistent_lib", MatchStrategyExact)
+	require.NoError(t, err)
 	assert.False(t, found)
 }
 
@@ -298,22 +308,23 @@ func TestParsedBinaryHasLinkedLibraryWithDynamic(t *testing.T) {
 	pb, err := ParseBinary(t.Context(), file)
 	require.NoError(t, err)
 
+	libs, err := pb.LinkedLibs()
+	require.NoError(t, err)
 	// Check if we have linked libraries (may or may not work depending on ELF parsing)
-	if len(pb.LinkedLibs) > 0 {
+	if len(libs) > 0 {
 		// Test exact match
-		found := pb.HasLinkedLibrary(pb.LinkedLibs[0], MatchStrategyExact)
+		found, err := pb.HasLinkedLibrary(libs[0], MatchStrategyExact)
+		require.NoError(t, err)
 		assert.True(t, found)
 
 		// Test prefix match
-		found = pb.HasLinkedLibrary("libssl", MatchStrategyPrefix)
-		if !found && len(pb.LinkedLibs) > 0 {
-			t.Logf("HasLinkedLibrary() prefix match: libs = %v", pb.LinkedLibs)
-		}
+		found, err = pb.HasLinkedLibrary("libssl", MatchStrategyPrefix)
+		require.NoError(t, err)
+		assert.True(t, found, "HasLinkedLibrary() prefix match: libs = %v", libs)
 
 		// Test contains match
-		found = pb.HasLinkedLibrary("ssl", MatchStrategyContains)
-		if !found && len(pb.LinkedLibs) > 0 {
-			t.Logf("HasLinkedLibrary() contains match: libs = %v", pb.LinkedLibs)
-		}
+		found, err = pb.HasLinkedLibrary("ssl", MatchStrategyContains)
+		require.NoError(t, err)
+		assert.True(t, found, "HasLinkedLibrary() contains match: libs = %v", libs)
 	}
 }

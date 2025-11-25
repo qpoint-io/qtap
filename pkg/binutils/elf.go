@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"debug/elf"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -31,12 +30,6 @@ const (
 	bufferSize = 4096
 )
 
-var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return new([bufferSize]byte)
-	},
-}
-
 // enum for symbol match strategy
 type MatchStrategy int
 
@@ -62,9 +55,14 @@ type Elf struct {
 	exe  string
 	root string
 	file *os.File
-	ef   *elf.File
+
+	// Thread-safe lazy initialization of elf.File
+	elfOnce sync.Once
+	ef      *elf.File
+	efErr   error
 
 	isClosed bool
+	closeMu  sync.Mutex
 }
 
 // NewElf creates a new Elf instance
@@ -104,15 +102,19 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 }
 
 func (e *Elf) Close() error {
+	e.closeMu.Lock()
+	defer e.closeMu.Unlock()
+
 	if e.isClosed {
 		return nil
 	}
+
+	e.isClosed = true
 
 	if e.file != nil {
 		return e.file.Close()
 	}
 
-	e.isClosed = true
 	return nil
 }
 
@@ -123,7 +125,7 @@ func (e *Elf) getFilePath() string {
 	return e.exe
 }
 
-func (e Elf) isELF() (bool, error) {
+func (e *Elf) isELF() (bool, error) {
 	if e.file == nil {
 		return false, ErrNoFileLoaded
 	}
@@ -140,24 +142,29 @@ func (e Elf) isELF() (bool, error) {
 }
 
 func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
-	if p.isClosed {
+	p.closeMu.Lock()
+	closed := p.isClosed
+	p.closeMu.Unlock()
+
+	if closed {
 		return nil, ErrFileClosed
 	}
 	if p.file == nil {
 		return nil, ErrNoFileLoaded
 	}
-	if p.ef == nil {
+
+	// Thread-safe lazy initialization
+	p.elfOnce.Do(func() {
 		_, span := tracer.Start(context.TODO(), "Elf.NewFile", trace.WithLinks(trace.LinkFromContext(ctx)))
 		defer span.End()
 
-		var err error
-		p.ef, err = elf.NewFile(p.file)
-		if err != nil {
-			return nil, fmt.Errorf("opening ELF: %w", err)
+		p.ef, p.efErr = elf.NewFile(p.file)
+		if p.efErr != nil {
+			p.efErr = fmt.Errorf("opening ELF: %w", p.efErr)
 		}
-	}
+	})
 
-	return p.ef, nil
+	return p.ef, p.efErr
 }
 
 func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
@@ -215,38 +222,40 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 		return nil, ErrNoSymbols
 	}
 
-	// Open the symbol table section
-	tabReader := symtabSection.Open()
-
 	link := symtabSection.Link
 	if link <= 0 || link >= uint32(len(f.Sections)) {
 		return nil, errors.New("section has invalid string table link")
 	}
 
-	// Open the string table section
-	strReader := f.Sections[link].Open()
+	// Get the string table section as ReaderAt (thread-safe)
+	strSection := f.Sections[link]
 
-	// Skip the first entry (16 bytes) in the symbol table
-	if _, err := tabReader.Seek(elf.Sym32Size, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek in symbol table: %w", err)
+	// Read symbol table data
+	symData, err := symtabSection.Data()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read symbol table: %w", err)
 	}
 
+	// Skip the first entry (16 bytes) in the symbol table
+	symData = symData[elf.Sym32Size:]
+
 	var sym elf.Sym32
-	for {
+	for len(symData) >= elf.Sym32Size {
 		if len(matches) == len(targets) {
 			break
 		}
 
-		err := binary.Read(tabReader, f.ByteOrder, &sym)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read symbol: %w", err)
-		}
+		// Parse symbol from data
+		sym.Name = f.ByteOrder.Uint32(symData[0:4])
+		sym.Value = f.ByteOrder.Uint32(symData[4:8])
+		sym.Size = f.ByteOrder.Uint32(symData[8:12])
+		sym.Info = symData[12]
+		sym.Other = symData[13]
+		sym.Shndx = f.ByteOrder.Uint16(symData[14:16])
+		symData = symData[elf.Sym32Size:]
 
-		// Read the symbol name from the string table
-		name, err := readString(strReader, int64(sym.Name))
+		// Read the symbol name from the string table (thread-safe)
+		name, err := readStringAt(strSection, int64(sym.Name))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read string: %w", err)
 		}
@@ -277,38 +286,40 @@ func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSea
 		return nil, ErrNoSymbols
 	}
 
-	// Open the symbol table section
-	tabReader := symtabSection.Open()
-
 	link := symtabSection.Link
 	if link <= 0 || link >= uint32(len(f.Sections)) {
 		return nil, errors.New("section has invalid string table link")
 	}
 
-	// Open the string table section
-	strReader := f.Sections[link].Open()
+	// Get the string table section as ReaderAt (thread-safe)
+	strSection := f.Sections[link]
 
-	// Skip the first entry (24 bytes) in the symbol table
-	if _, err := tabReader.Seek(elf.Sym64Size, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek in symbol table: %w", err)
+	// Read symbol table data
+	symData, err := symtabSection.Data()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read symbol table: %w", err)
 	}
 
+	// Skip the first entry (24 bytes) in the symbol table
+	symData = symData[elf.Sym64Size:]
+
 	var sym elf.Sym64
-	for {
+	for len(symData) >= elf.Sym64Size {
 		if len(matches) == len(targets) {
 			break
 		}
 
-		err := binary.Read(tabReader, f.ByteOrder, &sym)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read symbol: %w", err)
-		}
+		// Parse symbol from data (Sym64 layout: name, info, other, shndx, value, size)
+		sym.Name = f.ByteOrder.Uint32(symData[0:4])
+		sym.Info = symData[4]
+		sym.Other = symData[5]
+		sym.Shndx = f.ByteOrder.Uint16(symData[6:8])
+		sym.Value = f.ByteOrder.Uint64(symData[8:16])
+		sym.Size = f.ByteOrder.Uint64(symData[16:24])
+		symData = symData[elf.Sym64Size:]
 
-		// Read the symbol name from the string table
-		name, err := readString(strReader, int64(sym.Name))
+		// Read the symbol name from the string table (thread-safe)
+		name, err := readStringAt(strSection, int64(sym.Name))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read string: %w", err)
 		}
@@ -329,17 +340,13 @@ func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSea
 	return matches, nil
 }
 
-// readString reads a null-terminated string from the given ReadSeeker starting at the given offset
-func readString(r io.ReadSeeker, offset int64) (string, error) {
-	_, err := r.Seek(offset, io.SeekStart)
-	if err != nil {
-		return "", fmt.Errorf("failed to seek to string offset: %w", err)
-	}
+// readStringAt reads a null-terminated string from the given ReaderAt starting at the given offset.
+// This function is thread-safe as it uses ReadAt which doesn't modify reader state.
+func readStringAt(r io.ReaderAt, offset int64) (string, error) {
+	// Use a per-call buffer for thread safety
+	var buf [bufferSize]byte
 
-	buf := bufferPool.Get().(*[bufferSize]byte)
-	defer bufferPool.Put(buf)
-
-	n, err := r.Read(buf[:])
+	n, err := r.ReadAt(buf[:], offset)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", fmt.Errorf("failed to read string data: %w", err)
 	}
@@ -402,17 +409,12 @@ func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.Secti
 	ctx, span := tracer.WithoutCancel(ctx, "Elf.containsAnySymbols") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
-	var recordSize int64
-	var nameOffset, nameSize int
+	var recordSize int
 	switch f.Class {
 	case elf.ELFCLASS64:
 		recordSize = elf.Sym64Size
-		nameOffset = 0
-		nameSize = 4
 	case elf.ELFCLASS32:
 		recordSize = elf.Sym32Size
-		nameOffset = 0
-		nameSize = 4
 	default:
 		return false, fmt.Errorf("unsupported ELF class: %d", f.Class)
 	}
@@ -422,50 +424,30 @@ func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.Secti
 		return false, ErrNoSymbols
 	}
 
-	// Open the symbol table section
-	tabReader := symtabSection.Open()
-
-	// Skip the first entry in the symbol table
-	if _, err := tabReader.Seek(recordSize, io.SeekStart); err != nil {
-		return false, fmt.Errorf("failed to seek in symbol table: %w", err)
+	// Read symbol table data (thread-safe: allocates fresh buffer)
+	symData, err := symtabSection.Data()
+	if err != nil {
+		return false, fmt.Errorf("failed to read symbol table: %w", err)
 	}
 
-	// Buffer for reading symbol records
-	// We use elf.Sym64Size to create a fixed-size array that's large enough to hold
-	// both 32-bit and 64-bit symbol records. This ensures we have enough space
-	// regardless of the ELF class. Later, we use 'recordSize' to determine how many
-	// bytes to actually read into this buffer, which will be either Sym32Size or
-	// Sym64Size depending on the ELF class.
-	var recordBuffer [elf.Sym64Size]byte
+	// Skip the first entry in the symbol table
+	symData = symData[recordSize:]
 
-	// Initialize string table reader and buffer
+	// Get string table section as ReaderAt (thread-safe)
 	strSection := f.Sections[symtabSection.Link]
 	if strSection == nil {
 		return false, errors.New("string table section not found")
 	}
-	strReader := strSection.Open()
-
-	// Initialize buffer for reading the string table
-	strBuffer := bufferPool.Get().(*[bufferSize]byte)
-	defer bufferPool.Put(strBuffer)
-	var strBufferOffset, strBufferLen int64
 
 	// Iterate through the symbol table
-	for {
-		_, err := tabReader.Read(recordBuffer[:recordSize])
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return false, fmt.Errorf("failed to read symbol record: %w", err)
-		}
-
-		// Extract the name offset from the symbol record
-		nameOffsetValue := int64(f.ByteOrder.Uint32(recordBuffer[nameOffset : nameOffset+nameSize]))
+	for len(symData) >= recordSize {
+		// Extract the name offset from the symbol record (always at offset 0, 4 bytes)
+		nameOffsetValue := int64(f.ByteOrder.Uint32(symData[0:4]))
+		symData = symData[recordSize:]
 
 		// Check if the symbol name matches any of the target symbols
 		for _, target := range targetSymbols {
-			if searchSymbol(strReader, nameOffsetValue, target.Bytes(), strBuffer[:], &strBufferOffset, &strBufferLen, target.MatchStrategy == MatchStrategyPrefix) {
+			if matchSymbolAt(strSection, nameOffsetValue, target.Bytes(), target.MatchStrategy) {
 				return true, nil
 			}
 		}
@@ -474,81 +456,41 @@ func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.Secti
 	return false, nil
 }
 
-// searchSymbol searches for a target symbol in the string table of an ELF file.
-// It uses buffered reading to efficiently search through the string table.
+// matchSymbolAt checks if a symbol at the given offset in the string table matches the target.
+// This function is thread-safe as it uses ReadAt which doesn't modify reader state.
 //
 // Parameters:
-// - strReader: A ReadSeeker for the string table section
+// - strSection: The string table section (implements io.ReaderAt)
 // - nameOffset: The offset in the string table where the symbol name starts
 // - target: The byte slice containing the symbol name to search for
-// - strBuffer: A pointer to a byte slice used as a buffer for reading the string table
-// - strBufferOffset: A pointer to the current offset of the buffer in the string table
-// - strBufferLen: A pointer to the current length of valid data in the buffer
-// - prefixMatch: If true, the function will return true as soon as it finds a match for the entire target, without checking for a null terminator
+// - strategy: The matching strategy to use
 //
 // Returns:
-// - bool: true if the symbol is found, false otherwise
-func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strBuffer []byte, strBufferOffset, strBufferLen *int64, prefixMatch bool) bool {
-	// Check if the name offset is within the current buffer
-	// If not, we need to read a new chunk from the string table
-	if nameOffset < *strBufferOffset || nameOffset >= *strBufferOffset+*strBufferLen {
-		// Seek to the correct position in the string table
-		_, err := strReader.Seek(nameOffset, io.SeekStart)
-		if err != nil {
-			return false
-		}
-		// Read a new chunk into the buffer
-		n, err := strReader.Read(strBuffer)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return false
-		}
-		// Update the buffer offset and length
-		*strBufferOffset = nameOffset
-		*strBufferLen = int64(n)
+// - bool: true if the symbol matches, false otherwise
+func matchSymbolAt(strSection io.ReaderAt, nameOffset int64, target []byte, strategy MatchStrategy) bool {
+	// Read enough bytes to check the target (plus null terminator for exact match)
+	bufSize := len(target) + 1
+	if bufSize < 64 {
+		bufSize = 64 // Minimum buffer for prefix/suffix matching
+	}
+	buf := make([]byte, bufSize)
+
+	n, err := strSection.ReadAt(buf, nameOffset)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false
+	}
+	if n == 0 {
+		return false
 	}
 
-	// Calculate the index within the buffer where the symbol name starts
-	bufferIndex := int(nameOffset - *strBufferOffset)
-
-	// Compare the symbol name with the target
-	for i := range target {
-		// If we've reached the end of the buffer, read more data
-		if bufferIndex+i >= int(*strBufferLen) {
-			n, err := strReader.Read(strBuffer)
-			if err != nil && !errors.Is(err, io.EOF) {
-				return false
-			}
-			// Update buffer offset and length, reset index
-			*strBufferOffset += *strBufferLen
-			*strBufferLen = int64(n)
-			bufferIndex = 0
-		}
-		// Compare each byte of the symbol name
-		if strBuffer[bufferIndex+i] != target[i] {
-			return false
-		}
+	// Find the null terminator to get the actual symbol name
+	nullIdx := bytes.IndexByte(buf[:n], 0)
+	if nullIdx == -1 {
+		nullIdx = n // Symbol might be truncated, use what we have
 	}
+	symName := string(buf[:nullIdx])
 
-	// For prefix match, we don't need to check for null terminator
-	if prefixMatch {
-		return true
-	}
-
-	// For exact match, check for null terminator after the symbol name
-	// This ensures we've found a complete symbol name, not just a prefix
-	if bufferIndex+len(target) >= int(*strBufferLen) {
-		// If we're at the end of the buffer, read more data
-		n, err := strReader.Read(strBuffer)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return false
-		}
-		// Update buffer offset and length, reset index
-		*strBufferOffset += *strBufferLen
-		*strBufferLen = int64(n)
-		bufferIndex = 0
-	}
-	// The symbol is found if it's followed by a null terminator
-	return strBuffer[bufferIndex+len(target)] == 0
+	return match(symName, string(target), strategy)
 }
 
 // CalculateUprobeAddresses calculates the loaded address of a symbol (needed for uprobes)

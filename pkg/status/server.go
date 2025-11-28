@@ -35,7 +35,7 @@ func NewBaseStatusServer(listen string, logger *zap.Logger, readyCheck func() bo
 		listen:     listen,
 		logger:     logger,
 		readyCheck: readyCheck,
-		mux:        http.NewServeMux(),
+		mux:        http.DefaultServeMux,
 		ctx:        ctx,
 		cancel:     cancel,
 	}

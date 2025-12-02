@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,8 +11,11 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/synq"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.uber.org/zap"
 )
+
+var tracer = telemetry.Tracer()
 
 var (
 	recordPool = sync.Pool{
@@ -115,7 +119,10 @@ func (m *TraceManager) Stop() error {
 	return nil
 }
 
-func (m *TraceManager) ProcessStarted(proc *process.Process) error {
+func (m *TraceManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
+	ctx, span := tracer.WithoutCancel(ctx, "TraceManager.ProcessStarted") //nolint:ineffassign,wastedassign,staticcheck
+	defer span.End()
+
 	// nothing to do if we don't have any proc toggles
 	if !m.matcher.HasProcToggles() {
 		return nil
@@ -147,7 +154,10 @@ func (m *TraceManager) ProcessStarted(proc *process.Process) error {
 	return nil
 }
 
-func (m *TraceManager) ProcessStopped(proc *process.Process) error {
+func (m *TraceManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
+	ctx, span := tracer.WithoutCancel(ctx, "TraceManager.ProcessStopped") //nolint:ineffassign,wastedassign,staticcheck
+	defer span.End()
+
 	// nothing to do if we don't have any proc toggles
 	if !m.matcher.HasProcToggles() {
 		return nil
@@ -173,6 +183,9 @@ func (m *TraceManager) ProcessStopped(proc *process.Process) error {
 }
 
 func (m *TraceManager) readTraceEvents() {
+	_, span := tracer.Start(context.TODO(), "TraceManager.readTraceEvents")
+	defer span.End()
+
 	for {
 		record := recordPool.Get().(*ringbuf.Record)
 		err := m.rdTraceEvents.ReadInto(record)

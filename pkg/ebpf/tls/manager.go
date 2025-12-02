@@ -2,51 +2,62 @@ package tls
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/process"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.uber.org/zap"
 )
 
+// TlsProbe is the legacy interface for TLS probes.
+// New probes should implement the Scanner interface instead.
 type TlsProbe interface {
-	Start() error
+	Start(ctx context.Context) error
 	Stop() error
 	process.Observer
 }
 
+// TlsManager manages TLS probe lifecycle and coordinates scanning.
+// It bridges between the process manager (via process.Observer) and the orchestrator.
 type TlsManager struct {
-	// logger
-	logger *zap.Logger
+	logger       *zap.Logger
+	orchestrator *Orchestrator
 
-	// probes
-	probes []TlsProbe
-
+	// Final observer called after all probes have run
 	final process.Observer
 }
 
-func NewTlsManager(logger *zap.Logger, probes ...TlsProbe) *TlsManager {
-	return &TlsManager{
-		// logger
-		logger: logger,
+var tracer = telemetry.Tracer()
 
-		// initialize selected probes
-		probes: probes,
+// NewTlsManager creates a new TlsManager with the given legacy probes.
+func NewTlsManager(logger *zap.Logger, orchestrator *Orchestrator) *TlsManager {
+	return &TlsManager{
+		logger:       logger,
+		orchestrator: orchestrator,
 	}
 }
 
-func (m *TlsManager) Start() error {
-	for _, p := range m.probes {
-		if err := p.Start(); err != nil {
-			return fmt.Errorf("starting tls probe: %w", err)
+func (m *TlsManager) Start(ctx context.Context) error {
+	// Start any legacy adapters that need initialization
+	for _, scanner := range m.orchestrator.probes {
+		if adapter, ok := scanner.(*LegacyProbeAdapter); ok {
+			if err := adapter.Probe().Start(ctx); err != nil {
+				return fmt.Errorf("starting legacy probe %s: %w", adapter.Name(), err)
+			}
 		}
 	}
 
 	metrics.NewSystemGaugeFunc("probes_started", "The number of probes that have started",
 		func() float64 {
-			return float64(len(m.probes))
+			return float64(len(m.orchestrator.probes))
+		},
+	)
+
+	metrics.NewSystemGaugeFunc("scan_cache_entries", "The number of entries in the scan cache",
+		func() float64 {
+			return float64(m.orchestrator.Cache().Len())
 		},
 	)
 
@@ -58,18 +69,28 @@ func (m *TlsManager) SetFinalObserver(o process.Observer) {
 }
 
 func (m *TlsManager) Stop() error {
-	for _, p := range m.probes {
-		if err := p.Stop(); err != nil {
-			return fmt.Errorf("stopping tls probe: %w", err)
+	// Stop any legacy adapters
+	for _, scanner := range m.orchestrator.probes {
+		if adapter, ok := scanner.(*LegacyProbeAdapter); ok {
+			if err := adapter.Stop(); err != nil {
+				return fmt.Errorf("stopping legacy probe %s: %w", adapter.Name(), err)
+			}
 		}
+	}
+
+	if err := m.orchestrator.Stop(); err != nil {
+		return fmt.Errorf("stopping orchestrator: %w", err)
 	}
 
 	return nil
 }
 
-func (m *TlsManager) ProcessStarted(proc *process.Process) error {
+func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStarted")
+	defer span.End()
+
 	// start a new scan, cancelling any in-progress scan and waiting for it to finish
-	ctx, err := proc.StartScan(context.Background())
+	ctx, err := proc.StartScan(ctx)
 	if err != nil {
 		return fmt.Errorf("starting scan: %w", err)
 	}
@@ -90,87 +111,58 @@ func (m *TlsManager) ProcessStarted(proc *process.Process) error {
 		return nil
 	}
 
-	// ensure the elf gets closed at the end of the scan
-	defer func() {
-		if err := proc.CloseElf(); err != nil {
-			m.logger.Error("closing elf", zap.Error(err))
-		}
-	}()
+	// // ensure the elf gets closed at the end of the scan (for legacy probes)
+	// defer func() {
+	// 	if err := proc.CloseElf(); err != nil {
+	// 		m.logger.Error("closing elf", zap.Error(err))
+	// 	}
+	// }()
 
-	// inform all probes
-	for _, p := range m.probes {
-		// check if scan was cancelled
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		if proc.Exited() {
-			return nil
-		}
-
-		if err := p.ProcessStarted(proc); err != nil {
-			// if the process was replaced mid scan, just return and let the next one try
-			if errors.Is(err, process.ErrProcessReplaced) {
-				return nil
-			}
-
-			return fmt.Errorf("starting process on tls probe: %w", err)
-		}
+	// Run orchestrator-based scanners
+	if ctx.Err() != nil {
+		return context.Cause(ctx)
 	}
 
+	err = m.orchestrator.ProcessStarted(ctx, proc)
 	if m.final != nil {
-		// check if scan was cancelled before final observer
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-
-		if err := m.final.ProcessStarted(proc); err != nil {
-			return fmt.Errorf("starting process on final observer: %w", err)
+		if e := m.final.ProcessStarted(ctx, proc); e != nil {
+			m.logger.Error("starting process on final observer", zap.Error(e))
 		}
 	}
 
-	return nil
+	return err
 }
 
-func (m *TlsManager) ProcessReplaced(proc *process.Process) error {
-	proc.CancelScan() // cancel any in-progress scan
+func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process) error {
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessReplaced")
+	defer span.End()
 
 	if m.final != nil {
-		if err := m.final.ProcessReplaced(proc); err != nil {
-			return fmt.Errorf("replacing process on final observer: %w", err)
+		if e := m.final.ProcessReplaced(ctx, proc); e != nil {
+			m.logger.Error("replacing process on final observer", zap.Error(e))
 		}
 	}
 
-	// inform all probes
-	for _, p := range m.probes {
-		if err := p.ProcessReplaced(proc); err != nil {
-			return fmt.Errorf("replacing process on tls probe: %w", err)
-		}
-	}
+	// cancel any in-progress scan since the process is being replaced
+	proc.CancelScan(process.ErrProcessReplaced)
 
-	// run process started again
-	return m.ProcessStarted(proc)
+	return m.orchestrator.ProcessReplaced(ctx, proc)
 }
 
-func (m *TlsManager) ProcessStopped(proc *process.Process) error {
+func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) error {
+	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStopped")
+	defer span.End()
+
 	// cancel any in-progress scan since the process is stopping
-	proc.CancelScan()
+	proc.CancelScan(process.ErrProcessStopped)
 
-	for _, p := range m.probes {
-		if err := p.ProcessStopped(proc); err != nil {
-			return fmt.Errorf("stopping process on tls probe: %w", err)
-		}
-	}
+	err := m.orchestrator.ProcessStopped(ctx, proc)
 
 	if m.final != nil {
-		if err := m.final.ProcessStopped(proc); err != nil {
-			return fmt.Errorf("stopping process on final observer: %w", err)
+		if e := m.final.ProcessStopped(ctx, proc); e != nil {
+			m.logger.Error("stopping process on final observer", zap.Error(e))
 		}
 	}
 
-	return nil
+	return err
 }

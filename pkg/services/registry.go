@@ -73,7 +73,7 @@ type ServiceRegistry struct {
 	factories    *FactoryRegistry
 	configurator ServiceConfigurator
 
-	mu *MutexMap[ServiceKey]
+	mu *synq.MutexMap[ServiceKey]
 }
 
 type ServiceConfigurator func(ctx context.Context, service Service) (Service, error)
@@ -85,7 +85,7 @@ func NewServiceRegistry(fr *FactoryRegistry) *ServiceRegistry {
 	return &ServiceRegistry{
 		services:  NewRegistry[ServiceKey, Service](),
 		factories: fr,
-		mu:        &MutexMap[ServiceKey]{},
+		mu:        synq.NewMutexMap[ServiceKey](),
 	}
 }
 
@@ -196,18 +196,4 @@ func (sr *Registry[K, T]) Close() error {
 
 func (sr *Registry[K, T]) Len() int {
 	return sr.m.Len()
-}
-
-// MutexMap is a map of named mutexes that is safe for concurrent use.
-type MutexMap[T comparable] struct {
-	m sync.Map
-}
-
-func (m *MutexMap[T]) Get(name T) *sync.Mutex {
-	mutex, ok := m.m.Load(name)
-	if !ok {
-		newMutex := &sync.Mutex{}
-		mutex, _ = m.m.LoadOrStore(name, newMutex)
-	}
-	return mutex.(*sync.Mutex)
 }

@@ -18,7 +18,8 @@
       "Bash(printf:*)",
       "Bash(echo:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(golangci-lint run:*)"
+      "Bash(golangci-lint run:*)",
+      "mcp__gopls"
     ],
     "deny": []
   }

@@ -278,12 +278,12 @@ func NewLogger(start time.Time) *zap.Logger {
 	return ll
 }
 
-func (c *Context) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	return c.ProcessWaiter.Signal(NewProcessKey(proc.ContainerID, proc.Pid))
+func (c *Context) ScanStarted(ctx context.Context, proc *process.Process) error {
+	return nil
 }
 
-func (c *Context) ProcessReplaced(ctx context.Context, proc *process.Process) error {
-	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
+func (c *Context) AttachCompleted(ctx context.Context, proc *process.Process) error {
+	return c.ProcessWaiter.Signal(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessStopped(ctx context.Context, proc *process.Process) error {
@@ -337,7 +337,7 @@ func (w *ProcessWaiter) Signal(key ProcessKey) error {
 func (w *ProcessWaiter) Reset(key ProcessKey) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.waiters[key] = make(chan struct{})
+	delete(w.waiters, key)
 	return nil
 }
 

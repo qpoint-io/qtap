@@ -1,6 +1,7 @@
 package openssl
 
 import (
+	"context"
 	"debug/elf"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 )
 
@@ -58,7 +60,15 @@ func NewOpenSSLTarget(logger *zap.Logger, name, containerID, location string, ef
 	}
 }
 
-func (t *OpenSSLTarget) Start() error {
+func (t *OpenSSLTarget) Start(ctx context.Context) error {
+	ctx, span := tracer.WithoutCancel(ctx, "OpenSSLTarget.Start")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("name", t.name),
+		attribute.String("container_id", t.containerID),
+		attribute.String("location", t.location),
+	)
+
 	// create a link to the executable
 	ex, err := link.OpenExecutable(t.location)
 	if err != nil {
@@ -86,7 +96,7 @@ func (t *OpenSSLTarget) Start() error {
 		// open the ELF file if we don't have one
 		ef := t.ef
 		if ef == nil {
-			ef, err = binutils.NewElf(t.location, "/", false)
+			ef, err = binutils.NewElf(ctx, t.location, "/", false)
 			if err != nil {
 				return err
 			}
@@ -95,13 +105,13 @@ func (t *OpenSSLTarget) Start() error {
 		}
 
 		// find the symbols from the binary
-		syms, err = ef.SearchSymbols(search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
+		syms, err = ef.SearchSymbols(ctx, search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
 		if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
 			t.logger.Debug("Failed to search for symbols", zap.Error(err))
 		}
 
 		// calculate the addresses of the symbols
-		syms = ef.CalculateUprobeAddresses(syms)
+		syms = ef.CalculateUprobeAddresses(ctx, syms)
 
 		// cache the result
 		if t.cacheEntry != nil {
@@ -133,7 +143,7 @@ func (t *OpenSSLTarget) Start() error {
 					)
 				}
 
-				err = probe.Attach(ex, sym.Value)
+				err = probe.Attach(ctx, ex, sym.Value)
 				if err != nil {
 					return fmt.Errorf("attaching probe to %s:%w", probe.Function, err)
 				}
@@ -147,6 +157,8 @@ func (t *OpenSSLTarget) Start() error {
 }
 
 func (t *OpenSSLTarget) Stop() error {
+	_, span := tracer.Start(context.TODO(), "OpenSSLTarget.Stop")
+	defer span.End()
 	// disconnect all of the probes
 	for _, ln := range t.probes {
 		if err := ln.Detach(); err != nil {

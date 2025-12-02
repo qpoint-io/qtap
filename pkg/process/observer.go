@@ -1,21 +1,23 @@
 package process
 
+import "context"
+
 type Observer interface {
-	ProcessStarted(*Process) error
-	ProcessReplaced(*Process) error
-	ProcessStopped(*Process) error
+	ProcessStarted(ctx context.Context, proc *Process) error
+	ProcessReplaced(ctx context.Context, proc *Process) error
+	ProcessStopped(ctx context.Context, proc *Process) error
 }
 
 type DefaultObserver struct{}
 
-func (d *DefaultObserver) ProcessStarted(proc *Process) error {
+func (d *DefaultObserver) ProcessStarted(ctx context.Context, proc *Process) error {
 	return nil
 }
 
-func (d *DefaultObserver) ProcessReplaced(proc *Process) error {
+func (d *DefaultObserver) ProcessReplaced(ctx context.Context, proc *Process) error {
 	return nil
 }
 
-func (d *DefaultObserver) ProcessStopped(proc *Process) error {
+func (d *DefaultObserver) ProcessStopped(ctx context.Context, proc *Process) error {
 	return nil
 }

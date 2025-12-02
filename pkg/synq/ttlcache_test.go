@@ -66,6 +66,34 @@ func TestTTLCache(t *testing.T) {
 		}
 	})
 
+	// Test LoadAndRenew
+	t.Run("LoadAndRenew", func(t *testing.T) {
+		// Test loading non-existent key
+		if _, ok := container.LoadAndRenew("nonexistent"); ok {
+			t.Error("Expected LoadAndRenew to return false for non-existent key")
+		}
+
+		// Store a key
+		container.Store("key4b", 888)
+
+		// Advance half the expiration time
+		mockTime = mockTime.Add(50 * time.Millisecond)
+
+		// Load and renew the key
+		if val, ok := container.LoadAndRenew("key4b"); !ok || val != 888 {
+			t.Errorf("Expected LoadAndRenew to return 888 and true, got %v, exists: %v", val, ok)
+		}
+
+		// Advance another 75ms (total 125ms, would have expired without renewal)
+		mockTime = mockTime.Add(75 * time.Millisecond)
+		container.ExpireRecords()
+
+		// Key should still exist because it was renewed
+		if val, ok := container.Load("key4b"); !ok || val != 888 {
+			t.Errorf("Expected renewed key to still exist with value 888, got %v, exists: %v", val, ok)
+		}
+	})
+
 	// Test Length
 	t.Run("Length", func(t *testing.T) {
 		// Advance beyond expiration time to clear previous entries

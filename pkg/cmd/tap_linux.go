@@ -425,7 +425,7 @@ func runTapCmd(logger *zap.Logger) {
 		pm.Observe(tlsManager)
 
 		defer func() {
-			if err := tlsManager.Stop(); err != nil {
+			if err := tlsManager.Close(); err != nil {
 				logger.Error("unable to cleanup tls probes manager", zap.Error(err))
 			}
 		}()
@@ -552,9 +552,6 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 }
 
 func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
-	ctx, span := tracer.Start(context.TODO(), "InitTLSProbes")
-	defer span.End()
-
 	// Split the string and trim whitespace
 	tlsProbesList := strings.Split(tlsProbesStr, ",")
 	for i, probe := range tlsProbesList {
@@ -562,12 +559,13 @@ func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 	}
 
 	enableTLS := true
-	probes := make([]tls.TlsProbe, 0, len(tlsProbesList))
+	var probes []tls.Probe
 	for _, mode := range tlsProbesList {
 		mode = strings.ToLower(mode)
 		switch mode {
 		case "openssl":
-			probes = append(probes, openssl.NewOpenSSLManager(logger, NewEbpfOpenSSLprobesCreator(objs)))
+			probe := openssl.NewProbe(logger, NewEbpfOpenSSLprobesCreator(objs))
+			probes = append(probes, probe)
 		case "none", "":
 			enableTLS = false
 			logger.Info("No TLS probes enabled")
@@ -578,14 +576,9 @@ func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 
 	if enableTLS || len(probes) > 0 {
 		// init tls probes manager
-		ssl := tls.NewTlsManager(logger, probes...)
-
-		// start the tls probes manager
-		if err := ssl.Start(ctx); err != nil {
-			logger.Fatal("failed to start tls probes manager", zap.Error(err))
-		}
-
-		return ssl, nil
+		scanner := tls.NewTargetScanner(logger, probes)
+		manager := tls.NewTlsManager(logger, scanner)
+		return manager, nil
 	}
 
 	return nil, nil

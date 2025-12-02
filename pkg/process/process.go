@@ -55,13 +55,15 @@ func (e UnknownProcessError) Error() string {
 }
 
 type Process struct {
-	Pid            int
-	PidExe         string // PidExe is the path to the /proc process symlink
-	PodID          string // TODO: remove
-	Cgroup         string
-	ContainerID    string
-	RootID         uint64
-	Binary         string
+	Pid         int
+	PidExe      string // PidExe is the path to the /proc process symlink
+	PodID       string // TODO: remove
+	Cgroup      string
+	ContainerID string
+	RootID      uint64
+	Binary      string
+	// Exe is the absolute path to the executable of the process.
+	// If the process is running in a container, this path will be relative to the container's root filesystem.
 	Exe            string
 	ExeFilename    string // ExeFilename is the path to the file that was called by the syscall. It can be empty.
 	Args           []string
@@ -335,10 +337,38 @@ func (p *Process) SetTlsOk(tlsOk bool) error {
 }
 
 func (p *Process) RootFS() string {
-	if c, err := p.Container(); err == nil && c != nil {
+	if c, err := p.Container(); err == nil && c != nil && c.RootFS != "" {
 		return path.Join("/proc/1/root", c.RootFS)
 	}
 	return fmt.Sprintf("/proc/%d/root", p.Pid)
+}
+
+// RealExe returns the real path to the executable.
+//
+// If the process is running on the host, it returns the Exe.
+//
+// If the process is running in a container, it returns the path to the executable in the container's RootFS.
+//
+//	-> if this process is not the container's init process, this path will remain accessible even after the process exits.
+func (p *Process) RealExe() string {
+	if p.ContainerID == "root" {
+		/*
+
+			TODO: this is not always correct. At this point, we don't know if this process is running on the host
+			or in a container with `--pid=host` while qtap itself is also running in such a container.
+
+			note: use the cgroup value to determine this.
+
+				$ cat /proc/329498/cgroup # process running in the a --pid=host container
+				0::/
+
+				$ cat /proc/329745/cgroup # process running on the host
+				0::/../../user.slice/user-501.slice/session-4.scope
+
+		*/
+		return filepath.Join("/proc/1/root", p.Exe)
+	}
+	return filepath.Join(p.RootFS(), p.Exe)
 }
 
 func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
@@ -428,32 +458,6 @@ func (p *Process) Exited() bool {
 	return p.exited.Load()
 }
 
-// Elf returns the elf file
-func (p *Process) Elf(ctx context.Context) (*binutils.Elf, error) {
-	if p.elf == nil {
-		var err error
-		p.elf, err = binutils.NewElf(ctx, p.PidExe, "/", false)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create elf: %w", err)
-		}
-	}
-
-	return p.elf, nil
-}
-
-func (p *Process) CloseElf() error {
-	if p.elf != nil {
-		if err := p.elf.Close(); err != nil {
-			return fmt.Errorf("closing elf: %w", err)
-		}
-
-		// unset the elf
-		p.elf = nil
-	}
-
-	return nil
-}
-
 func (p *Process) Lock() {
 	p.mu.Lock()
 }
@@ -462,6 +466,7 @@ func (p *Process) Unlock() {
 	p.mu.Unlock()
 }
 
+// TODO: move this to `ebpf/tls`
 // StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
 // The caller MUST defer FinishScan() to signal completion.
 func (p *Process) StartScan(ctx context.Context) (context.Context, error) {

@@ -13,17 +13,16 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = telemetry.Tracer()
 
 var (
-	ErrNotELF       = errors.New("file is not an ELF")
-	ErrNoFileLoaded = errors.New("no file loaded")
-	ErrNoSymbols    = errors.New("no symbol section")
-	ErrFileClosed   = errors.New("file is closed")
+	ErrNotELF     = errors.New("file is not an ELF")
+	ErrNoSymbols  = errors.New("no symbol section")
+	ErrFileClosed = errors.New("file is closed")
 )
 
 const (
@@ -58,11 +57,12 @@ func (s *SymbolSearch) Bytes() []byte {
 
 type Elf struct {
 	isContainer bool
+	hash        resolvable.Ctx[string]
+	elf         resolvable.Ctx[*elf.File]
 
 	exe  string
 	root string
 	file *os.File
-	ef   *elf.File
 
 	isClosed bool
 }
@@ -100,20 +100,29 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 		return nil, fmt.Errorf("file is not an ELF: %s", filePath)
 	}
 
+	e.hash = resolvable.New(func(ctx context.Context) (string, error) {
+		_, span := tracer.Start(context.Background(), "Elf.Hash")
+		defer span.End()
+
+		return ComputeBinaryHash(e.file)
+	}, resolvable.WithRetry())
+
+	e.elf = resolvable.New(func(ctx context.Context) (*elf.File, error) {
+		_, span := tracer.Start(ctx, "Elf.NewFile")
+		defer span.End()
+
+		return elf.NewFile(e.file)
+	}, resolvable.WithRetry())
+
 	return e, nil
 }
 
+func (e *Elf) Hash(ctx context.Context) (string, error) {
+	return e.hash(ctx)
+}
+
 func (e *Elf) Close() error {
-	if e.isClosed {
-		return nil
-	}
-
-	if e.file != nil {
-		return e.file.Close()
-	}
-
-	e.isClosed = true
-	return nil
+	return e.file.Close()
 }
 
 func (e *Elf) getFilePath() string {
@@ -124,10 +133,6 @@ func (e *Elf) getFilePath() string {
 }
 
 func (e Elf) isELF() (bool, error) {
-	if e.file == nil {
-		return false, ErrNoFileLoaded
-	}
-
 	var ident [4]uint8
 	if _, err := e.file.ReadAt(ident[0:], 0); err != nil {
 		return false, err
@@ -140,32 +145,12 @@ func (e Elf) isELF() (bool, error) {
 }
 
 func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
-	if p.isClosed {
-		return nil, ErrFileClosed
-	}
-	if p.file == nil {
-		return nil, ErrNoFileLoaded
-	}
-	if p.ef == nil {
-		_, span := tracer.Start(context.TODO(), "Elf.NewFile", trace.WithLinks(trace.LinkFromContext(ctx)))
-		defer span.End()
-
-		var err error
-		p.ef, err = elf.NewFile(p.file)
-		if err != nil {
-			return nil, fmt.Errorf("opening ELF: %w", err)
-		}
-	}
-
-	return p.ef, nil
+	return p.elf(ctx)
 }
 
 func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
 	ctx, span := tracer.WithoutCancel(ctx, "Elf.SearchSymbols")
 	defer span.End()
-	if p.file == nil {
-		return nil, ErrNoFileLoaded
-	}
 
 	f, err := p.Elf(ctx)
 	if err != nil {
@@ -555,6 +540,8 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 func (p *Elf) CalculateUprobeAddresses(ctx context.Context, symbols []elf.Symbol) []elf.Symbol {
 	ctx, span := tracer.WithoutCancel(ctx, "Elf.CalculateUprobeAddresses")
 	defer span.End()
+
+	// TODO: the caller should create a copy if necessary
 
 	// create a copy of the input symbols to modify .Value
 	results := make([]elf.Symbol, len(symbols))

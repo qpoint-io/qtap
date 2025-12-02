@@ -314,7 +314,7 @@ func mainSetup() error {
 		// add tls probes as process observers
 		pm.Observe(tlsManager)
 
-		e2ectx.RegisterErrCloser(tlsManager.Stop)
+		e2ectx.RegisterErrCloser(tlsManager.Close)
 	}
 
 	// Start managers

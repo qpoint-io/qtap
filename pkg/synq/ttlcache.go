@@ -95,6 +95,16 @@ func (c *TTLCache[K, V]) Renew(key K) {
 	c.expirations.Store(key, now().Add(c.expireDuration))
 }
 
+// LoadAndRenew loads a value and renews its TTL if found.
+// Returns the value and whether it was found.
+func (c *TTLCache[K, V]) LoadAndRenew(key K) (value V, ok bool) {
+	value, ok = c.entries.Load(key)
+	if ok {
+		c.expirations.Store(key, now().Add(c.expireDuration))
+	}
+	return value, ok
+}
+
 func (c *TTLCache[K, V]) Len() int {
 	return c.entries.Len()
 }

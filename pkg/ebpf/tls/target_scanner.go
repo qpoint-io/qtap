@@ -2,7 +2,6 @@ package tls
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -21,10 +20,6 @@ const (
 
 	// DefaultCacheCleanupInterval is the default interval for cache cleanup
 	DefaultCacheCleanupInterval = 5 * time.Minute
-)
-
-var (
-	ErrDetectNotFound = errors.New("detect not found")
 )
 
 // TargetScanner coordinates scanning and attachment across multiple probes.
@@ -56,8 +51,8 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 	return o
 }
 
-func (m *TargetScanner) Close() error {
-	m.cache.Stop()
+func (s *TargetScanner) Close() error {
+	s.cache.Stop()
 	return nil
 }
 
@@ -69,7 +64,11 @@ type ScanResult struct {
 	ProbeResults map[string]ProbeScanResult
 }
 
-func (m *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
+func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
+	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.Scan")
+	defer span.End()
+	span.SetAttributes(attribute.String("path", path))
+
 	elf, err := binutils.NewElf(ctx, path, "/", false)
 	if err != nil {
 		return nil, fmt.Errorf("opening executable: %w", err)
@@ -77,28 +76,43 @@ func (m *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 
 	hash, err := elf.Hash(ctx)
 	if err != nil {
+		span.RecordError(err)
 		return nil, fmt.Errorf("getting hash: %w", err)
 	}
+	span.SetAttributes(attribute.String("hash", hash))
 
-	// TODO: use cache
+	if cached, ok := s.cache.Load(hash); ok {
+		span.SetAttributes(attribute.Bool("cache_hit", true))
+		return cached, nil
+	}
+	span.SetAttributes(attribute.Bool("cache_hit", false))
 
 	res := &ScanResult{
 		Path:         path,
 		Hash:         hash,
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
-	for probeName, probe := range m.probes {
+	for probeName, probe := range s.probes {
 		probeRes, err := probe.Scan(ctx, elf)
 		if err != nil {
+			span.RecordError(err)
 			return nil, fmt.Errorf("scanning probe %s: %w", probeName, err)
 		}
 		res.ProbeResults[probeName] = probeRes
 	}
 
+	s.cache.Store(hash, res)
 	return res, nil
 }
 
-func (m *TargetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+func (s *TargetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.Attach")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int("pid", pid),
+		attribute.String("path", path),
+	)
+
 	// lazy open the executable
 	// if no probes indicated detection, we won't open the executable
 	openEx := resolvable.New(func(ctx context.Context) (*link.Executable, error) {
@@ -111,13 +125,15 @@ func (m *TargetScanner) Attach(ctx context.Context, pid int, path string, res *S
 			continue
 		}
 
-		probe := m.probes[probeName]
+		probe := s.probes[probeName]
 		if probe == nil {
-			return nil, fmt.Errorf("probe %s not found", probeName)
+			s.logger.Warn("unrecognized probe in scan result", zap.String("probe_name", probeName))
+			continue
 		}
 
 		ex, err := openEx(ctx)
 		if err != nil {
+			span.RecordError(err)
 			return nil, fmt.Errorf("opening executable: %w", err)
 		}
 
@@ -127,6 +143,7 @@ func (m *TargetScanner) Attach(ctx context.Context, pid int, path string, res *S
 			Exe:  ex,
 		}, probeRes)
 		if err != nil {
+			span.RecordError(err)
 			return nil, fmt.Errorf("attaching probe %s: %w", probeName, err)
 		}
 		closers = append(closers, closer)
@@ -183,7 +200,8 @@ func (s *TargetScanner) AttachContainer(ctx context.Context, res *ContainerScanR
 	for probeName, libs := range res.SharedLibraries {
 		probe := s.probes[probeName]
 		if probe == nil {
-			return nil, fmt.Errorf("probe %s not found", probeName)
+			s.logger.Warn("unrecognized probe in scan result", zap.String("probe_name", probeName))
+			continue
 		}
 
 		for _, lib := range libs {

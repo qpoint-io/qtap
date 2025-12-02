@@ -2,26 +2,26 @@ package binutils
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
+	"os"
 	"unicode"
 )
 
 const minStrLength = 4
 
 func (e *Elf) SearchString(searchStr string, strategy MatchStrategy) (string, error) {
-	if e.isClosed {
-		return "", errors.New("ELF file is closed")
-	}
+	return searchString(e.file, searchStr, strategy)
+}
 
+func searchString(file *os.File, searchStr string, strategy MatchStrategy) (string, error) {
 	var buffer [bufferSize]byte
 	var window [bufferSize * 2]byte
 	windowLen := 0
 	offset := int64(0)
 
 	for {
-		n, err := e.file.ReadAt(buffer[:], offset)
+		n, err := file.ReadAt(buffer[:], offset)
 		if err != nil && err != io.EOF {
 			return "", fmt.Errorf("error reading file: %w", err)
 		}

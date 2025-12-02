@@ -8,7 +8,6 @@ on:
     tags:
       - v*
   pull_request:
-    branches: [ '*' ]
 
 jobs:
   ci:

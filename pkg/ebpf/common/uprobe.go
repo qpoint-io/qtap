@@ -37,7 +37,7 @@ func NewUretprobe(function string, prog *ebpf.Program) *Uprobe {
 }
 
 func (k *Uprobe) Attach(ctx context.Context, exe *link.Executable, addr uint64) error {
-	ctx, span := tracer.WithoutCancel(ctx, "Uprobe.Attach") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "Uprobe.Attach") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	if exe == nil {
 		return errors.New("executable is nil")
@@ -60,7 +60,7 @@ func (k *Uprobe) Attach(ctx context.Context, exe *link.Executable, addr uint64) 
 	return err
 }
 
-func (k *Uprobe) Detach() error {
+func (k *Uprobe) Close() error {
 	if k.conn == nil {
 		return nil
 	}

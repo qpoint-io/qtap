@@ -6,6 +6,7 @@ require (
 	github.com/advbet/sseclient v0.0.0-20250521071159-d88bf8fc2362
 	github.com/andybalholm/brotli v1.1.1
 	github.com/axiomhq/axiom-go v0.23.3
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/charmbracelet/glamour v0.8.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cilium/ebpf v0.16.0
@@ -17,6 +18,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/gopacket/gopacket v1.3.1
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
@@ -93,7 +95,6 @@ require (
 	github.com/catenacyber/perfsprint v0.9.1 // indirect
 	github.com/ccojocar/zxcvbn-go v1.0.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charithe/durationcheck v0.0.10 // indirect
 	github.com/charmbracelet/bubbles v0.20.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.4 // indirect
@@ -184,7 +185,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-immutable-radix/v2 v2.1.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect

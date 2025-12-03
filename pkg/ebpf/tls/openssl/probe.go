@@ -78,7 +78,7 @@ func (s *Probe) Name() string {
 
 // Scan analyzes the binary to find symbol addresses.
 func (s *Probe) Scan(ctx context.Context, ef *binutils.Elf) (tls.ProbeScanResult, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "OpenSSLScanner.Scan")
+	ctx, span := tracer.Start(ctx, "OpenSSLScanner.Scan")
 	defer span.End()
 
 	var result OpenSSLScanResult
@@ -106,7 +106,7 @@ func (s *Probe) Scan(ctx context.Context, ef *binutils.Elf) (tls.ProbeScanResult
 
 // Attach attaches uprobes to the binary.
 func (s *Probe) Attach(ctx context.Context, target *tls.ExeAttachable, result tls.ProbeScanResult) (io.Closer, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "OpenSSLScanner.Attach")
+	ctx, span := tracer.Start(ctx, "OpenSSLScanner.Attach")
 	defer span.End()
 
 	r, ok := result.(*OpenSSLScanResult)
@@ -157,7 +157,7 @@ func (s *Probe) AttachLibrary(ctx context.Context, library *tls.SharedLibrary) (
 }
 
 func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "OpenSSLScanner.attachLibrary")
+	ctx, span := tracer.Start(ctx, "OpenSSLScanner.attachLibrary")
 	defer span.End()
 	span.SetAttributes(attribute.String("name", name), attribute.String("path", path))
 

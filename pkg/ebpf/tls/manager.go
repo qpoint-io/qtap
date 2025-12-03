@@ -126,7 +126,7 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 		return nil // not a real process
 	}
 
-	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStarted")
+	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStarted")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Int("pid", proc.Pid),
@@ -161,7 +161,7 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 		return nil // not a real process
 	}
 
-	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessReplaced") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessReplaced")
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", proc.Pid))
 
@@ -200,7 +200,7 @@ func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) 
 		return nil // not a real process
 	}
 
-	ctx, span := tracer.WithoutCancel(ctx, "TlsManager.ProcessStopped") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStopped")
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", proc.Pid))
 
@@ -246,6 +246,12 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 	closer, err := m.scanner.Attach(ctx, proc.Pid, proc.PidExe, res)
 	if err != nil {
 		return err
+	}
+
+	for _, res := range res.ProbeResults {
+		if res.ProbeDetected() {
+			proc.AddDetectedTLSProbeType(res.ProbeName())
+		}
 	}
 
 	m.procAttachments.Store(proc.Pid, &procAttachment{
@@ -306,10 +312,9 @@ func (m *TlsManager) ContainerStarted(ctx context.Context, id, root string) {
 
 // scanAndAttachContainer scans a container for shared libraries
 func (m *TlsManager) scanAndAttachContainer(ctx context.Context, id, root string) (io.Closer, error) {
-	ctx, span := tracer.Start(m.ctx, "TlsManager.scanAndAttachContainer",
-		trace.WithLinks(trace.LinkFromContext(ctx)),
+	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.scanAndAttachContainer",
 		trace.WithAttributes(attribute.String("container_id", id)),
-	) //nolint:ineffassign,wastedassign,staticcheck
+	)
 	defer span.End()
 
 	res, err := m.scanner.ScanContainer(ctx, id, root)

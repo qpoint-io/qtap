@@ -2,7 +2,6 @@ package process
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -340,16 +339,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 					return
 				}
 
-				switch {
-				case errors.Is(err, ErrNewScanStarting):
-					logger.Debug("current scan was cancelled due to new scan starting up")
-				case errors.Is(err, ErrProcessStopped):
-					logger.Debug("current scan was cancelled due to process stopping")
-				case errors.Is(err, ErrProcessReplaced):
-					logger.Debug("current scan was cancelled due to process being replaced")
-				default:
-					logger.Error("notifying observer of process start/replace", zap.Error(err))
-				}
+				logger.Error("notifying observer of process start/replace", zap.Error(err))
 			}
 		})
 	}

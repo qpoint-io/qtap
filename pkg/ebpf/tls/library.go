@@ -27,7 +27,7 @@ type SharedLibrary struct {
 
 // FindSharedLibraries searches for shared libraries in a filesystem root.
 func FindSharedLibraries(ctx context.Context, root string, libNamePrefixes []string) ([]*SharedLibrary, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "FindSharedLibraries") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "FindSharedLibraries") //nolint:ineffassign,wastedassign,staticcheck
 	span.SetAttributes(
 		attribute.String("root", root),
 		attribute.StringSlice("prefixes", libNamePrefixes),

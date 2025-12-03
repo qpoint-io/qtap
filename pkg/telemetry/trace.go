@@ -37,6 +37,13 @@ func (tp *TraceProvider) WithoutCancel(ctx context.Context, name string, opts ..
 	return ctx, span
 }
 
+// WithRemoteCancel starts a new span as a child of the parent context with the cancel function from a different context.
+func (tp *TraceProvider) WithRemoteCancel(ctx context.Context, cancelCtx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	ctx, span := tp.tracer.Start(ctx, name, opts...)
+	ctx = remoteCancelCtx{parentCtx: ctx, cancelCtx: cancelCtx}
+	return ctx, span
+}
+
 func (tp *TraceProvider) StartFn(
 	ctx context.Context,
 	name string,

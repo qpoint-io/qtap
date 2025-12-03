@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/kamaln7/resolvable"
-	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -27,32 +25,9 @@ import (
 )
 
 var (
-	podRe       *regexp.Regexp
-	containerRe *regexp.Regexp
-
-	ErrProcessStopped  = errors.New("process stopped")
-	ErrProcessReplaced = errors.New("process replaced")
-	ErrUnknownProcess  = errors.New("unknown process")
-	ErrNewScanStarting = errors.New("new scan starting up")
-)
-
-func init() {
-	// pod ID regular expression
-	podRe = regexp.MustCompile(`pod([0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}\b)`)
-
-	// container ID regular expression
+	podRe       = regexp.MustCompile(`pod([0-9a-f]{8}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{4}[-_][0-9a-f]{12}\b)`)
 	containerRe = regexp.MustCompile(`(\b[0-9a-f]{64}\b)`)
-}
-
-// unknown process error
-type UnknownProcessError struct {
-	Message string
-}
-
-// process does not exist with pid
-func (e UnknownProcessError) Error() string {
-	return e.Message
-}
+)
 
 type Process struct {
 	Pid         int
@@ -82,22 +57,16 @@ type Process struct {
 	Pod       resolvable.V[*Pod]
 
 	// internal
-	logger     *zap.Logger
-	hostname   string
-	filter     uint8
-	elf        *binutils.Elf
-	exited     atomic.Bool
-	tlsOk      bool
-	startTime  time.Time
-	closeTime  *time.Time
-	mu         sync.Mutex
-	scanMu     sync.Mutex
-	scanWg     sync.WaitGroup
-	scanCtx    context.Context
-	scanCancel context.CancelCauseFunc
-	tags       tags.List
-	envTags    []config.Tag
-	closers    []io.Closer
+	logger    *zap.Logger
+	hostname  string
+	filter    uint8
+	exited    atomic.Bool
+	tlsOk     bool
+	startTime time.Time
+	closeTime *time.Time
+	mu        sync.Mutex
+	tags      tags.List
+	envTags   []config.Tag
 
 	// notifier is called when parts of the process change
 	// that are required to be updated by the eventer for
@@ -343,107 +312,9 @@ func (p *Process) RootFS() string {
 	return fmt.Sprintf("/proc/%d/root", p.Pid)
 }
 
-// RealExe returns the real path to the executable.
-//
-// If the process is running on the host, it returns the Exe.
-//
-// If the process is running in a container, it returns the path to the executable in the container's RootFS.
-//
-//	-> if this process is not the container's init process, this path will remain accessible even after the process exits.
-func (p *Process) RealExe() string {
-	if p.ContainerID == "root" {
-		/*
-
-			TODO: this is not always correct. At this point, we don't know if this process is running on the host
-			or in a container with `--pid=host` while qtap itself is also running in such a container.
-
-			note: use the cgroup value to determine this.
-
-				$ cat /proc/329498/cgroup # process running in the a --pid=host container
-				0::/
-
-				$ cat /proc/329745/cgroup # process running on the host
-				0::/../../user.slice/user-501.slice/session-4.scope
-
-		*/
-		return filepath.Join("/proc/1/root", p.Exe)
-	}
-	return filepath.Join(p.RootFS(), p.Exe)
-}
-
-func (p *Process) FindSharedLibrary(ctx context.Context, libNamePrefix string) ([]string, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Process.FindSharedLibrary") //nolint:ineffassign,wastedassign,staticcheck
-	span.SetAttributes(attribute.String("prefix", libNamePrefix))
-	defer span.End()
-
-	// there might be multiple matches
-	var matches []string
-
-	// we only want unique objects, not the symlinks
-	var uniqueMatches []string
-
-	// scan for matches
-	scan := func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasPrefix(filepath.Base(path), libNamePrefix) {
-			matches = append(matches, path)
-		}
-		return nil
-	}
-
-	// scan the common lib directories
-	for _, libDir := range []string{"/lib", "/usr/lib", "/usr/local/lib", "/nix/store"} {
-		// absolute path to lib dir
-		absLibDir := filepath.Join(p.Root, libDir)
-
-		// walk directories and scan
-		if err := filepath.Walk(absLibDir, scan); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("scanning for shared library: %w", err)
-		}
-	}
-
-	// hold unique file identifiers
-	unique := make(map[uint64]string)
-
-	for _, path := range matches {
-		fi, err := os.Stat(path)
-		if err != nil {
-			return nil, err
-		}
-
-		stat, ok := fi.Sys().(*syscall.Stat_t)
-		if !ok {
-			return nil, fmt.Errorf("failed to get syscall.Stat_t for %s", path)
-		}
-
-		// Use a combination of inode and device ID as a unique identifier
-		id := stat.Ino + uint64(stat.Dev)<<32
-		if _, exists := unique[id]; !exists {
-			unique[id] = path
-			uniqueMatches = append(uniqueMatches, path)
-		}
-	}
-
-	// return any matches
-	return uniqueMatches, nil
-}
-
-// Close closes the elf file
 func (p *Process) Close() error {
 	// mark the process as exited
 	p.exited.Store(true)
-
-	// close the closeables
-	for _, closer := range p.closers {
-		if err := closer.Close(); err != nil {
-			return fmt.Errorf("closing closeable: %w", err)
-		}
-	}
 
 	if p.notifier != nil {
 		if err := p.notifier(); err != nil {
@@ -464,50 +335,6 @@ func (p *Process) Lock() {
 
 func (p *Process) Unlock() {
 	p.mu.Unlock()
-}
-
-// TODO: move this to `ebpf/tls`
-// StartScan cancels any in-progress scan, waits for it to finish, then returns a new context for the current scan.
-// The caller MUST defer FinishScan() to signal completion.
-func (p *Process) StartScan(ctx context.Context) (context.Context, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Process.StartScan")
-	defer span.End()
-
-	p.scanMu.Lock()
-	defer p.scanMu.Unlock()
-
-	// Cancel any existing scan
-	if p.scanCancel != nil {
-		p.scanCancel(ErrNewScanStarting)
-	}
-
-	// Wait for the previous scan to fully exit
-	// Note: FinishScan() only calls Done(), which doesn't need the lock,
-	// so the cancelled goroutine can complete even though we hold the lock
-	p.scanWg.Wait()
-
-	// Now start the new scan
-	p.scanWg.Add(1)
-	p.scanCtx, p.scanCancel = context.WithCancelCause(ctx)
-	return p.scanCtx, nil
-}
-
-// FinishScan signals that the current scan has completed.
-// Must be called (typically via defer) after StartScan.
-func (p *Process) FinishScan() {
-	p.scanWg.Done()
-}
-
-// CancelScan cancels any in-progress scan without waiting
-func (p *Process) CancelScan(cause error) {
-	p.scanMu.Lock()
-	defer p.scanMu.Unlock()
-
-	if p.scanCancel != nil {
-		p.scanCancel(cause)
-		p.scanCancel = nil
-		p.scanCtx = nil
-	}
 }
 
 func (p *Process) Tags() tags.List {
@@ -621,10 +448,6 @@ func (p *Process) checkProcessError(err error) (string, bool) {
 	return "", false
 }
 
-func (p *Process) AddCloser(c ...io.Closer) {
-	p.closers = append(p.closers, c...)
-}
-
 func (p *Process) ControlValues() map[string]any {
 	v := map[string]any{
 		"path":   p.Exe,
@@ -682,6 +505,9 @@ func (p *Process) IsFiltered(flag ...config.FilterLevel) bool {
 }
 
 func (p *Process) AddDetectedTLSProbeType(t string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.TLSProbeTypesDetected == nil {
 		p.TLSProbeTypesDetected = make([]string, 0, 1)
 	}

@@ -45,7 +45,7 @@ func (c *TTLCache[K, V]) Start() {
 		for {
 			select {
 			case <-c.ticker.C:
-				c.ExpireRecords()
+				c.GCExpired()
 			case <-c.stop:
 				return
 			}
@@ -61,7 +61,7 @@ func (c *TTLCache[K, V]) Stop() {
 	c.stop <- true
 }
 
-func (c *TTLCache[K, V]) ExpireRecords() {
+func (c *TTLCache[K, V]) GCExpired() {
 	// check for any records that have expired and delete
 	for key, exp := range c.expirations.Copy() {
 		if now().After(exp) {
@@ -69,6 +69,11 @@ func (c *TTLCache[K, V]) ExpireRecords() {
 			c.expirations.Delete(key)
 		}
 	}
+}
+
+// ExpireRecord forcefully expires a record by key. It will be cleaned up by the next GC cycle.
+func (c *TTLCache[K, V]) ExpireRecord(key K) {
+	c.expirations.Store(key, now())
 }
 
 func (c *TTLCache[K, V]) Load(key K) (value V, ok bool) {

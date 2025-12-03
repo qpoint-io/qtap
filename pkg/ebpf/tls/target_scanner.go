@@ -58,14 +58,15 @@ func (s *TargetScanner) Close() error {
 
 // ScanResult is the result of scanning a target
 type ScanResult struct {
-	Path string
-	Hash string
+	Path  string
+	Hash  string
+	Mtime int64
 	// ProbeResults is a map of probe name to scan result
 	ProbeResults map[string]ProbeScanResult
 }
 
 func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.Scan")
+	ctx, span := tracer.Start(ctx, "TargetScanner.Scan")
 	defer span.End()
 	span.SetAttributes(attribute.String("path", path))
 
@@ -81,11 +82,17 @@ func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 	}
 	span.SetAttributes(attribute.String("hash", hash))
 
-	if cached, ok := s.cache.Load(hash); ok {
-		span.SetAttributes(attribute.Bool("cache_hit", true))
-		return cached, nil
+	if cached, ok := s.cache.LoadAndRenew(hash); ok {
+		if cached.Mtime == elf.Mtime() {
+			span.SetAttributes(attribute.String("cache_status", "hit"))
+			return cached, nil
+		}
+
+		// the cached file has a different mtime, we should re-scan
+		s.cache.ExpireRecord(hash)
+		span.SetAttributes(attribute.String("cache_status", "mtime_mismatch"))
 	}
-	span.SetAttributes(attribute.Bool("cache_hit", false))
+	span.SetAttributes(attribute.String("cache_status", "miss"))
 
 	res := &ScanResult{
 		Path:         path,
@@ -106,7 +113,7 @@ func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 }
 
 func (s *TargetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.Attach")
+	ctx, span := tracer.Start(ctx, "TargetScanner.Attach")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Int("pid", pid),
@@ -159,7 +166,7 @@ type ContainerScanResult struct {
 
 // ScanContainer scans a container for shared libraries.
 func (s *TargetScanner) ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.ScanContainer") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "TargetScanner.ScanContainer")
 	span.SetAttributes(
 		attribute.String("container_id", id),
 		attribute.String("root", root),
@@ -193,7 +200,7 @@ func (s *TargetScanner) ScanContainer(ctx context.Context, id, root string) (*Co
 }
 
 func (s *TargetScanner) AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "TargetScanner.AttachContainer")
+	ctx, span := tracer.Start(ctx, "TargetScanner.AttachContainer")
 	defer span.End()
 
 	var closers MultiCloser

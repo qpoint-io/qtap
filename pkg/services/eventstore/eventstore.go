@@ -215,6 +215,7 @@ func (a *Artifact) Record(url string) *ArtifactRecord {
 // ArtifactRecord is a record of an Artifact which is sent to Pulse.
 type ArtifactRecord struct {
 	meta
+	tags
 
 	Timestamp time.Time      `json:"timestamp"`
 	Type      ArtifactType   `json:"type"`

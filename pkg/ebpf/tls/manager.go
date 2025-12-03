@@ -23,7 +23,7 @@ var tracer = telemetry.Tracer()
 // It bridges between the process manager (via process.Observer) and the target scanner.
 type TlsManager struct {
 	logger  *zap.Logger
-	scanner *TargetScanner
+	scanner TargetScanner
 
 	observer TlsObserver
 
@@ -52,7 +52,7 @@ type procAttachment struct {
 }
 
 // NewTlsManager creates a new TlsManager with the given options.
-func NewTlsManager(logger *zap.Logger, scanner *TargetScanner) *TlsManager {
+func NewTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &TlsManager{
 		logger:  logger,
@@ -248,11 +248,13 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 		return err
 	}
 
+	var detectedProbes []string
 	for _, res := range res.ProbeResults {
 		if res.ProbeDetected() {
-			proc.AddDetectedTLSProbeType(res.ProbeName())
+			detectedProbes = append(detectedProbes, res.ProbeName())
 		}
 	}
+	proc.SetDetectedTLSProbeTypes(detectedProbes)
 
 	m.procAttachments.Store(proc.Pid, &procAttachment{
 		localExe: proc.Exe,

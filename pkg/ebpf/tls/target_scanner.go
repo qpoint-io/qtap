@@ -22,19 +22,28 @@ const (
 	DefaultCacheCleanupInterval = 5 * time.Minute
 )
 
-// TargetScanner coordinates scanning and attachment across multiple probes.
-type TargetScanner struct {
+//go:generate go tool go.uber.org/mock/mockgen --destination=target_scanner_mock.go --package tls . TargetScanner
+type TargetScanner interface {
+	Scan(ctx context.Context, path string) (*ScanResult, error)
+	Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error)
+	ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error)
+	AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error)
+	Close() error
+}
+
+// targetScanner coordinates scanning and attachment across multiple probes.
+type targetScanner struct {
 	logger *zap.Logger
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
 }
 
 // TargetScannerOption configures the TargetScanner
-type TargetScannerOption func(*TargetScanner)
+type TargetScannerOption func(*targetScanner)
 
 // NewTargetScanner creates a new TargetScanner with the given probes
-func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerOption) *TargetScanner {
-	o := &TargetScanner{
+func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerOption) *targetScanner {
+	o := &targetScanner{
 		logger: logger,
 		probes: make(map[string]Probe, len(probes)),
 		cache:  synq.NewTTLCache[string, *ScanResult](DefaultCacheTTL, DefaultCacheCleanupInterval),
@@ -51,21 +60,20 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 	return o
 }
 
-func (s *TargetScanner) Close() error {
+func (s *targetScanner) Close() error {
 	s.cache.Stop()
 	return nil
 }
 
 // ScanResult is the result of scanning a target
 type ScanResult struct {
-	Path  string
 	Hash  string
 	Mtime int64
 	// ProbeResults is a map of probe name to scan result
 	ProbeResults map[string]ProbeScanResult
 }
 
-func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
+func (s *targetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
 	ctx, span := tracer.Start(ctx, "TargetScanner.Scan")
 	defer span.End()
 	span.SetAttributes(attribute.String("path", path))
@@ -95,7 +103,6 @@ func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 	span.SetAttributes(attribute.String("cache_status", "miss"))
 
 	res := &ScanResult{
-		Path:         path,
 		Hash:         hash,
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
@@ -112,7 +119,11 @@ func (s *TargetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 	return res, nil
 }
 
-func (s *TargetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+	if len(res.ProbeResults) == 0 {
+		return nil, nil
+	}
+
 	ctx, span := tracer.Start(ctx, "TargetScanner.Attach")
 	defer span.End()
 	span.SetAttributes(
@@ -165,7 +176,7 @@ type ContainerScanResult struct {
 }
 
 // ScanContainer scans a container for shared libraries.
-func (s *TargetScanner) ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error) {
+func (s *targetScanner) ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error) {
 	ctx, span := tracer.Start(ctx, "TargetScanner.ScanContainer")
 	span.SetAttributes(
 		attribute.String("container_id", id),
@@ -199,7 +210,11 @@ func (s *TargetScanner) ScanContainer(ctx context.Context, id, root string) (*Co
 	return res, nil
 }
 
-func (s *TargetScanner) AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error) {
+func (s *targetScanner) AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error) {
+	if len(res.SharedLibraries) == 0 {
+		return nil, nil
+	}
+
 	ctx, span := tracer.Start(ctx, "TargetScanner.AttachContainer")
 	defer span.End()
 

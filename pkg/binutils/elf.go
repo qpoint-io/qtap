@@ -101,7 +101,7 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 	}
 
 	e.hash = resolvable.New(func(ctx context.Context) (string, error) {
-		_, span := tracer.Start(context.Background(), "Elf.Hash",
+		_, span := tracer.Start(ctx, "Elf.Hash",
 			trace.WithAttributes(attribute.String("path", filePath)),
 		)
 		defer span.End()

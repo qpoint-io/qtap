@@ -504,15 +504,11 @@ func (p *Process) IsFiltered(flag ...config.FilterLevel) bool {
 	return false
 }
 
-func (p *Process) AddDetectedTLSProbeType(t string) {
+func (p *Process) SetDetectedTLSProbeTypes(types []string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.TLSProbeTypesDetected == nil {
-		p.TLSProbeTypesDetected = make([]string, 0, 1)
-	}
-
-	p.TLSProbeTypesDetected = append(p.TLSProbeTypesDetected, t)
+	p.TLSProbeTypesDetected = types
 }
 
 func (p *Process) CreatedAt() time.Time {

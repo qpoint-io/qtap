@@ -63,7 +63,7 @@ func TestNewElfContainer(t *testing.T) {
 		isContainer: true,
 	}
 	expected := tmpDir + "/test.elf"
-	assert.Equal(t, expected, e2.getFilePath())
+	assert.Equal(t, expected, e2.Path())
 }
 
 func TestElfElf(t *testing.T) {
@@ -428,15 +428,9 @@ func TestElfSearchSymbolsDynsym(t *testing.T) {
 
 // createTestElf creates a minimal valid ELF64 binary with symbols for testing.
 // Returns the path to the created file.
-func createTestElf(t interface {
-	TempDir() string
-	Helper()
-	Fatalf(format string, args ...any)
-}) string {
+func createTestElf(t *testing.T) string {
 	t.Helper()
-
-	tmpDir := t.TempDir()
-	elfPath := filepath.Join(tmpDir, "test.elf")
+	elfPath := t.TempDir() + "/test.elf"
 
 	// Build a minimal ELF64 with:
 	// - ELF header

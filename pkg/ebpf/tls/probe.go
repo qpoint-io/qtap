@@ -10,6 +10,8 @@ import (
 )
 
 // Probe describes a TLS probe that can be attached to a shared library or binary target.
+//
+//go:generate go tool go.uber.org/mock/mockgen --destination=probe_mock.go --package tls . Probe
 type Probe interface {
 	// Name returns the unique identifier for this probe (e.g., "openssl")
 	Name() string

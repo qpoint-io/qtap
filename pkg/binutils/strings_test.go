@@ -149,7 +149,7 @@ func TestElfGetFilePath(t *testing.T) {
 				root:        tt.root,
 				isContainer: tt.isContainer,
 			}
-			result := e.getFilePath()
+			result := e.Path()
 			if result != tt.expected {
 				t.Errorf("Elf.getFilePath() = %q, want %q", result, tt.expected)
 			}

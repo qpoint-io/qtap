@@ -1,7 +1,7 @@
 package binutils
 
 import (
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -94,7 +94,7 @@ func ComputeBinaryHash(f *os.File) (string, error) {
 	return fmt.Sprintf("%s:%016x", hashVersion, digest.Sum64()), nil
 }
 
-// ComputeFullHash computes a full SHA256 hash of the file.
+// ComputeFullHash computes a full SHA1 hash of the file.
 // This is slower but provides a cryptographically strong hash.
 func ComputeFullHash(path string) (string, error) {
 	f, err := os.Open(path)
@@ -103,7 +103,7 @@ func ComputeFullHash(path string) (string, error) {
 	}
 	defer f.Close()
 
-	h := sha256.New()
+	h := sha1.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("hashing file: %w", err)
 	}

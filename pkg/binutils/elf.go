@@ -78,7 +78,7 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 		isContainer: isContainer,
 	}
 
-	filePath := e.getFilePath()
+	filePath := e.Path()
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -134,7 +134,7 @@ func (e *Elf) Close() error {
 	return nil
 }
 
-func (e *Elf) getFilePath() string {
+func (e *Elf) Path() string {
 	if e.isContainer {
 		return filepath.Join(e.root, e.exe)
 	}

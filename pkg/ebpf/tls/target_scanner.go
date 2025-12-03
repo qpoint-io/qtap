@@ -104,6 +104,7 @@ func (s *targetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 
 	res := &ScanResult{
 		Hash:         hash,
+		Mtime:        elf.Mtime(),
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
 	for probeName, probe := range s.probes {

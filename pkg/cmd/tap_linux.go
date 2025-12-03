@@ -76,8 +76,6 @@ var (
 	persistentPlugins []config.Plugin
 )
 
-var tracer = telemetry.Tracer()
-
 func init() {
 	// Common options
 	rootCmd.Flags().StringVar(&qpointConfig, "config",

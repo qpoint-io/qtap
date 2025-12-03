@@ -182,7 +182,6 @@ func TestTlsManager(t *testing.T) {
 	require.Equal(t, 1, proc2NewCloser.closes)
 	require.Equal(t, 1, proc3Closer.closes)
 	require.Equal(t, 1, proc4Closer.closes)
-
 }
 
 type testProbeScanResult struct {

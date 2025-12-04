@@ -1,0 +1,182 @@
+name: Check DevTools Build
+
+on:
+  pull_request:
+    paths:
+      - 'pkg/devtools/app/**'
+      - '.github/workflows/devtools-check-build.yaml'
+
+jobs:
+  check-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for source changes without build changes
+        continue-on-error: true
+        id: check_changes
+        run: |
+          # Get the base and head refs
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          # Get list of commits in the PR
+          COMMITS=$(git rev-list --reverse "$BASE_SHA".."$HEAD_SHA" || true)
+          
+          WARNING_FOUND=false
+          ALL_SOURCE_CHANGES=""
+          
+          # Check each commit individually
+          for COMMIT in $COMMITS; do
+            # Get parent commit
+            PARENT=$(git rev-parse "$COMMIT^" 2>/dev/null || echo "$BASE_SHA")
+            
+            # Get source changes in this commit (excluding dist/build/node_modules)
+            COMMIT_SOURCE=$(git diff --name-only "$PARENT" "$COMMIT" -- 'pkg/devtools/app/**' | grep -v -E '(^pkg/devtools/app/(dist|build|node_modules)/|^pkg/devtools/app/(dist|build|node_modules)$)' || true)
+            
+            # Get dist changes in this commit
+            COMMIT_DIST=$(git diff --name-only "$PARENT" "$COMMIT" -- 'pkg/devtools/app/dist/**' || true)
+            
+            # If this commit has source changes but no dist changes, flag it
+            if [ -n "$COMMIT_SOURCE" ] && [ -z "$COMMIT_DIST" ]; then
+              WARNING_FOUND=true
+              if [ -n "$ALL_SOURCE_CHANGES" ]; then
+                ALL_SOURCE_CHANGES="$ALL_SOURCE_CHANGES"$'\n'"$COMMIT_SOURCE"
+              else
+                ALL_SOURCE_CHANGES="$COMMIT_SOURCE"
+              fi
+            fi
+          done
+          
+          # Remove duplicates and sort
+          if [ -n "$ALL_SOURCE_CHANGES" ]; then
+            SOURCE_CHANGES=$(echo "$ALL_SOURCE_CHANGES" | sort -u)
+          else
+            SOURCE_CHANGES=""
+          fi
+          
+          if [ "$WARNING_FOUND" = true ]; then
+            echo "warning=true" >> $GITHUB_OUTPUT
+            # Store changed files (escape newlines for GitHub output)
+            echo "changed_files<<EOF" >> $GITHUB_OUTPUT
+            echo "$SOURCE_CHANGES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            # Count changes (handle empty case)
+            if [ -z "$SOURCE_CHANGES" ]; then
+              FILE_COUNT=0
+            else
+              FILE_COUNT=$(echo "$SOURCE_CHANGES" | grep -v '^$' | wc -l | tr -d ' ')
+            fi
+            echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
+            echo "::warning ::Changes were detected in pkg/devtools/app but no changes were found in pkg/devtools/app/dist. Did you forget to run 'npm run build' before committing?"
+            exit 1
+          else
+            echo "warning=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post review comment
+        if: steps.check_changes.outputs.warning == 'true'
+        uses: actions/github-script@v7
+        env:
+          CHANGED_FILES: ${{ steps.check_changes.outputs.changed_files }}
+          FILE_COUNT: ${{ steps.check_changes.outputs.file_count }}
+        with:
+          script: |
+            const changedFiles = process.env.CHANGED_FILES.split('\n').filter(f => f.trim());
+            const fileCount = parseInt(process.env.FILE_COUNT) || changedFiles.length;
+            const commitSha = context.payload.pull_request.head.sha;
+            const shortSha = commitSha.substring(0, 7);
+            
+            let fileList = '';
+            if (changedFiles.length > 0) {
+              fileList = changedFiles.map(f => `- \`${f}\``).join('\n');
+            }
+            
+            const body = `⚠️ **Build Check Warning** <!-- DevTools Build Check -->
+            
+            Changes were detected in \`pkg/devtools/app\` but no corresponding changes were found in \`pkg/devtools/app/dist\`.
+            
+            **Commit:** \`${shortSha}\`
+            
+            **Summary:**
+            - **${fileCount}** source file(s) modified
+            - **0** build file(s) updated
+            
+            **Changed Files:**
+            ${fileList}
+            
+            **Action Required:**
+            Please run \`npm run build\` in the \`pkg/devtools/app\` directory and commit the updated build files.`;
+
+            // Search for existing review comments
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+
+            // Find existing review with our marker
+            const existingReview = reviews.data.find(review => 
+              review.body && review.body.includes('<!-- DevTools Build Check -->')
+            );
+
+            if (existingReview) {
+              // Update existing review comment
+              await github.rest.pulls.updateReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                review_id: existingReview.id,
+                body: body
+              });
+            } else {
+              // Create new review comment
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                commit_id: commitSha,
+                event: 'COMMENT',
+                body: body
+              });
+            }
+
+      - name: Update review comment with success
+        if: steps.check_changes.outputs.warning == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commitSha = context.payload.pull_request.head.sha;
+            const shortSha = commitSha.substring(0, 7);
+            
+            const body = `✅ **Build Check Passed** <!-- DevTools Build Check -->
+            
+            All source changes in \`pkg/devtools/app\` have corresponding updates in \`pkg/devtools/app/dist\`.
+            
+            **Commit:** \`${shortSha}\``;
+
+            // Search for existing review comments
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+
+            // Find existing review with our marker
+            const existingReview = reviews.data.find(review => 
+              review.body && review.body.includes('<!-- DevTools Build Check -->')
+            );
+
+            if (existingReview) {
+              // Update existing review comment with success message
+              await github.rest.pulls.updateReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                review_id: existingReview.id,
+                body: body
+              });
+            }

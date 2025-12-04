@@ -14,6 +14,7 @@ import (
 	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
+	"github.com/qpoint-io/qtap/pkg/devtools"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/e2e"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
@@ -41,6 +42,7 @@ var (
 	e2ectx           *e2e.Context
 	serviceFactories []services.FactoryFn
 	pluginFactories  []plugins.HttpPlugin
+	devtoolsManager  *devtools.Manager
 )
 
 func mainSetup() error {
@@ -90,29 +92,6 @@ func mainSetup() error {
 		e2ectx.SetMachineIP(conn.LocalAddr().(*net.UDPAddr).IP)
 	}
 
-	serviceFactories = []services.FactoryFn{
-		// Eventstore services
-		func() services.Factory { return e2ectx.EventStore },
-
-		// Objectstore services
-		func() services.Factory { return e2ectx.ObjectStore },
-
-		func() services.Factory { return &qscannoop.Factory{} },
-
-		// Add more services here...
-		func() services.Factory { return &rulekitsvc.Factory{} },
-		func() services.Factory { return &connmeta.Factory{} },
-		func() services.Factory { return &reporter.Factory{} },
-	}
-
-	pluginFactories = []plugins.HttpPlugin{
-		wrapper.Catch(&loggerPlugin.Factory{}),
-		wrapper.Catch(&report.Factory{}),
-		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),
-		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
-		wrapper.Catch(&httpcapture.Factory{}),
-	}
-
 	if syscall.Getuid() != 0 {
 		return fmt.Errorf("please run e2e tests as root to load BPF programs and maps")
 	}
@@ -154,6 +133,39 @@ func mainSetup() error {
 
 	pm := process.NewProcessManager(logger, procEbpfMan)
 	confManager.SubscribeSetter(pm)
+
+	// Initialize devtools manager
+	devtoolsManager = devtools.NewManager(
+		devtools.WithLogger(logger),
+		devtools.WithProcessSnapshotter(pm),
+	)
+	pm.Observe(devtoolsManager)
+	devtoolsEventStoreFactory := devtoolsManager.EventStoreFactory()
+	devtoolsObjectStoreFactory := devtoolsManager.ObjectStoreFactory()
+
+	serviceFactories = []services.FactoryFn{
+		func() services.Factory { return &rulekitsvc.Factory{} },
+		func() services.Factory { return &connmeta.Factory{} },
+		func() services.Factory { return &reporter.Factory{} },
+		func() services.Factory { return &qscannoop.Factory{} },
+
+		// Eventstore services
+		func() services.Factory { return devtoolsEventStoreFactory },
+		func() services.Factory { return e2ectx.EventStore },
+
+		// Objectstore services
+		func() services.Factory { return e2ectx.ObjectStore },
+		func() services.Factory { return devtoolsObjectStoreFactory },
+	}
+
+	pluginFactories = []plugins.HttpPlugin{
+		wrapper.Catch(&loggerPlugin.Factory{}),
+		wrapper.Catch(&report.Factory{}),
+		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),
+		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
+		wrapper.Catch(&httpcapture.Factory{}),
+		wrapper.Catch(devtoolsManager.PluginFactory()),
+	}
 
 	// TODO(e2e)
 	// Initialize container detection
@@ -205,11 +217,37 @@ func mainSetup() error {
 				Type: connmeta.Type.String(),
 			}
 		},
-		// report connections to the default event store
+		// report connections to the e2e event store
 		func(cfg *config.Config) *config.ServiceConfig {
 			return &config.ServiceConfig{
 				Type: reporter.Type.String(),
 				Config: &reporter.Config{
+					// only report connections once they are closed
+					FirstReportDeadline: 0,
+					ReportInterval:      0,
+				},
+			}
+		},
+		// devtools event store
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				ID:   "devtools",
+				Type: devtoolsEventStoreFactory.FactoryType().String(),
+			}
+		},
+		// devtools object store
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				ID:   "devtools",
+				Type: devtoolsObjectStoreFactory.FactoryType().String(),
+			}
+		},
+		// report connections to the devtools event store
+		func(cfg *config.Config) *config.ServiceConfig {
+			return &config.ServiceConfig{
+				Type: reporter.Type.String(),
+				Config: &reporter.Config{
+					EventStoreID: "devtools",
 					// only report connections once they are closed
 					FirstReportDeadline: 0,
 					ReportInterval:      0,
@@ -224,6 +262,9 @@ func mainSetup() error {
 		logger,
 		plugins.SetBufferSize(2*1<<20), // 2MB
 		plugins.SetPluginRegistry(pluginRegistry),
+		plugins.AddPersistentPlugins(config.Plugin{
+			Type: string(devtools.PluginTypeDevTools),
+		}),
 	)
 	confManager.SubscribeSetter(pluginManager)
 	if err := pluginManager.Start(); err != nil {

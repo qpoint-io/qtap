@@ -3,6 +3,7 @@ module github.com/qpoint-io/qtap
 go 1.25.5
 
 require (
+	github.com/advbet/sseclient v0.0.0-20250521071159-d88bf8fc2362
 	github.com/andybalholm/brotli v1.1.1
 	github.com/axiomhq/axiom-go v0.23.3
 	github.com/charmbracelet/glamour v0.8.0

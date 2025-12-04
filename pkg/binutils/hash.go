@@ -108,5 +108,5 @@ func ComputeFullHash(path string) (string, error) {
 		return "", fmt.Errorf("hashing file: %w", err)
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return fmt.Sprintf("%s:%s", hashVersion, hex.EncodeToString(h.Sum(nil))), nil
 }

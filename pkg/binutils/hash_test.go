@@ -88,8 +88,7 @@ func TestComputeFullHash(t *testing.T) {
 
 	hash, err := ComputeFullHash(tmpFile)
 	require.NoError(t, err)
-	assert.NotEmpty(t, hash)
-	assert.Len(t, hash, 64)
+	assert.Equal(t, "v1:071d21ad29bf585e5fb4e87b96479fd15ba6fe7c", hash)
 
 	// Test consistency
 	hash2, _ := ComputeFullHash(tmpFile)

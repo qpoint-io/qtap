@@ -98,6 +98,10 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 
 	return &ObjectStore{
 		put: func(logger *zap.Logger, artifact *eventstore.Artifact) {
+			// We create a new context that is not cancelled when the parent
+			// is because the parent context is cancelled when the connection
+			// is closed but the object may not have been uploaded yet.
+			ctx := context.WithoutCancel(ctx)
 			logger = logger.With(f.LogFields(artifact)...)
 			m, err := f.objectstore.Put(ctx, artifact.Digest(), artifact.ContentType, artifact.Data)
 			if err != nil {

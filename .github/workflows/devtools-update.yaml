@@ -8,7 +8,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  update-devtools:
+  build-devtools:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,8 +18,8 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Run update-devtools
-        run: make update-devtools
+      - name: Run build-devtools
+        run: make build-devtools
 
       - name: Check for changes
         id: changes
@@ -35,7 +35,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           commit-message: Update devtools
-          branch: auto/update-devtools
+          branch: auto/build-devtools
           delete-branch: true
-          title: "[auto] Update devtools"
-          body: "This is an automated PR to update the devtools."
+          title: "[auto] Update devtools build"
+          body: "This is an automated PR to update the devtools build."

@@ -5,10 +5,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/moby/moby/pkg/parsers/kernel"
@@ -17,6 +19,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/container"
+	"github.com/qpoint-io/qtap/pkg/devtools"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
@@ -33,6 +36,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/status"
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
@@ -52,6 +56,7 @@ var (
 	dockerSocketEndpoint     string
 	containerdSocketEndpoint string
 	criRuntimeSocketEndpoint string
+	enableDevTools           bool
 )
 
 var (
@@ -65,6 +70,8 @@ var (
 
 		// Add more plugins here...
 	}
+
+	persistentPlugins []config.Plugin
 )
 
 func init() {
@@ -130,6 +137,11 @@ func init() {
 	rootCmd.Flags().StringVar(&httpdListen, "httpd-listen",
 		getEnvOr("HTTPD_LISTEN", "0.0.0.0:10001"),
 		"IP:PORT of qtap http server to listen on")
+
+	// Dev Tools options
+	rootCmd.Flags().BoolVar(&enableDevTools, "enable-dev-tools",
+		getEnvBoolOr("ENABLE_DEV_TOOLS", false),
+		"Enable local Dev Tools server")
 }
 
 // This skeleton version of runrootCmd provides the basic structure
@@ -287,6 +299,60 @@ func runTapCmd(logger *zap.Logger) {
 		panic(fmt.Errorf("failed to parse http buffer size: %w", err))
 	}
 
+	var devtoolsManager *devtools.Manager
+	if enableDevTools {
+		devtoolsManager = devtools.NewManager(
+			devtools.WithLogger(logger),
+			devtools.WithProcessSnapshotter(pm),
+		)
+
+		// set up process observer
+		pm.Observe(devtoolsManager)
+
+		// register the dev tools stores
+		devtoolsEventStoreFactory := devtoolsManager.EventStoreFactory()
+		devtoolsObjectStoreFactory := devtoolsManager.ObjectStoreFactory()
+		serviceFactories = append(serviceFactories,
+			func() services.Factory { return devtoolsEventStoreFactory },
+			func() services.Factory { return devtoolsObjectStoreFactory },
+		)
+
+		// register dev tools service configs
+		extraServiceConfigs = append(extraServiceConfigs,
+			// event store
+			func(cfg *config.Config) *config.ServiceConfig {
+				return &config.ServiceConfig{
+					ID:   "devtools",
+					Type: devtoolsEventStoreFactory.FactoryType().String(),
+				}
+			},
+			// object store
+			func(cfg *config.Config) *config.ServiceConfig {
+				return &config.ServiceConfig{
+					ID:   "devtools",
+					Type: devtoolsObjectStoreFactory.FactoryType().String(),
+				}
+			},
+			// connection reporter
+			func(cfg *config.Config) *config.ServiceConfig {
+				return &config.ServiceConfig{
+					Type: reporter.Type.String(),
+					Config: &reporter.Config{
+						EventStoreID:        "devtools",
+						FirstReportDeadline: 100 * time.Millisecond,
+						ReportInterval:      500 * time.Millisecond,
+					},
+				}
+			},
+		)
+
+		// register plugin
+		persistentPlugins = append(persistentPlugins, config.Plugin{
+			Type: string(devtools.PluginTypeDevTools),
+		})
+		pluginFactories = append(pluginFactories, wrapper.Catch(devtoolsManager.PluginFactory()))
+	}
+
 	// Initialize service and plugin systems
 	svcFactoryRegistry := services.NewFactoryRegistry()
 	svcManager := services.NewFactoryManager(ctx, logger, svcFactoryRegistry)
@@ -299,6 +365,7 @@ func runTapCmd(logger *zap.Logger) {
 		logger,
 		plugins.SetBufferSize(int(httpBufsize)),
 		plugins.SetPluginRegistry(pluginRegistry),
+		plugins.AddPersistentPlugins(persistentPlugins...),
 	)
 	configManager.SubscribeSetter(pluginManager)
 	if err := pluginManager.Start(); err != nil {
@@ -392,6 +459,18 @@ func runTapCmd(logger *zap.Logger) {
 			logger.Error("unable to cleanup status server")
 		}
 	}()
+	if devtoolsManager != nil {
+		// register http routes
+		if err := devtoolsManager.RegisterRoutes(s.Mux(), "/devtools"); err != nil {
+			logger.Error("failed to register devtools routes", zap.Error(err))
+		} else {
+			// set up `/` -> `/devtools` redirect
+			s.Mux().HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, "/devtools/", http.StatusTemporaryRedirect)
+			})
+			logger.Info("devtools running", zap.String("url", "http://"+httpdListen+"/devtools"))
+		}
+	}
 
 	logger.Info("eBPF program loaded and listening")
 

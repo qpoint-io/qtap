@@ -1,0 +1,130 @@
+<template>
+  <div>
+    <svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 253.07 253.55" class="w-[300px]">
+      <g id="main">
+        <g>
+          <circle class="cls-2" cx="126.82" cy="126.73" r="125.94"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="76.96 11.04 128.53 62.61 128.53 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1 ani-white" points="86.32 7.44 137.37 58.49 137.37 84.07"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="52.88" y1="24.49" x2="110.9" y2="82.5"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="60.8" y1="19.46" x2="121.8" y2="80.45"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="69.08" y1="14.77" x2="123.1" y2="68.79"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="107.11 2.32 155.04 50.25 155.04 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="119.05 1.3 163.88 46.13 163.88 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="131.58 .87 172.71 42.01 172.71 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="145.88 2.22 181.55 37.89 181.55 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="162.02 5.4 190.39 33.77 190.39 84.07"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="194.9" y1="232.7" x2="169.06" y2="206.86"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="186.77" y1="237.52" x2="158.16" y2="208.91"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="178.09" y1="241.8" x2="156.86" y2="220.57"/>
+          <polyline :class="getAnimationClass()" class="cls-1 ani-white" points="169.06 245.29 149.26 225.49 149.26 204.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="147.76 250.94 130.55 233.73 130.55 204.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="135.82 252.48 121.19 237.85 121.19 204.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="122.54 252.67 111.83 241.97 111.83 204.02"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="102.48" y1="250.88" x2="102.48" y2="204.02"/>
+          <line :class="getAnimationClass()" class="cls-1" x1="93.12" y1="248.56" x2="93.12" y2="204.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="83.76 245.29 83.76 221.99 83.76 215.57 83.76 204.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points=".87 124.92 72.78 196.83 171.12 196.83 202.05 227.75"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="1.62 113 75.71 187.1 174.06 187.1 209.17 222.22"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="3.3 102.03 78.65 177.38 176.99 177.38 215.63 216.02"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="5.77 91.85 81.58 167.65 179.92 167.65 222.01 209.74"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="9.08 82.5 84.51 157.93 182.85 157.93 227.42 202.5"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="16.97 65.08 90.37 138.48 188.71 138.48 237.36 187.13"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="21.78 57.23 93.3 128.76 191.65 128.76 241.52 178.64"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="27.06 49.85 96.24 119.03 194.58 119.03 245.24 169.7"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="32.8 42.94 99.17 109.31 197.51 109.31 248.29 160.09"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="38.99 36.47 102.1 99.59 200.44 99.59 250.65 149.8"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="45.94 30.77 105.03 89.86 203.37 89.86 252.2 138.69"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="12.68 73.44 87.44 148.21 185.78 148.21 232.63 195.06"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="96.34 4.5 146.2 54.37 146.2 84.07"/>
+          <polyline :class="getAnimationClass()" class="cls-1" points="158.85 248.56 153.33 243.04 149.26 238.96 139.9 229.61 139.9 204.02"/>
+        </g>
+      </g>
+    </svg>
+  </div>
+</template>
+<style>
+@import "../../../assets/main.css";
+
+.cls-2 {
+  @apply fill-[#c499ff] dark:fill-black;
+}
+
+.cls-1 {
+  fill: none;
+  stroke-miterlimit: 10;
+  stroke-width: 3px;
+}
+
+.animated-line{
+  @apply stroke-black dark:stroke-[#a067f0];
+  stroke-dasharray: 20 4 42 4;
+  animation: dash 35s linear infinite;
+}
+
+.ani-reverse{
+  animation-direction: reverse;
+  animation-duration: 45s;
+}
+
+.ani-white{
+  @apply stroke-white dark:stroke-gray-200;
+}
+.ani-speed-1{
+  animation-duration: 20s;
+}
+.ani-speed-2{
+  animation-duration: 14s;
+}
+.ani-speed-3{
+  animation-duration: 24s;
+}
+
+.ani-dashes-1{
+  stroke-dasharray: 10 28 10 12 4 2;
+}
+.ani-dashes-2{
+  stroke-dasharray: 4 16 8 22 30 3 9 2 2;
+}
+.ani-dashes-3{
+  stroke-dasharray: 4 18 22 12 2;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: 1000;
+  }
+}
+
+</style>
+
+<script setup lang="ts">
+
+const getAnimationClass = (): string => {
+  let styles = 'animated-line'
+
+  // Possibly reverse
+  if(Math.random() > 0.6)
+    styles = `${styles} ani-reverse`
+  if(Math.random() > 0.9)
+    styles = `${styles} ani-white`
+  
+  // Vary the speed
+  if(Math.random() > 0.9)
+    styles = `${styles} ani-speed-1`
+  else if(Math.random() > 0.9)
+    styles = `${styles} ani-speed-2`
+  else if(Math.random() > 0.9)
+    styles = `${styles} ani-speed-3`
+  
+  // Vary the dashes
+  if(Math.random() > 0.9)
+    styles = `${styles} ani-dashes-1`
+  else if(Math.random() > 0.9)
+    styles = `${styles} ani-dashes-2`
+  else if(Math.random() > 0.9)
+    styles = `${styles} ani-dashes-3`
+  
+    return styles
+}
+</script>

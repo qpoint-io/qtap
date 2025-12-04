@@ -1,0 +1,51 @@
+<template>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 35.23 29.61" class="w-full">
+    <g>
+      <circle
+        fill="none"
+        stroke="currentColor"
+        stroke-miterlimit="10"
+        cx="12.16"
+        cy="17.45"
+        r="11.66"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        stroke-miterlimit="10"
+        fill-rule="evenodd"
+        d="M16.19,14.7c0,1.21.98,2.18,2.18,2.18s2.18-.98,2.18-2.18"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        stroke-miterlimit="10"
+        fill-rule="evenodd"
+        d="M10.22,22.03c0,1.21.98,2.18,2.18,2.18s2.18-.98,2.18-2.18"
+      />
+      <path
+        fill="none"
+        stroke="currentColor"
+        stroke-miterlimit="10"
+        fill-rule="evenodd"
+        d="M8.12,14.7c0,1.21-.98,2.18-2.18,2.18s-2.18-.98-2.18-2.18"
+      />
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill-rule="evenodd"
+        points="23.37 2.67 27.43 2.67 23.5 6.59 27.47 6.59"
+      />
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        fill-rule="evenodd"
+        points="30.62 .5 34.68 .5 30.76 4.42 34.73 4.42"
+      />
+    </g>
+  </svg>
+</template>

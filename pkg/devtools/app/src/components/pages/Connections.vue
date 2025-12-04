@@ -65,10 +65,25 @@
                 :class="{
                   'text-right justify-end': column.key === 'duration',
                   'text-center justify-center': column.key === 'status',
+                  'justify-between': column.key === 'destination',
                 }"
                 :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
               >
                 <span class="truncate">{{ column.label }}</span>
+                
+                <!-- Show IPs checkbox for destination column -->
+                <label
+                  v-if="column.key === 'destination'"
+                  class="flex items-center gap-1.5 text-[10px] cursor-pointer shrink-0 ml-2"
+                  @click.stop
+                >
+                  <input
+                    type="checkbox"
+                    v-model="showIPs"
+                    class="w-3 h-3 cursor-pointer"
+                  />
+                  <span class="text-dt-text-tertiary dark:text-dt-text-dark-tertiary">show IPs</span>
+                </label>
                 
                 <!-- Resize Handle -->
                 <div
@@ -129,7 +144,7 @@
                 class="px-2 py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light truncate text-dt-text-secondary dark:text-dt-text-dark-secondary text-[11px] font-mono"
                 :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
               >
-                {{ formatAddress(connection.destination) }}
+                {{ getDestinationDisplay(connection) }}
               </div>
 
               <!-- Status -->
@@ -587,6 +602,20 @@ const formatAddressWithFamily = (endpoint: ConnectionEndpoint): string => {
   return `${endpoint.address.family} ${endpoint.address.ip}:${endpoint.address.port}`
 }
 
+// State for showing IPs instead of endpointId
+const showIPs = ref(false)
+
+// Get destination display text (IP if showIPs is checked, otherwise endpointId with port if available, fallback to IP)
+const getDestinationDisplay = (connection: Connection): string => {
+  if (showIPs.value) {
+    return formatAddress(connection.destination)
+  }
+  if (connection.meta.endpointId && connection.meta.endpointId.trim() !== '') {
+    return `${connection.meta.endpointId}:${connection.destination.address.port}`
+  }
+  return formatAddress(connection.destination)
+}
+
 const truncateId = (id: string): string => {
   if (id.length <= 16) return id
   return id.substring(0, 8) + '...' + id.substring(id.length - 8)
@@ -723,3 +752,4 @@ watch(
   { flush: 'post' }
 )
 </script>
+

@@ -132,6 +132,12 @@ build: $(BIN_DIR) generate ## Build for the current platform
 		cmd/$(BINARY_NAME)/main.go
 	@echo $(SUCCESS) Build complete! $(RESET)
 
+.PHONY: build-devtools
+build-devtools:
+	@echo $(INFO) Building devtools... $(RESET)
+	cd pkg/devtools/app && npm ci --prefer-offline && npm run build
+	@echo $(SUCCESS) Devtools built! $(RESET)
+
 # =============================================================================
 # 🔄 Development Workflow
 # =============================================================================

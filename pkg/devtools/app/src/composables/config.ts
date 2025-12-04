@@ -7,7 +7,8 @@
 export function useConfig() {
   const getSSEEndpoint = (): string => {
     // Use environment variable if set (dev mode override)
-    if (import.meta.env.VITE_SSE_ENDPOINT) {
+    // Only check in dev mode - production builds should use default
+    if (import.meta.env.DEV && import.meta.env.VITE_SSE_ENDPOINT) {
       return import.meta.env.VITE_SSE_ENDPOINT as string
     }
     

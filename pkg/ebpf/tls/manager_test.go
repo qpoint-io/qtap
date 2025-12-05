@@ -40,7 +40,11 @@ func TestTlsManager(t *testing.T) {
 	*/
 	proc2, proc2Closer := testProcess(2, "/bin/ls", "root")
 	proc2ScanRes := testProcScanRes(proc2, "openssl")
-	mockScanner.EXPECT().Scan(gomock.Any(), "/proc/2/exe").Return(proc2ScanRes, nil)
+	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
+		Path:    "/proc/2/exe",
+		Cmdline: []string{"/bin/ls"},
+		Root:    "/proc/2/root",
+	}).Return(proc2ScanRes, nil)
 	mockScanner.EXPECT().Attach(gomock.Any(), 2, "/proc/2/exe", proc2ScanRes).Return(proc2Closer, nil)
 
 	ctrRootScanRes := &ContainerScanResult{
@@ -74,12 +78,20 @@ func TestTlsManager(t *testing.T) {
 
 	proc3, proc3Closer := testProcess(3, "/bin/sh", "container-1")
 	proc3ScanRes := testProcScanRes(proc3)
-	mockScanner.EXPECT().Scan(gomock.Any(), "/proc/3/exe").Return(proc3ScanRes, nil)
+	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
+		Path:    "/proc/3/exe",
+		Cmdline: []string{"/bin/sh"},
+		Root:    "/proc/3/root",
+	}).Return(proc3ScanRes, nil)
 	mockScanner.EXPECT().Attach(gomock.Any(), 3, "/proc/3/exe", proc3ScanRes).Return(proc3Closer, nil)
 
 	proc4, proc4Closer := testProcess(4, "/bin/sudo", "container-1")
 	proc4ScanRes := testProcScanRes(proc4)
-	mockScanner.EXPECT().Scan(gomock.Any(), "/proc/4/exe").Return(proc4ScanRes, nil)
+	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
+		Path:    "/proc/4/exe",
+		Cmdline: []string{"/bin/sudo"},
+		Root:    "/proc/4/root",
+	}).Return(proc4ScanRes, nil)
 	mockScanner.EXPECT().Attach(gomock.Any(), 4, "/proc/4/exe", proc4ScanRes).Return(proc4Closer, nil)
 
 	ctr1ScanRes := &ContainerScanResult{
@@ -142,7 +154,11 @@ func TestTlsManager(t *testing.T) {
 	proc2.Exe = "/bin/curl"
 	proc2NewScanRes := testProcScanRes(proc2, "gnutls") // openssl -> gnutls
 	proc2NewCloser := &testCloser{}
-	mockScanner.EXPECT().Scan(gomock.Any(), "/proc/2/exe").Return(proc2NewScanRes, nil)
+	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
+		Path:    "/proc/2/exe",
+		Cmdline: []string{"/bin/curl"},
+		Root:    "/proc/2/root",
+	}).Return(proc2NewScanRes, nil)
 	mockScanner.EXPECT().Attach(gomock.Any(), 2, "/proc/2/exe", proc2NewScanRes).Return(proc2NewCloser, nil)
 
 	err = manager.ProcessReplaced(ctx, proc2)

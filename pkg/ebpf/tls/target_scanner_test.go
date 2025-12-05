@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap/zaptest"
@@ -34,15 +33,15 @@ func Test_targetScanner(t *testing.T) {
 	var scanRes *ScanResult
 
 	t.Run("Scan", func(t *testing.T) {
-		opensslProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(elf *binutils.Elf) bool {
-			return elf.Path() == f1
+		opensslProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(target *ExeElfScannable) bool {
+			return target.Path == f1
 		})).Return(&testProbeScanResult{name: "openssl", detected: false}, nil)
-		gnutlsProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(elf *binutils.Elf) bool {
-			return elf.Path() == f1
+		gnutlsProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(target *ExeElfScannable) bool {
+			return target.Path == f1
 		})).Return(&testProbeScanResult{name: "gnutls", detected: true}, nil)
 
 		var err error
-		scanRes, err = scanner.Scan(ctx, f1)
+		scanRes, err = scanner.Scan(ctx, &ExeScannable{Path: f1})
 		require.NoError(t, err)
 		require.Equal(t, &ScanResult{
 			Hash:  "v1:5fc052f589b5b2bf",
@@ -61,20 +60,20 @@ func Test_targetScanner(t *testing.T) {
 			// scanning again should hit the cache
 			// NOTE: we should not change the value of the original `scanRes` variable
 			// here at it is used in the Attach tests.
-			cacheScanRes, err := scanner.Scan(ctx, f1)
+			cacheScanRes, err := scanner.Scan(ctx, &ExeScannable{Path: f1})
 			require.NoError(t, err)
 			require.Equal(t, cacheScanRes, cached)
 
 			// changing the mtime should invalidate the cache
 			require.NoError(t, os.Chtimes(f1, time.Unix(fakeMtime+1, 0), time.Unix(fakeMtime+1, 0)))
-			opensslProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(elf *binutils.Elf) bool {
-				return elf.Path() == f1
+			opensslProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(target *ExeElfScannable) bool {
+				return target.Path == f1
 			})).Return(&testProbeScanResult{name: "openssl", detected: false}, nil)
-			gnutlsProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(elf *binutils.Elf) bool {
-				return elf.Path() == f1
+			gnutlsProbe.EXPECT().Scan(gomock.Any(), gomock.Cond(func(target *ExeElfScannable) bool {
+				return target.Path == f1
 			})).Return(&testProbeScanResult{name: "gnutls", detected: false}, nil)
 
-			cacheScanRes, err = scanner.Scan(ctx, f1)
+			cacheScanRes, err = scanner.Scan(ctx, &ExeScannable{Path: f1})
 			require.NoError(t, err)
 			require.NotEqual(t, cacheScanRes, cached)
 			require.Equal(t, cacheScanRes.Hash, cached.Hash)

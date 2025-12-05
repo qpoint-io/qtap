@@ -228,12 +228,16 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 	attachToken := m.procAttachTokens.Get(proc.Pid)
 
 	if m.observer != nil {
-		if e := m.observer.ScanStarted(ctx, proc); e != nil {
+		if e := m.observer.ProcessScanStarted(ctx, proc); e != nil {
 			m.logger.Error("error notifying tls observer of process scan", zap.Error(e))
 		}
 	}
 
-	res, err := m.scanner.Scan(ctx, proc.PidExe)
+	res, err := m.scanner.Scan(ctx, &ExeScannable{
+		Path:    proc.PidExe,
+		Cmdline: proc.FullCmd(),
+		Root:    proc.RootFS(),
+	})
 	if err != nil {
 		return err
 	}
@@ -262,7 +266,7 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 	})
 
 	if m.observer != nil {
-		if e := m.observer.AttachCompleted(ctx, proc); e != nil {
+		if e := m.observer.ProcessAttachCompleted(ctx, proc); e != nil {
 			m.logger.Error("error notifying tls observer of process attach", zap.Error(e))
 		}
 	}
@@ -303,12 +307,24 @@ func (m *TlsManager) ContainerStarted(ctx context.Context, id, root string) {
 		return
 	}
 
+	if m.observer != nil {
+		if e := m.observer.ContainerScanStarted(ctx, id); e != nil {
+			m.logger.Error("error notifying tls observer of container scan", zap.Error(e))
+		}
+	}
+
 	closer, err := m.scanAndAttachContainer(ctx, id, root)
 	// mark container as scanned
 	m.containers.Store(id, closer)
 	if err != nil {
 		// NOTE: perhaps we should track the number of failed attempts and allow one retry before giving up.
 		m.logger.Error("failed to scan container", zap.String("container_id", id), zap.Error(err))
+	}
+
+	if m.observer != nil {
+		if e := m.observer.ContainerAttachCompleted(ctx, id); e != nil {
+			m.logger.Error("error notifying tls observer of container attach", zap.Error(e))
+		}
 	}
 }
 
@@ -367,9 +383,11 @@ func newTokenProvider[T comparable]() *tokenProvider[T] {
 }
 
 type TlsObserver interface {
-	ScanStarted(ctx context.Context, proc *process.Process) error
-	AttachCompleted(ctx context.Context, proc *process.Process) error
+	ProcessScanStarted(ctx context.Context, proc *process.Process) error
+	ProcessAttachCompleted(ctx context.Context, proc *process.Process) error
 	ProcessStopped(ctx context.Context, proc *process.Process) error
+	ContainerScanStarted(ctx context.Context, id string) error
+	ContainerAttachCompleted(ctx context.Context, id string) error
 }
 
 func (m *TlsManager) SetObserver(o TlsObserver) {

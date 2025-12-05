@@ -26,8 +26,8 @@ const (
 
 var tracer = telemetry.Tracer()
 
-// OpenSSL symbols we hook
-var symbols []binutils.SymbolSearch
+// OpenSSL symbolSearch we hook
+var symbolSearch []binutils.SymbolSearch
 
 func init() {
 	for _, sym := range []string{
@@ -36,8 +36,10 @@ func init() {
 		"SSL_write",
 		"SSL_write_ex",
 		"SSL_free",
+		"SSL_new",
+		"SSL_set_cert_cb",
 	} {
-		symbols = append(symbols, binutils.SymbolSearch{
+		symbolSearch = append(symbolSearch, binutils.SymbolSearch{
 			Name:          sym,
 			MatchStrategy: binutils.MatchStrategyExact,
 		})
@@ -77,31 +79,22 @@ func (s *Probe) Name() string {
 }
 
 // Scan analyzes the binary to find symbol addresses.
-func (s *Probe) Scan(ctx context.Context, ef *binutils.Elf) (tls.ProbeScanResult, error) {
+func (s *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.ProbeScanResult, error) {
 	ctx, span := tracer.Start(ctx, "OpenSSLScanner.Scan")
 	defer span.End()
 
-	var result OpenSSLScanResult
-
 	// find the symbols from the binary
-	syms, err := ef.SearchSymbols(ctx, symbols, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
+	syms, err := target.Elf.SearchSymbols(ctx, symbolSearch, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
 	if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
 		return nil, fmt.Errorf("searching symbols: %w", err)
 	}
 
 	// calculate the addresses of the symbols
-	syms = ef.CalculateUprobeAddresses(ctx, syms)
+	syms = target.Elf.CalculateUprobeAddresses(ctx, syms)
 
-	result.Symbols = make([]elf.Symbol, 0, len(syms))
-	for _, sym := range syms {
-		if sym.Value == 0 || sym.Size == 0 {
-			// we are attaching to a statically linked binary, skip zero addresses
-			continue
-		}
-		result.Symbols = append(result.Symbols, sym)
-	}
-
-	return &result, nil
+	return &OpenSSLScanResult{
+		Symbols: syms,
+	}, nil
 }
 
 // Attach attaches uprobes to the binary.
@@ -109,36 +102,16 @@ func (s *Probe) Attach(ctx context.Context, target *tls.ExeAttachable, result tl
 	ctx, span := tracer.Start(ctx, "OpenSSLScanner.Attach")
 	defer span.End()
 
+	ll := s.logger.With(zap.String("exe", target.Path))
+
 	r, ok := result.(*OpenSSLScanResult)
 	if !ok {
 		// code error, should never happen
-		s.logger.DPanic("invalid result type", zap.Any("result", result))
+		ll.DPanic("invalid result type", zap.Any("result", result))
 		return nil, errors.New("invalid result type: expected *OpenSSLScanResult")
 	}
 
-	// Create probes
-	probes := s.probeFn()
-
-	var closer tls.MultiCloser
-	// Attach each probe
-	for _, probe := range probes {
-		for _, sym := range r.Symbols {
-			if sym.Value == 0 || sym.Size == 0 {
-				// we are attaching to a statically linked binary, skip zero addresses
-				continue
-			}
-
-			if sym.Name == probe.Function {
-				if err := probe.Attach(ctx, target.Exe, sym.Value); err != nil {
-					return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
-				}
-				closer = append(closer, &tls.DetacherCloser{Detacher: probe})
-				break
-			}
-		}
-	}
-
-	return closer, nil
+	return tls.AttachProbes(ctx, ll, target.Exe, r.Symbols, binutils.MatchStrategyExact, s.probeFn(), true)
 }
 
 // AttachLibrary implements tls.LibraryAttacher.
@@ -161,6 +134,8 @@ func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer
 	defer span.End()
 	span.SetAttributes(attribute.String("name", name), attribute.String("path", path))
 
+	ll := s.logger.With(zap.String("exe", path))
+
 	// Open the library executable
 	ex, err := link.OpenExecutable(path)
 	if err != nil {
@@ -174,49 +149,18 @@ func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer
 	}
 	defer ef.Close()
 
-	// Search for SSL symbols
-	search := make([]binutils.SymbolSearch, len(symbols))
-	for i, sym := range symbols {
-		search[i] = binutils.SymbolSearch{
-			Name:          sym.Name,
-			MatchStrategy: binutils.MatchStrategyExact,
-		}
-	}
-
-	symbols, err := ef.SearchSymbols(ctx, search, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
+	symbols, err := ef.SearchSymbols(ctx, symbolSearch, elf.SHT_SYMTAB, elf.SHT_DYNSYM)
 	if err != nil && !errors.Is(err, binutils.ErrNoSymbols) {
-		s.logger.Debug("failed to search symbols", zap.Error(err))
+		ll.Debug("failed to search symbols", zap.Error(err))
 	}
-
-	// Calculate uprobe addresses
 	symbols = ef.CalculateUprobeAddresses(ctx, symbols)
 
-	// Create and attach probes
-	probes := s.probeFn()
-
-	var closer tls.MultiCloser
-	for _, probe := range probes {
-		for _, sym := range symbols {
-			if sym.Name == probe.Function {
-				if !probe.IsRet {
-					s.logger.Debug("attaching OpenSSL probe (shared)",
-						zap.String("name", name),
-						zap.String("path", path),
-						zap.String("function", probe.Function),
-						zap.Uint64("address", sym.Value),
-					)
-				}
-
-				if err := probe.Attach(ctx, ex, sym.Value); err != nil {
-					return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
-				}
-				closer = append(closer, &tls.DetacherCloser{Detacher: probe})
-				break
-			}
-		}
+	closer, err := tls.AttachProbes(ctx, ll, ex, symbols, binutils.MatchStrategyExact, s.probeFn(), false)
+	if err != nil {
+		return nil, fmt.Errorf("attaching probes: %w", err)
 	}
 
-	s.logger.Info("attached OpenSSL probes (shared)",
+	ll.Info("attached OpenSSL probes (shared)",
 		zap.String("name", name),
 		zap.String("path", path),
 	)

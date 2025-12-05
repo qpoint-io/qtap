@@ -86,18 +86,18 @@ func (mr *MockTargetScannerMockRecorder) Close() *gomock.Call {
 }
 
 // Scan mocks base method.
-func (m *MockTargetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
+func (m *MockTargetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Scan", ctx, path)
+	ret := m.ctrl.Call(m, "Scan", ctx, target)
 	ret0, _ := ret[0].(*ScanResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Scan indicates an expected call of Scan.
-func (mr *MockTargetScannerMockRecorder) Scan(ctx, path any) *gomock.Call {
+func (mr *MockTargetScannerMockRecorder) Scan(ctx, target any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockTargetScanner)(nil).Scan), ctx, path)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockTargetScanner)(nil).Scan), ctx, target)
 }
 
 // ScanContainer mocks base method.

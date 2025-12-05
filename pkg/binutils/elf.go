@@ -667,3 +667,15 @@ func match(symName, targetName string, strategy MatchStrategy) bool {
 
 // 	return false, nil
 // }
+
+func FindSymbol(symbols []elf.Symbol, target SymbolSearch, filter func(*elf.Symbol) bool) (*elf.Symbol, error) {
+	for _, sym := range symbols {
+		if match(sym.Name, target.Name, target.MatchStrategy) {
+			if filter != nil && !filter(&sym) {
+				continue
+			}
+			return &sym, nil
+		}
+	}
+	return nil, ErrNoSymbols
+}

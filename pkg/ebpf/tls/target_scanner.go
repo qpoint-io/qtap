@@ -24,11 +24,20 @@ const (
 
 //go:generate go tool go.uber.org/mock/mockgen --destination=target_scanner_mock.go --package tls . TargetScanner
 type TargetScanner interface {
-	Scan(ctx context.Context, path string) (*ScanResult, error)
+	Scan(ctx context.Context, target *ExeScannable) (*ScanResult, error)
 	Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error)
 	ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error)
 	AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error)
 	Close() error
+}
+
+type ExeScannable struct {
+	// Path is the path to the executable
+	Path string
+	// Cmdline is the command+args that was used to start this process
+	Cmdline []string
+	// Root is the container root filesystem path for this process
+	Root string
 }
 
 // targetScanner coordinates scanning and attachment across multiple probes.
@@ -50,6 +59,7 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 	}
 
 	for _, probe := range probes {
+		o.logger.Debug("registering TLS probe", zap.String("probe", probe.Name()))
 		o.probes[probe.Name()] = probe
 	}
 
@@ -73,12 +83,13 @@ type ScanResult struct {
 	ProbeResults map[string]ProbeScanResult
 }
 
-func (s *targetScanner) Scan(ctx context.Context, path string) (*ScanResult, error) {
+func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanResult, error) {
 	ctx, span := tracer.Start(ctx, "TargetScanner.Scan")
 	defer span.End()
-	span.SetAttributes(attribute.String("path", path))
+	span.SetAttributes(attribute.String("path", target.Path))
 
-	elf, err := binutils.NewElf(ctx, path, "/", false)
+	// Open ELF if not already provided
+	elf, err := binutils.NewElf(ctx, target.Path, "/", false)
 	if err != nil {
 		return nil, fmt.Errorf("opening executable: %w", err)
 	}
@@ -107,8 +118,12 @@ func (s *targetScanner) Scan(ctx context.Context, path string) (*ScanResult, err
 		Mtime:        elf.Mtime(),
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
+	scannable := &ExeElfScannable{
+		ExeScannable: *target,
+		Elf:          elf,
+	}
 	for probeName, probe := range s.probes {
-		probeRes, err := probe.Scan(ctx, elf)
+		probeRes, err := probe.Scan(ctx, scannable)
 		if err != nil {
 			span.RecordError(err)
 			return nil, fmt.Errorf("scanning probe %s: %w", probeName, err)

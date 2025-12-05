@@ -60,7 +60,7 @@ func (k *Uprobe) Attach(ctx context.Context, exe *link.Executable, addr uint64) 
 	return err
 }
 
-func (k *Uprobe) Detach() error {
+func (k *Uprobe) Close() error {
 	if k.conn == nil {
 		return nil
 	}

@@ -2,11 +2,16 @@ package tls
 
 import (
 	"context"
+	"debug/elf"
+	"errors"
+	"fmt"
 	"io"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/hashicorp/go-multierror"
 	"github.com/qpoint-io/qtap/pkg/binutils"
+	"github.com/qpoint-io/qtap/pkg/ebpf/common"
+	"go.uber.org/zap"
 )
 
 // Probe describes a TLS probe that can be attached to a shared library or binary target.
@@ -20,7 +25,7 @@ type Probe interface {
 	// If the probe does not detect anything, it should return a ProbeScanResult with ProbeDetected() == false.
 	//
 	// The returned ProbeScanResult may be cached and reused across process restarts for future Attach calls.
-	Scan(ctx context.Context, ef *binutils.Elf) (ProbeScanResult, error)
+	Scan(ctx context.Context, target *ExeElfScannable) (ProbeScanResult, error)
 
 	// Attach attaches probes to the process using the scan result.
 	//
@@ -35,6 +40,14 @@ type Probe interface {
 
 	// AttachLibrary attaches probes to a shared library.
 	AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error)
+}
+
+// ExeScannable contains information about a binary available during the scan phase.
+type ExeElfScannable struct {
+	ExeScannable
+
+	// Elf is the parsed ELF file. This the primary source of information in most cases.
+	Elf *binutils.Elf
 }
 
 // ProbeScanResult contains the results of scanning a binary for TLS probe attachment points.
@@ -53,17 +66,6 @@ type ExeAttachable struct {
 	Exe  *link.Executable
 }
 
-// DetacherCloser wraps a detacher to implement the io.Closer interface.
-type DetacherCloser struct {
-	Detacher interface {
-		Detach() error
-	}
-}
-
-func (d *DetacherCloser) Close() error {
-	return d.Detacher.Detach()
-}
-
 // MultiCloser wraps multiple closers into a single Closer.
 type MultiCloser []io.Closer
 
@@ -79,4 +81,63 @@ func (m MultiCloser) Close() error {
 		}
 	}
 	return errs
+}
+
+// AttachProbes is helper for attaching uprobes to a pre-processed list of symbols.
+func AttachProbes(
+	ctx context.Context,
+	logger *zap.Logger,
+	exe *link.Executable,
+	symbols []elf.Symbol,
+	matchStrategy binutils.MatchStrategy,
+	probes []*common.Uprobe,
+	skipZeroAddresses bool,
+) (io.Closer, error) {
+	ctx, span := tracer.Start(ctx, "tls.AttachProbes")
+	defer span.End()
+
+	var closer MultiCloser
+	var filter func(*elf.Symbol) bool
+
+	if skipZeroAddresses {
+		filter = func(sym *elf.Symbol) bool {
+			if sym.Value == 0 || sym.Size == 0 {
+				return false
+			}
+			return true
+		}
+	}
+
+	for _, probe := range probes {
+		sym, err := binutils.FindSymbol(
+			symbols, binutils.SymbolSearch{
+				Name:          probe.Function,
+				MatchStrategy: matchStrategy,
+			}, filter)
+		if err != nil {
+			if errors.Is(err, binutils.ErrNoSymbols) {
+				continue
+			}
+
+			return nil, fmt.Errorf("finding symbol %s: %w", probe.Function, err)
+		}
+
+		if !probe.IsRet {
+			logger.Debug("attaching probe", zap.String("function", probe.Function), zap.String("symbol", sym.Name), zap.Uint64("address", sym.Value))
+		}
+
+		if err := probe.Attach(ctx, exe, sym.Value); err != nil {
+			return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
+		}
+		closer = append(closer, probe)
+	}
+
+	return closer, nil
+}
+
+// CloserFunc is a helper type to implement the io.Closer interface.
+type CloserFunc func() error
+
+func (c CloserFunc) Close() error {
+	return c()
 }

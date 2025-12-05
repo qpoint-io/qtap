@@ -482,8 +482,8 @@ func (p *Process) SetNotifier(n func() error) {
 	p.notifier = n
 }
 
-func (p *Process) FullCmd() string {
-	return strings.TrimSpace(p.Exe + " " + strings.Join(p.Args, " "))
+func (p *Process) FullCmd() []string {
+	return append([]string{p.Exe}, p.Args...)
 }
 
 func (p *Process) Filter() uint8 {

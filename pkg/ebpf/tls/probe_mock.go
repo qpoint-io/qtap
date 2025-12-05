@@ -14,7 +14,6 @@ import (
 	io "io"
 	reflect "reflect"
 
-	binutils "github.com/qpoint-io/qtap/pkg/binutils"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -87,18 +86,18 @@ func (mr *MockProbeMockRecorder) Name() *gomock.Call {
 }
 
 // Scan mocks base method.
-func (m *MockProbe) Scan(ctx context.Context, ef *binutils.Elf) (ProbeScanResult, error) {
+func (m *MockProbe) Scan(ctx context.Context, target *ExeElfScannable) (ProbeScanResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Scan", ctx, ef)
+	ret := m.ctrl.Call(m, "Scan", ctx, target)
 	ret0, _ := ret[0].(ProbeScanResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Scan indicates an expected call of Scan.
-func (mr *MockProbeMockRecorder) Scan(ctx, ef any) *gomock.Call {
+func (mr *MockProbeMockRecorder) Scan(ctx, target any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockProbe)(nil).Scan), ctx, ef)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockProbe)(nil).Scan), ctx, target)
 }
 
 // SharedLibraries mocks base method.

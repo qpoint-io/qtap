@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/moby/moby/pkg/parsers/kernel"
 	"github.com/qpoint-io/qtap/internal/tap"
@@ -48,6 +49,7 @@ import (
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
+	"golang.org/x/term"
 )
 
 var (
@@ -468,7 +470,15 @@ func runTapCmd(logger *zap.Logger) {
 			s.Mux().HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, "/devtools/", http.StatusTemporaryRedirect)
 			})
-			logger.Info("devtools running", zap.String("url", "http://"+httpdListen+"/devtools"))
+
+			devtoolsURL := "http://" + httpdListen + "/devtools"
+
+			// Print pretty box if running in a terminal
+			if term.IsTerminal(int(os.Stdout.Fd())) {
+				PrintDevToolsBox(devtoolsURL)
+			}
+
+			logger.Info("devtools running", zap.String("url", devtoolsURL))
 		}
 	}
 
@@ -491,6 +501,32 @@ func parseDeploymentTags() (tags.List, error) {
 		}
 	}
 	return t, nil
+}
+
+// PrintDevToolsBox prints a nicely formatted box with the devtools URL
+func PrintDevToolsBox(url string) {
+	purple := lipgloss.Color("#A855F7")
+
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#9CA3AF")).
+		Bold(true)
+
+	urlStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#C026D3")).
+		Bold(true).
+		Underline(true)
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(purple).
+		Padding(1, 2)
+
+	content := titleStyle.Render("QTap DevTools is running at:") + "\n\n" +
+		urlStyle.Render(url)
+
+	fmt.Println()
+	fmt.Println(boxStyle.Render(content))
+	fmt.Println()
 }
 
 func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {

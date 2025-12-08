@@ -374,7 +374,7 @@ func (w *SignalWaiter[T]) Wait(ctx context.Context, key T) error {
 	// Block on channel - returns immediately if already closed
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("context cancelled while waiting for process %+v: %w", key, ctx.Err())
+		return fmt.Errorf("waiting for %+v: %w", key, ctx.Err())
 	case <-waiter:
 		return nil
 	}

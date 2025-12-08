@@ -29,7 +29,7 @@ func TestTlsManager(t *testing.T) {
 	}
 
 	mockScanner := NewMockTargetScanner(ctrl)
-	manager := NewTlsManager(zaptest.NewLogger(t), mockScanner)
+	manager := newTlsManager(zaptest.NewLogger(t), mockScanner)
 
 	/*
 		we will start a new process on the root namespace

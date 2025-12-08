@@ -53,18 +53,7 @@ type procAttachment struct {
 
 // NewTlsManager creates a new TlsManager with the given options.
 func NewTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
-	ctx, cancel := context.WithCancel(context.Background())
-	m := &TlsManager{
-		logger:  logger,
-		scanner: scanner,
-		ctx:     ctx,
-		cancel:  cancel,
-
-		procAttachments:  synq.NewMap[int, *procAttachment](),
-		procAttachTokens: newTokenProvider[int](),
-		containers:       synq.NewMap[string, io.Closer](),
-		containerMu:      synq.NewMutexMap[string](),
-	}
+	m := newTlsManager(logger, scanner)
 
 	metrics.NewSystemGaugeFunc("active_process_attachments", "The number of active process attachments",
 		func() float64 {
@@ -81,39 +70,66 @@ func NewTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 	return m
 }
 
+func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
+	ctx, cancel := context.WithCancel(context.Background())
+	m := &TlsManager{
+		logger:  logger,
+		scanner: scanner,
+		ctx:     ctx,
+		cancel:  cancel,
+
+		procAttachments:  synq.NewMap[int, *procAttachment](),
+		procAttachTokens: newTokenProvider[int](),
+		containers:       synq.NewMap[string, io.Closer](),
+		containerMu:      synq.NewMutexMap[string](),
+	}
+
+	return m
+}
+
 func (m *TlsManager) Close() error {
 	m.cancel()
 
 	var eg multierror.Group
-	m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
-		if attachment.closer == nil {
-			return true
-		}
-		eg.Go(func() error {
-			if err := attachment.closer.Close(); err != nil {
-				return fmt.Errorf("detaching probes for pid %d: %w", pid, err)
-			}
-			return nil
-		})
 
-		return true
-	})
-	m.containers.Iter(func(id string, closer io.Closer) bool {
-		if closer == nil {
-			return true
-		}
-		eg.Go(func() error {
-			if err := closer.Close(); err != nil {
-				return fmt.Errorf("detaching container %s: %w", id, err)
+	eg.Go(func() error {
+		var err error
+		m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
+			if attachment.closer == nil {
+				return true
 			}
-			return nil
+
+			if e := attachment.closer.Close(); e != nil {
+				err = fmt.Errorf("detaching probes for pid %d: %w", pid, e)
+				return false
+			}
+
+			return true
 		})
-		return true
+		return err
 	})
 
-	if err := m.scanner.Close(); err != nil {
-		return fmt.Errorf("closing scanner: %w", err)
-	}
+	eg.Go(func() error {
+		var err error
+		m.containers.Iter(func(id string, closer io.Closer) bool {
+			if closer == nil {
+				return true
+			}
+			if e := closer.Close(); e != nil {
+				err = fmt.Errorf("detaching container %s: %w", id, e)
+				return false
+			}
+			return true
+		})
+		return err
+	})
+
+	eg.Go(func() error {
+		if err := m.scanner.Close(); err != nil {
+			return fmt.Errorf("closing scanner: %w", err)
+		}
+		return nil
+	})
 
 	return eg.Wait().ErrorOrNil()
 }
@@ -135,7 +151,14 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	)
 
 	// Start scanning the container for shared libraries
-	go m.ContainerStarted(ctx, proc.ContainerID, proc.Root)
+	containerScan := make(chan struct{})
+	go func() {
+		m.ContainerStarted(ctx, proc.ContainerID, proc.Root)
+		close(containerScan)
+	}()
+	defer func() {
+		<-containerScan
+	}()
 
 	if proc.Exited() {
 		return nil

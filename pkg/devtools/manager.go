@@ -295,17 +295,17 @@ type ProcessSnapshotter interface {
 	SnapshotProcesses(fn func(pid int, p *process.Process) bool)
 }
 
-func (m *Manager) ProcessStarted(p *process.Process) error {
+func (m *Manager) ProcessStarted(ctx context.Context, p *process.Process) error {
 	m.broadcast(NewEvent("process.started", marshalProcess(p)))
 	return nil
 }
 
-func (m *Manager) ProcessReplaced(p *process.Process) error {
+func (m *Manager) ProcessReplaced(ctx context.Context, p *process.Process) error {
 	m.broadcast(NewEvent("process.replaced", marshalProcess(p)))
 	return nil
 }
 
-func (m *Manager) ProcessStopped(p *process.Process) error {
+func (m *Manager) ProcessStopped(ctx context.Context, p *process.Process) error {
 	values := map[string]any{
 		"pid":       p.Pid,
 		"createdAt": p.CreatedAt().Format(time.RFC3339Nano),

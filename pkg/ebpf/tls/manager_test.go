@@ -38,7 +38,7 @@ func TestTlsManager(t *testing.T) {
 		2. it should scan the container
 		3. it should attach any detected probes
 	*/
-	proc2, proc2Closer := testProcess(2, "/bin/ls", "root")
+	proc2, proc2Closer := testProcess(t, 2, "/bin/ls", "root")
 	proc2ScanRes := testProcScanRes(proc2, "openssl")
 	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
 		Path:    "/proc/2/exe",
@@ -76,7 +76,7 @@ func TestTlsManager(t *testing.T) {
 		3. it should attach any detected probes
 	*/
 
-	proc3, proc3Closer := testProcess(3, "/bin/sh", "container-1")
+	proc3, proc3Closer := testProcess(t, 3, "/bin/sh", "container-1")
 	proc3ScanRes := testProcScanRes(proc3)
 	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
 		Path:    "/proc/3/exe",
@@ -85,7 +85,7 @@ func TestTlsManager(t *testing.T) {
 	}).Return(proc3ScanRes, nil)
 	mockScanner.EXPECT().Attach(gomock.Any(), 3, "/proc/3/exe", proc3ScanRes).Return(proc3Closer, nil)
 
-	proc4, proc4Closer := testProcess(4, "/bin/sudo", "container-1")
+	proc4, proc4Closer := testProcess(t, 4, "/bin/sudo", "container-1")
 	proc4ScanRes := testProcScanRes(proc4)
 	mockScanner.EXPECT().Scan(gomock.Any(), &ExeScannable{
 		Path:    "/proc/4/exe",
@@ -222,14 +222,14 @@ func (t *testCloser) Close() error {
 	return nil
 }
 
-func testProcess(pid int, exe string, ctrID string) (*process.Process, *testCloser) {
+func testProcess(t *testing.T, pid int, exe string, ctrID string) (*process.Process, *testCloser) {
 	closer := &testCloser{}
-	return &process.Process{
-		Pid:         pid,
-		PidExe:      fmt.Sprintf("/proc/%d/exe", pid),
-		Exe:         exe,
-		Strategy:    process.StrategyObserve,
-		ContainerID: ctrID,
-		Root:        fmt.Sprintf("/proc/%d/root", pid),
-	}, closer
+	p := process.NewProcess(pid, exe, zaptest.NewLogger(t))
+
+	p.Exe = exe
+	p.Strategy = process.StrategyObserve
+	p.ContainerID = ctrID
+	p.Root = fmt.Sprintf("/proc/%d/root", pid)
+
+	return p, closer
 }

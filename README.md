@@ -26,8 +26,8 @@ Qtap shows you exactly what data is being sent and received in its original, une
 
 <br/>
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/qtap-overview-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/qtap-overview-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/how-it-works-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./.github/assets/how-it-works.svg">
   <img alt="Image showing an architectual overview of Qtap" src="./.github/assets/qtap-overview-light.svg">
 </picture>
 <br/><br/><br/>

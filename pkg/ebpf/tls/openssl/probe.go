@@ -111,7 +111,7 @@ func (s *Probe) Attach(ctx context.Context, target *tls.ExeLinkAttachable, resul
 		return nil, errors.New("invalid result type: expected *OpenSSLScanResult")
 	}
 
-	return tls.AttachProbes(ctx, ll, target.Exe, r.Symbols, binutils.MatchStrategyExact, s.probeFn(), true)
+	return tls.AttachProbes(ctx, ll, target, r.Symbols, binutils.MatchStrategyExact, s.probeFn(), true)
 }
 
 // AttachLibrary implements tls.LibraryAttacher.

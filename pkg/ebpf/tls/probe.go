@@ -92,10 +92,12 @@ func (m MultiCloser) Close() error {
 }
 
 // AttachProbes is helper for attaching uprobes to a pre-processed list of symbols.
-func AttachProbes(
+func AttachProbes[T interface {
+	*link.Executable | *ExeLinkAttachable
+}](
 	ctx context.Context,
 	logger *zap.Logger,
-	exe *link.Executable,
+	target T,
 	symbols []elf.Symbol,
 	matchStrategy binutils.MatchStrategy,
 	probes []*common.Uprobe,
@@ -116,6 +118,19 @@ func AttachProbes(
 		}
 	}
 
+	var (
+		exe *link.Executable
+		ll  = logger
+	)
+
+	switch t := any(target).(type) {
+	case *link.Executable:
+		exe = t
+	case *ExeLinkAttachable:
+		exe = t.Exe
+		ll = ll.With(zap.Int("pid", t.PID))
+	}
+
 	for _, probe := range probes {
 		sym, err := binutils.FindSymbol(
 			symbols, binutils.SymbolSearch{
@@ -131,7 +146,11 @@ func AttachProbes(
 		}
 
 		if !probe.IsRet {
-			logger.Debug("attaching probe", zap.String("function", probe.Function), zap.String("symbol", sym.Name), zap.Uint64("address", sym.Value))
+			ll.Debug("attaching probe",
+				zap.String("function", probe.Function),
+				zap.String("symbol", sym.Name),
+				zap.Uint64("address", sym.Value),
+			)
 		}
 
 		if err := probe.Attach(ctx, exe, sym.Value); err != nil {

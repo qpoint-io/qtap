@@ -2,6 +2,7 @@ package tls
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
+	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -29,8 +31,9 @@ type TlsManager struct {
 
 	// procAttachments tracks process attachments by PID
 	// These should be closed on the ProcessStopped signal.
-	procAttachments  *synq.Map[int, *procAttachment]
-	procAttachTokens *tokenProvider[int]
+	procAttachments          *synq.Map[int, *procAttachment]
+	procAttachTokens         *tokenProvider[int]
+	processAttachCoordinator *processAttachCoordinator
 
 	// containers tracks scanned containers by ID.
 	// These should be closed when the manager is stopped.
@@ -80,8 +83,11 @@ func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 
 		procAttachments:  synq.NewMap[int, *procAttachment](),
 		procAttachTokens: newTokenProvider[int](),
-		containers:       synq.NewMap[string, io.Closer](),
-		containerMu:      synq.NewMutexMap[string](),
+		processAttachCoordinator: &processAttachCoordinator{
+			attachments: make(map[int]*inProgressAttachment),
+		},
+		containers:  synq.NewMap[string, io.Closer](),
+		containerMu: synq.NewMutexMap[string](),
 	}
 
 	return m
@@ -142,6 +148,13 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 		return nil // not a real process
 	}
 
+	m.logger.Debug("process started",
+		zap.Int("pid", proc.Pid),
+		zap.String("exe", proc.Exe),
+		zap.String("pid_exe", proc.PidExe),
+		zap.Strings("cmdline", proc.FullCmd()),
+	)
+
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStarted")
 	defer span.End()
 	span.SetAttributes(
@@ -184,6 +197,13 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 		return nil // not a real process
 	}
 
+	m.logger.Debug("process replaced",
+		zap.Int("pid", proc.Pid),
+		zap.String("exe", proc.Exe),
+		zap.String("pid_exe", proc.PidExe),
+		zap.Strings("cmdline", proc.FullCmd()),
+	)
+
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessReplaced")
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", proc.Pid))
@@ -192,6 +212,10 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 	if !exists {
 		// ProcessStarted did not run. This is likely because the process was replaced before the scan was complete.
 		// We will start a new scan and attach.
+		m.logger.Debug("process replaced but no attachment found, starting new scan and attach",
+			zap.Int("pid", proc.Pid),
+			zap.String("exe", proc.Exe),
+		)
 		return m.scanAndAttachProcess(ctx, proc)
 	}
 
@@ -265,40 +289,48 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 		return err
 	}
 
-	if !attachToken() {
-		// a newer scan has started. we will not attach as the data we have is now likely outdated.
+	err = m.processAttachCoordinator.Do(ctx, attachToken, proc.Pid, func(ctx context.Context) error {
+		m.logger.Debug("attaching probes to process",
+			zap.Int("pid", proc.Pid),
+			zap.String("exe", proc.Exe),
+			zap.String("container_id", proc.ContainerID),
+		)
+
+		closer, err := m.scanner.Attach(ctx, &ExeAttachable{
+			PID:  proc.Pid,
+			Path: proc.PidExe,
+			Root: proc.RootFS(),
+		}, res)
+		if err != nil {
+			return err
+		}
+
+		var detectedProbes []string
+		for _, res := range res.ProbeResults {
+			if res.ProbeDetected() {
+				detectedProbes = append(detectedProbes, res.ProbeName())
+			}
+		}
+		proc.SetDetectedTLSProbeTypes(detectedProbes)
+
+		m.procAttachments.Store(proc.Pid, &procAttachment{
+			localExe: proc.Exe,
+			closer:   closer,
+		})
+
+		if m.observer != nil {
+			if e := m.observer.ProcessAttachCompleted(ctx, proc); e != nil {
+				m.logger.Error("error notifying tls observer of process attach", zap.Error(e))
+			}
+		}
+
+		return nil
+	})
+	if errors.Is(err, errAttachmentSuperseded) {
 		return nil
 	}
 
-	closer, err := m.scanner.Attach(ctx, &ExeAttachable{
-		PID:  proc.Pid,
-		Path: proc.PidExe,
-		Root: proc.RootFS(),
-	}, res)
-	if err != nil {
-		return err
-	}
-
-	var detectedProbes []string
-	for _, res := range res.ProbeResults {
-		if res.ProbeDetected() {
-			detectedProbes = append(detectedProbes, res.ProbeName())
-		}
-	}
-	proc.SetDetectedTLSProbeTypes(detectedProbes)
-
-	m.procAttachments.Store(proc.Pid, &procAttachment{
-		localExe: proc.Exe,
-		closer:   closer,
-	})
-
-	if m.observer != nil {
-		if e := m.observer.ProcessAttachCompleted(ctx, proc); e != nil {
-			m.logger.Error("error notifying tls observer of process attach", zap.Error(e))
-		}
-	}
-
-	return nil
+	return err
 }
 
 // detachProcess removes and closes all attachments for a PID
@@ -371,6 +403,7 @@ func (m *TlsManager) scanAndAttachContainer(ctx context.Context, id, root string
 	return m.scanner.AttachContainer(ctx, res)
 }
 
+// TODO: combine this with the processAttachCoordinator
 // tokenProviders allows multiple goroutines to coordinate operation
 // on a shared resource where only the latest goroutine wins.
 type tokenProvider[T comparable] struct {
@@ -407,6 +440,69 @@ func newTokenProvider[T comparable]() *tokenProvider[T] {
 	return &tokenProvider[T]{
 		tokens: make(map[T]int),
 	}
+}
+
+type processAttachCoordinator struct {
+	mu          sync.Mutex
+	attachments map[int]*inProgressAttachment
+}
+
+func (c *processAttachCoordinator) Do(ctx context.Context, token func() bool, pid int, fn func(context.Context) error) error {
+	c.mu.Lock()
+	inProgress := c.attachments[pid]
+	if inProgress != nil {
+		c.mu.Unlock()
+		inProgress.Cancel()
+		inProgress.Wait()
+		c.mu.Lock()
+	}
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	attachment := &inProgressAttachment{
+		id:     xid.New(),
+		done:   make(chan struct{}),
+		ctx:    ctx,
+		cancel: cancel,
+		fn:     fn,
+	}
+	c.attachments[pid] = attachment
+	c.mu.Unlock()
+	err := attachment.Do()
+
+	c.mu.Lock()
+	if a := c.attachments[pid]; a != nil && a.id == attachment.id {
+		delete(c.attachments, pid)
+	}
+	c.mu.Unlock()
+
+	if errors.Is(context.Cause(ctx), errAttachmentSuperseded) {
+		return errAttachmentSuperseded
+	}
+	return err
+}
+
+var errAttachmentSuperseded = errors.New("attachment superseded")
+
+type inProgressAttachment struct {
+	id     xid.ID
+	done   chan struct{}
+	ctx    context.Context
+	cancel context.CancelCauseFunc
+	fn     func(context.Context) error
+}
+
+func (a *inProgressAttachment) Wait() {
+	<-a.done
+}
+
+func (a *inProgressAttachment) Cancel() {
+	a.cancel(errAttachmentSuperseded)
+}
+
+func (a *inProgressAttachment) Do() error {
+	err := a.fn(a.ctx)
+	close(a.done)
+	return err
 }
 
 type TlsObserver interface {

@@ -118,6 +118,9 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	}
 	span.SetAttributes(attribute.String("cache_status", "miss"))
 
+	// TODO: check if there is an in-progress scan for this hash
+	// if so, wait for it. if it returns an error, try again. otherwise, return the cached result.
+
 	res := &ScanResult{
 		Hash:         hash,
 		Mtime:        elf.Mtime(),

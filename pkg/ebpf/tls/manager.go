@@ -148,13 +148,6 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 		return nil // not a real process
 	}
 
-	m.logger.Debug("process started",
-		zap.Int("pid", proc.Pid),
-		zap.String("exe", proc.Exe),
-		zap.String("pid_exe", proc.PidExe),
-		zap.Strings("cmdline", proc.FullCmd()),
-	)
-
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStarted")
 	defer span.End()
 	span.SetAttributes(
@@ -197,20 +190,13 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 		return nil // not a real process
 	}
 
-	m.logger.Debug("process replaced",
-		zap.Int("pid", proc.Pid),
-		zap.String("exe", proc.Exe),
-		zap.String("pid_exe", proc.PidExe),
-		zap.Strings("cmdline", proc.FullCmd()),
-	)
-
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessReplaced")
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", proc.Pid))
 
 	attachment, exists := m.procAttachments.Load(proc.Pid)
 	if !exists {
-		// ProcessStarted did not run. This is likely because the process was replaced before the scan was complete.
+		// ProcessStarted did not run. This is likely because the process was replaced before the previous scan/attach was complete.
 		// We will start a new scan and attach.
 		m.logger.Debug("process replaced but no attachment found, starting new scan and attach",
 			zap.Int("pid", proc.Pid),
@@ -287,6 +273,10 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 	})
 	if err != nil {
 		return err
+	}
+
+	if !attachToken() {
+		return nil
 	}
 
 	err = m.processAttachCoordinator.Do(ctx, attachToken, proc.Pid, func(ctx context.Context) error {

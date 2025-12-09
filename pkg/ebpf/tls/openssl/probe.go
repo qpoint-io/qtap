@@ -160,7 +160,7 @@ func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer
 		return nil, fmt.Errorf("attaching probes: %w", err)
 	}
 
-	ll.Info("attached OpenSSL probes (shared)",
+	ll.Debug("attached OpenSSL probes (shared)",
 		zap.String("name", name),
 		zap.String("path", path),
 	)

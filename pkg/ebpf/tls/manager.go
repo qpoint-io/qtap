@@ -2,10 +2,8 @@ package tls
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -13,7 +11,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -31,9 +28,8 @@ type TlsManager struct {
 
 	// procAttachments tracks process attachments by PID
 	// These should be closed on the ProcessStopped signal.
-	procAttachments          *synq.Map[int, *procAttachment]
-	procAttachTokens         *tokenProvider[int]
-	processAttachCoordinator *processAttachCoordinator
+	procAttachments *synq.Map[int, *procAttachment]
+	procCoordinator *KeyedCoordinator[int]
 
 	// containers tracks scanned containers by ID.
 	// These should be closed when the manager is stopped.
@@ -81,13 +77,10 @@ func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 		ctx:     ctx,
 		cancel:  cancel,
 
-		procAttachments:  synq.NewMap[int, *procAttachment](),
-		procAttachTokens: newTokenProvider[int](),
-		processAttachCoordinator: &processAttachCoordinator{
-			attachments: make(map[int]*inProgressAttachment),
-		},
-		containers:  synq.NewMap[string, io.Closer](),
-		containerMu: synq.NewMutexMap[string](),
+		procAttachments: synq.NewMap[int, *procAttachment](),
+		procCoordinator: NewKeyedCoordinator[int](),
+		containers:      synq.NewMap[string, io.Closer](),
+		containerMu:     synq.NewMutexMap[string](),
 	}
 
 	return m
@@ -98,36 +91,32 @@ func (m *TlsManager) Close() error {
 
 	var eg multierror.Group
 
-	eg.Go(func() error {
-		var err error
-		m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
-			if attachment.closer == nil {
-				return true
-			}
-
-			if e := attachment.closer.Close(); e != nil {
-				err = fmt.Errorf("detaching probes for pid %d: %w", pid, e)
-				return false
-			}
-
+	m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
+		if attachment.closer == nil {
 			return true
+		}
+
+		eg.Go(func() error {
+			if err := attachment.closer.Close(); err != nil {
+				return fmt.Errorf("closing process attachment for pid %d: %w", pid, err)
+			}
+			return nil
 		})
-		return err
+
+		return true
 	})
 
-	eg.Go(func() error {
-		var err error
-		m.containers.Iter(func(id string, closer io.Closer) bool {
-			if closer == nil {
-				return true
-			}
-			if e := closer.Close(); e != nil {
-				err = fmt.Errorf("detaching container %s: %w", id, e)
-				return false
-			}
+	m.containers.Iter(func(id string, closer io.Closer) bool {
+		if closer == nil {
 			return true
+		}
+		eg.Go(func() error {
+			if err := closer.Close(); err != nil {
+				return fmt.Errorf("closing container attachment for id %s: %w", id, err)
+			}
+			return nil
 		})
-		return err
+		return true
 	})
 
 	eg.Go(func() error {
@@ -258,7 +247,7 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 	)
 	defer span.End()
 
-	attachToken := m.procAttachTokens.Get(proc.Pid)
+	attachToken := m.procCoordinator.Start(proc.Pid)
 
 	if m.observer != nil {
 		if e := m.observer.ProcessScanStarted(ctx, proc); e != nil {
@@ -275,11 +264,7 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 		return err
 	}
 
-	if !attachToken() {
-		return nil
-	}
-
-	err = m.processAttachCoordinator.Do(ctx, attachToken, proc.Pid, func(ctx context.Context) error {
+	return attachToken.Execute(ctx, func(ctx context.Context) error {
 		m.logger.Debug("attaching probes to process",
 			zap.Int("pid", proc.Pid),
 			zap.String("exe", proc.Exe),
@@ -316,11 +301,6 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 
 		return nil
 	})
-	if errors.Is(err, errAttachmentSuperseded) {
-		return nil
-	}
-
-	return err
 }
 
 // detachProcess removes and closes all attachments for a PID
@@ -391,108 +371,6 @@ func (m *TlsManager) scanAndAttachContainer(ctx context.Context, id, root string
 	}
 
 	return m.scanner.AttachContainer(ctx, res)
-}
-
-// TODO: combine this with the processAttachCoordinator
-// tokenProviders allows multiple goroutines to coordinate operation
-// on a shared resource where only the latest goroutine wins.
-type tokenProvider[T comparable] struct {
-	mu     sync.Mutex
-	tokens map[T]int
-}
-
-func (p *tokenProvider[T]) Get(key T) (valid func() bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	token, exists := p.tokens[key]
-	if exists {
-		token++
-	}
-	p.tokens[key] = token
-
-	return func() bool {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-
-		latest, exists := p.tokens[key]
-		if !exists || latest != token {
-			return false
-		}
-
-		// clean up
-		delete(p.tokens, key)
-		return true
-	}
-}
-
-func newTokenProvider[T comparable]() *tokenProvider[T] {
-	return &tokenProvider[T]{
-		tokens: make(map[T]int),
-	}
-}
-
-type processAttachCoordinator struct {
-	mu          sync.Mutex
-	attachments map[int]*inProgressAttachment
-}
-
-func (c *processAttachCoordinator) Do(ctx context.Context, token func() bool, pid int, fn func(context.Context) error) error {
-	c.mu.Lock()
-	inProgress := c.attachments[pid]
-	if inProgress != nil {
-		c.mu.Unlock()
-		inProgress.Cancel()
-		inProgress.Wait()
-		c.mu.Lock()
-	}
-
-	ctx, cancel := context.WithCancelCause(ctx)
-	attachment := &inProgressAttachment{
-		id:     xid.New(),
-		done:   make(chan struct{}),
-		ctx:    ctx,
-		cancel: cancel,
-		fn:     fn,
-	}
-	c.attachments[pid] = attachment
-	c.mu.Unlock()
-	err := attachment.Do()
-
-	c.mu.Lock()
-	if a := c.attachments[pid]; a != nil && a.id == attachment.id {
-		delete(c.attachments, pid)
-	}
-	c.mu.Unlock()
-
-	if errors.Is(context.Cause(ctx), errAttachmentSuperseded) {
-		return errAttachmentSuperseded
-	}
-	return err
-}
-
-var errAttachmentSuperseded = errors.New("attachment superseded")
-
-type inProgressAttachment struct {
-	id     xid.ID
-	done   chan struct{}
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	fn     func(context.Context) error
-}
-
-func (a *inProgressAttachment) Wait() {
-	<-a.done
-}
-
-func (a *inProgressAttachment) Cancel() {
-	a.cancel(errAttachmentSuperseded)
-}
-
-func (a *inProgressAttachment) Do() error {
-	err := a.fn(a.ctx)
-	close(a.done)
-	return err
 }
 
 type TlsObserver interface {

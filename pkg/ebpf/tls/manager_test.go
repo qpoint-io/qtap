@@ -45,7 +45,11 @@ func TestTlsManager(t *testing.T) {
 		Cmdline: []string{"/bin/ls"},
 		Root:    "/proc/2/root",
 	}).Return(proc2ScanRes, nil)
-	mockScanner.EXPECT().Attach(gomock.Any(), 2, "/proc/2/exe", proc2ScanRes).Return(proc2Closer, nil)
+	mockScanner.EXPECT().Attach(gomock.Any(), &ExeAttachable{
+		PID:  2,
+		Path: "/proc/2/exe",
+		Root: "/proc/2/root",
+	}, proc2ScanRes).Return(proc2Closer, nil)
 
 	ctrRootScanRes := &ContainerScanResult{
 		SharedLibraries: map[string][]*SharedLibrary{
@@ -83,7 +87,11 @@ func TestTlsManager(t *testing.T) {
 		Cmdline: []string{"/bin/sh"},
 		Root:    "/proc/3/root",
 	}).Return(proc3ScanRes, nil)
-	mockScanner.EXPECT().Attach(gomock.Any(), 3, "/proc/3/exe", proc3ScanRes).Return(proc3Closer, nil)
+	mockScanner.EXPECT().Attach(gomock.Any(), &ExeAttachable{
+		PID:  3,
+		Path: "/proc/3/exe",
+		Root: "/proc/3/root",
+	}, proc3ScanRes).Return(proc3Closer, nil)
 
 	proc4, proc4Closer := testProcess(t, 4, "/bin/sudo", "container-1")
 	proc4ScanRes := testProcScanRes(proc4)
@@ -92,7 +100,11 @@ func TestTlsManager(t *testing.T) {
 		Cmdline: []string{"/bin/sudo"},
 		Root:    "/proc/4/root",
 	}).Return(proc4ScanRes, nil)
-	mockScanner.EXPECT().Attach(gomock.Any(), 4, "/proc/4/exe", proc4ScanRes).Return(proc4Closer, nil)
+	mockScanner.EXPECT().Attach(gomock.Any(), &ExeAttachable{
+		PID:  4,
+		Path: "/proc/4/exe",
+		Root: "/proc/4/root",
+	}, proc4ScanRes).Return(proc4Closer, nil)
 
 	ctr1ScanRes := &ContainerScanResult{
 		SharedLibraries: map[string][]*SharedLibrary{},
@@ -159,7 +171,11 @@ func TestTlsManager(t *testing.T) {
 		Cmdline: []string{"/bin/curl"},
 		Root:    "/proc/2/root",
 	}).Return(proc2NewScanRes, nil)
-	mockScanner.EXPECT().Attach(gomock.Any(), 2, "/proc/2/exe", proc2NewScanRes).Return(proc2NewCloser, nil)
+	mockScanner.EXPECT().Attach(gomock.Any(), &ExeAttachable{
+		PID:  2,
+		Path: "/proc/2/exe",
+		Root: "/proc/2/root",
+	}, proc2NewScanRes).Return(proc2NewCloser, nil)
 
 	err = manager.ProcessReplaced(ctx, proc2)
 	require.NoError(t, err)

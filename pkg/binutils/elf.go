@@ -596,6 +596,9 @@ func (p *Elf) GetSections(ctx context.Context) []*elf.Section {
 }
 
 func (p *Elf) Ldd(ctx context.Context) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "Elf.Ldd")
+	defer span.End()
+
 	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil, err

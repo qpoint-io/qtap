@@ -42,18 +42,18 @@ func (m *MockTargetScanner) EXPECT() *MockTargetScannerMockRecorder {
 }
 
 // Attach mocks base method.
-func (m *MockTargetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+func (m *MockTargetScanner) Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Attach", ctx, pid, path, res)
+	ret := m.ctrl.Call(m, "Attach", ctx, attachable, res)
 	ret0, _ := ret[0].(io.Closer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Attach indicates an expected call of Attach.
-func (mr *MockTargetScannerMockRecorder) Attach(ctx, pid, path, res any) *gomock.Call {
+func (mr *MockTargetScannerMockRecorder) Attach(ctx, attachable, res any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Attach", reflect.TypeOf((*MockTargetScanner)(nil).Attach), ctx, pid, path, res)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Attach", reflect.TypeOf((*MockTargetScanner)(nil).Attach), ctx, attachable, res)
 }
 
 // AttachContainer mocks base method.

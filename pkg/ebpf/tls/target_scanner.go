@@ -25,7 +25,7 @@ const (
 //go:generate go tool go.uber.org/mock/mockgen --destination=target_scanner_mock.go --package tls . TargetScanner
 type TargetScanner interface {
 	Scan(ctx context.Context, target *ExeScannable) (*ScanResult, error)
-	Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error)
+	Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error)
 	ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error)
 	AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error)
 	Close() error
@@ -72,6 +72,11 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 
 func (s *targetScanner) Close() error {
 	s.cache.Stop()
+	for _, probe := range s.probes {
+		if err := probe.Close(); err != nil {
+			return fmt.Errorf("closing probe %s: %w", probe.Name(), err)
+		}
+	}
 	return nil
 }
 
@@ -135,7 +140,7 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	return res, nil
 }
 
-func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+func (s *targetScanner) Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error) {
 	if len(res.ProbeResults) == 0 {
 		return nil, nil
 	}
@@ -143,14 +148,14 @@ func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *S
 	ctx, span := tracer.Start(ctx, "TargetScanner.Attach")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int("pid", pid),
-		attribute.String("path", path),
+		attribute.Int("pid", attachable.PID),
+		attribute.String("path", attachable.Path),
 	)
 
 	// lazy open the executable
 	// if no probes indicated detection, we won't open the executable
 	openEx := resolvable.New(func(ctx context.Context) (*link.Executable, error) {
-		return link.OpenExecutable(path)
+		return link.OpenExecutable(attachable.Path)
 	}, resolvable.WithRetry())
 
 	var closers MultiCloser
@@ -171,10 +176,9 @@ func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *S
 			return nil, fmt.Errorf("opening executable: %w", err)
 		}
 
-		closer, err := probe.Attach(ctx, &ExeAttachable{
-			PID:  pid,
-			Path: path,
-			Exe:  ex,
+		closer, err := probe.Attach(ctx, &ExeLinkAttachable{
+			ExeAttachable: *attachable,
+			Exe:           ex,
 		}, probeRes)
 		if err != nil {
 			span.RecordError(err)

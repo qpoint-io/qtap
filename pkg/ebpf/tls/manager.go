@@ -270,7 +270,11 @@ func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Pro
 		return nil
 	}
 
-	closer, err := m.scanner.Attach(ctx, proc.Pid, proc.PidExe, res)
+	closer, err := m.scanner.Attach(ctx, &ExeAttachable{
+		PID:  proc.Pid,
+		Path: proc.PidExe,
+		Root: proc.RootFS(),
+	}, res)
 	if err != nil {
 		return err
 	}

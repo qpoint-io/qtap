@@ -30,7 +30,7 @@ type Probe interface {
 	// Attach attaches probes to the process using the scan result.
 	//
 	// Returns a Closer that must be called when the process exits to clean up the probes.
-	Attach(ctx context.Context, target *ExeAttachable, result ProbeScanResult) (io.Closer, error)
+	Attach(ctx context.Context, target *ExeLinkAttachable, result ProbeScanResult) (io.Closer, error)
 
 	// SharedLibraries returns the list of shared libraries this probe can attach to.
 	// Each string is a library name prefix (e.g., "libssl.so", "libcrypto.so")
@@ -40,6 +40,8 @@ type Probe interface {
 
 	// AttachLibrary attaches probes to a shared library.
 	AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error)
+
+	Close() error
 }
 
 // ExeScannable contains information about a binary available during the scan phase.
@@ -63,7 +65,13 @@ type ProbeScanResult interface {
 type ExeAttachable struct {
 	PID  int
 	Path string
-	Exe  *link.Executable
+	Root string
+}
+
+type ExeLinkAttachable struct {
+	ExeAttachable
+
+	Exe *link.Executable
 }
 
 // MultiCloser wraps multiple closers into a single Closer.

@@ -84,31 +84,39 @@ func Test_targetScanner(t *testing.T) {
 	t.Run("Attach", func(t *testing.T) {
 		gnutlsCloser := &testCloser{}
 		gnutlsProbe.EXPECT().Attach(gomock.Any(),
-			gomock.Cond(func(a *ExeAttachable) bool {
+			gomock.Cond(func(a *ExeLinkAttachable) bool {
 				return a.Path == f1
 			}),
 			&testProbeScanResult{name: "gnutls", detected: true},
-		).DoAndReturn(func(ctx context.Context, target *ExeAttachable, result ProbeScanResult) (io.Closer, error) {
+		).DoAndReturn(func(ctx context.Context, target *ExeLinkAttachable, result ProbeScanResult) (io.Closer, error) {
 			require.Equal(t, f1, target.Path)
 			require.Equal(t, 1, target.PID)
 			require.NotNil(t, target.Exe)
 			return gnutlsCloser, nil
 		})
 
-		closer, err := scanner.Attach(ctx, 1, f1, scanRes)
+		closer, err := scanner.Attach(ctx, &ExeAttachable{
+			PID:  1,
+			Path: f1,
+			Root: "/proc/1/root",
+		}, scanRes)
 		require.NoError(t, err)
 		require.NoError(t, closer.Close())
 		require.Equal(t, 1, gnutlsCloser.closes)
 
 		t.Run("probe_error", func(t *testing.T) {
 			gnutlsProbe.EXPECT().Attach(gomock.Any(),
-				gomock.Cond(func(a *ExeAttachable) bool {
+				gomock.Cond(func(a *ExeLinkAttachable) bool {
 					return a.Path == f1
 				}),
 				&testProbeScanResult{name: "gnutls", detected: true},
 			).Return(nil, errors.New("probe error"))
 
-			closer, err := scanner.Attach(ctx, 1, f1, scanRes)
+			closer, err := scanner.Attach(ctx, &ExeAttachable{
+				PID:  1,
+				Path: f1,
+				Root: "/proc/1/root",
+			}, scanRes)
 			require.EqualError(t, err, "attaching probe gnutls: probe error")
 			require.Nil(t, closer)
 			require.Equal(t, 1, gnutlsCloser.closes)

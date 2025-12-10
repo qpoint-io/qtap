@@ -27,9 +27,18 @@ import (
 func TestHTTP(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
 
-	ctx.WithConfig(t, nil, func(t *testing.T) {
+	// setup http targetServer
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer targetServer.Close()
+
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+	}, func(t *testing.T) {
 		// exec a process that makes an http request
-		example := ctx.Exec("curl", "http://example.com")
+		example := curl(ctx, targetServer.URL)
 		require.NoError(t, example.Err)
 
 		// ensure we captured the connection

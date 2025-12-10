@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf/link"
+	"github.com/hashicorp/go-multierror"
 	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/synq"
@@ -72,12 +73,18 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 
 func (s *targetScanner) Close() error {
 	s.cache.Stop()
+
+	var eg multierror.Group
 	for _, probe := range s.probes {
-		if err := probe.Close(); err != nil {
-			return fmt.Errorf("closing probe %s: %w", probe.Name(), err)
-		}
+		eg.Go(func() error {
+			if err := probe.Close(); err != nil {
+				return fmt.Errorf("closing probe %s: %w", probe.Name(), err)
+			}
+			return nil
+		})
 	}
-	return nil
+
+	return eg.Wait().ErrorOrNil()
 }
 
 // ScanResult is the result of scanning a target

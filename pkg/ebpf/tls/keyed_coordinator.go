@@ -31,6 +31,7 @@ func (c *KeyedCoordinator[K]) Start(key K) *opToken[K] {
 	return &opToken[K]{c: c, key: key, version: c.versions[key]}
 }
 
+// opToken is an operation token provided by KeyedCoordinator.
 type opToken[K comparable] struct {
 	c       *KeyedCoordinator[K]
 	key     K
@@ -79,6 +80,7 @@ func (t *opToken[K]) Execute(ctx context.Context, fn func(context.Context) error
 	if t.c.inflight[t.key] == op {
 		// clean up
 		delete(t.c.inflight, t.key)
+		delete(t.c.versions, t.key)
 	}
 	t.c.mu.Unlock()
 
@@ -90,7 +92,9 @@ func (t *opToken[K]) Execute(ctx context.Context, fn func(context.Context) error
 
 var errOpSuperseded = errors.New("operation superseded")
 
+// inflightOp is an in-flight operation tracked by KeyedCoordinator.
 type inflightOp struct {
+	// done is a channel that is closed when the operation completes.
 	done   chan struct{}
 	cancel context.CancelCauseFunc
 }

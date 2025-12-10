@@ -41,6 +41,7 @@ type Probe interface {
 	// AttachLibrary attaches probes to a shared library.
 	AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error)
 
+	// Close cleans up any global resources used by the probe.
 	Close() error
 }
 
@@ -63,8 +64,11 @@ type ProbeScanResult interface {
 }
 
 type ExeAttachable struct {
-	PID  int
+	// PID is the process ID of the process that is being attached.
+	PID int
+	// Path is the path to the executable of the process that is being attached.
 	Path string
+	// Root is the root fs path of the process that is being attached.
 	Root string
 }
 

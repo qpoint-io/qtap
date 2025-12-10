@@ -340,21 +340,24 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 					return
 				}
 
+				var tlsErr *TlsProbeError
+				if errors.As(err, &tlsErr) {
+					logger.Info("tls probe error", zap.String("probe_name", tlsErr.ProbeName), zap.Error(tlsErr.Err))
+					return
+				}
+
 				switch {
-				case errors.Is(err, ErrNewScanStarting):
-					logger.Debug("current scan was cancelled due to new scan starting up")
-				case errors.Is(err, ErrProcessStopped):
-					logger.Debug("current scan was cancelled due to process stopping")
-				case errors.Is(err, ErrProcessReplaced):
-					logger.Debug("current scan was cancelled due to process being replaced")
+				case errors.Is(err, ErrNewScanStarting): // noop
+				case errors.Is(err, ErrProcessStopped): // noop
+				case errors.Is(err, ErrProcessReplaced): // noop
 				default:
-					logger.Error("notifying observer of process start/replace", zap.Error(err))
+					logger.Debug("notifying observer of process start/replace", zap.Error(err))
 				}
 			}
 		})
 	}
 	if p := wg.WaitAndRecover(); p != nil {
-		m.Logger.Error("panic observed during process start/replace", zap.Error(p.AsError()))
+		m.Logger.Info("panic observed during process start/replace", zap.Error(p.AsError()))
 	}
 }
 
@@ -377,14 +380,20 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 
 	// close the process
 	if err := p.Close(); err != nil {
-		m.Logger.Error("closing process", zap.Error(err))
+		m.Logger.Debug("closing process", zap.Error(err))
 	}
 
 	// inform the observers
 	for _, observer := range m.Observers {
 		go func() {
 			if err := observer.ProcessStopped(ctx, p); err != nil {
-				m.Logger.Error("notifying observer of process stop", zap.Error(err))
+				var tlsErr *TlsProbeError
+				if errors.As(err, &tlsErr) {
+					m.Logger.Debug("tls probe error", zap.String("probe_name", tlsErr.ProbeName), zap.Error(tlsErr.Err))
+					return
+				}
+
+				m.Logger.Debug("notifying observer of process stop", zap.Error(err))
 			}
 		}()
 	}

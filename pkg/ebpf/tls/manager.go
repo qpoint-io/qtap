@@ -99,7 +99,7 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	// ensure the elf gets closed at the end of the scan
 	defer func() {
 		if err := proc.CloseElf(); err != nil {
-			m.logger.Error("closing elf", zap.Error(err))
+			m.logger.Debug("closing elf", zap.Error(err))
 		}
 	}()
 
@@ -118,13 +118,17 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 			if errors.Is(err, process.ErrProcessReplaced) {
 				continue
 			}
+			err = &process.TlsProbeError{
+				ProbeName: fmt.Sprintf("%T", p),
+				Err:       err,
+			}
 			return fmt.Errorf("starting process on tls probe: %w", err)
 		}
 	}
 
 	if m.final != nil {
 		if err := m.final.ProcessStarted(ctx, proc); err != nil {
-			return fmt.Errorf("starting process on final observer: %w", err)
+			m.logger.Debug("starting process on final observer", zap.Error(err))
 		}
 	}
 
@@ -139,13 +143,17 @@ func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process)
 
 	if m.final != nil {
 		if err := m.final.ProcessReplaced(ctx, proc); err != nil {
-			return fmt.Errorf("replacing process on final observer: %w", err)
+			m.logger.Debug("replacing process on final observer", zap.Error(err))
 		}
 	}
 
 	// inform all probes
 	for _, p := range m.probes {
 		if err := p.ProcessReplaced(ctx, proc); err != nil {
+			err = &process.TlsProbeError{
+				ProbeName: fmt.Sprintf("%T", p),
+				Err:       err,
+			}
 			return fmt.Errorf("replacing process on tls probe: %w", err)
 		}
 	}
@@ -163,13 +171,17 @@ func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) 
 
 	for _, p := range m.probes {
 		if err := p.ProcessStopped(ctx, proc); err != nil {
+			err = &process.TlsProbeError{
+				ProbeName: fmt.Sprintf("%T", p),
+				Err:       err,
+			}
 			return fmt.Errorf("stopping process on tls probe: %w", err)
 		}
 	}
 
 	if m.final != nil {
 		if err := m.final.ProcessStopped(ctx, proc); err != nil {
-			return fmt.Errorf("stopping process on final observer: %w", err)
+			m.logger.Debug("stopping process on final observer", zap.Error(err))
 		}
 	}
 

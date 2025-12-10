@@ -691,3 +691,12 @@ func (p *Process) CreatedAt() time.Time {
 func (p *Process) ClosedAt() *time.Time {
 	return p.closeTime
 }
+
+type TlsProbeError struct {
+	ProbeName string
+	Err       error
+}
+
+func (e *TlsProbeError) Error() string {
+	return fmt.Sprintf("tls probe %s failed: %s", e.ProbeName, e.Err)
+}

@@ -147,7 +147,7 @@ func (m *OpenSSLManager) ProcessStarted(ctx context.Context, p *process.Process)
 		// initialize the container
 		go func() {
 			if err := container.Init(ctx, p); err != nil {
-				m.logger.Error("initializing container", zap.Error(err))
+				m.logger.Debug("error initializing container", zap.Error(err))
 			}
 		}()
 	}

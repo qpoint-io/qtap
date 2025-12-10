@@ -3,6 +3,8 @@
 package e2e
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,10 +17,18 @@ import (
 func TestProcessFiltering(t *testing.T) {
 	ctx := e2ectx.TestCtx(t)
 
+	targetServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(targetServer.Close)
+
 	// should not be filtered out by default
-	ctx.WithConfig(t, nil, func(t *testing.T) {
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+	}, func(t *testing.T) {
 		// exec a process that makes an http request
-		example := ctx.Exec("curl", "http://example.com")
+		example := ctx.Exec("curl", targetServer.URL)
 		require.NoError(t, example.Err)
 		require.Equal(t, 0, example.Code)
 		require.NotEmpty(t, example.Output)
@@ -31,12 +41,14 @@ func TestProcessFiltering(t *testing.T) {
 
 	// should be filtered out by the custom filter
 	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
 		c.Tap.Filters.Custom = append(c.Tap.Filters.Custom, config.TapFilter{
 			Exe:      "/curl",
 			Strategy: config.MatchStrategy_SUFFIX,
 		})
 	}, func(t *testing.T) {
-		example := ctx.Exec("curl", "http://example.com")
+		example := ctx.Exec("curl", targetServer.URL)
 		require.NoError(t, example.Err)
 		require.Equal(t, 0, example.Code)
 		require.NotEmpty(t, example.Output)

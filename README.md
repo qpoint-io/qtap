@@ -5,8 +5,7 @@
   <img alt="Image showing the Qtap Header" src="./.github/assets/qtap-header-light.svg">
 </picture>
 
-
-----------
+---
 
 <div align="center">
     <a href="https://qpoint.io/qtap"><img alt="Link to Qpoint website" src="https://img.shields.io/badge/Qpoint.io-grey?style=for-the-badge&link=https%3A%2F%2Fqpoint.io&logo=data:image/svg%2bxml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNjcuMTggNjcuMzQiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICM4OTVhZTg7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxnIGlkPSJtYWluIj4KICAgIDxnPgogICAgICA8cGF0aCBjbGFzcz0iY2xzLTEiIGQ9Ik02NC4xMSw2Ny4zNGMtLjczLDAtMS40Ni0uMjgtMi4wMi0uODRsLTEuOTctMS45N2MtMS4xMS0xLjEyLTEuMTEtMi45MiwwLTQuMDQsMS4xMi0xLjExLDIuOTItMS4xMiw0LjA0LDBsMS45NywxLjk3YzEuMTEsMS4xMiwxLjExLDIuOTIsMCw0LjA0LS41Ni41Ni0xLjI5Ljg0LTIuMDIuODRaIi8+CiAgICAgIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTMzLjU5LDBDMTUuMDQsMCwwLDE1LjA0LDAsMzMuNTlzMTUuMDQsMzMuNTksMzMuNTksMzMuNTksMzMuNTktMTUuMDQsMzMuNTktMzMuNTlTNTIuMTQsMCwzMy41OSwwWk01My43OSw1NC4xN2MtLjU2LjU2LTEuMjkuODQtMi4wMi44NHMtMS40Ni0uMjgtMi4wMi0uODRsLTguMzEtOC4zMWMtMS4xMi0xLjEyLTEuMTItMi45MiwwLTQuMDQsMS4xMS0xLjEyLDIuOTMtMS4xMiw0LjA0LDBsOC4zMSw4LjMxYzEuMTIsMS4xMiwxLjEyLDIuOTIsMCw0LjA0WiIvPgogICAgPC9nPgogIDwvZz4KPC9zdmc+" /></a>&nbsp;
@@ -25,11 +24,13 @@ An eBPF agent that captures traffic flowing through the Linux kernel. By attachi
 Qtap shows you exactly what data is being sent and received in its original, unencrypted form while operating out-of-band with minimal overhead, without adding latency or disrupting application performance.
 
 <br/>
+<div align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/how-it-works-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="./.github/assets/how-it-works.svg">
-  <img alt="Image showing an architectual overview of Qtap" src="./.github/assets/qtap-overview-light.svg">
+  <img width="600" alt="Image showing an architectual overview of Qtap" src="./.github/assets/qtap-overview-light.svg">
 </picture>
+</div>
 <br/><br/><br/>
 
 Qtap can augment your existing observability piplines or can be used as a foundational component for a custom solution, like [Qpoint](https://www.qpoint.io/qtap), in a variety of ways, including:
@@ -49,6 +50,7 @@ Qtap can augment your existing observability piplines or can be used as a founda
 For more information [see the "How It Works" section of our website](https://docs.qpoint.io/readme/how-it-works).
 
 ## Quick Start
+
 Want to give Qtap a test run? Spin up a temporary instance in Demo mode! See the traffic in real time right in your terminal.
 
 ```bash
@@ -79,43 +81,48 @@ Converse with Qpoint devs and the contributors in [Github Discussions](https://g
 - Linux with Kernel 5.10+ with [BPF Type Format (BTF)](https://www.kernel.org/doc/html/latest/bpf/btf.html) enabled. You can check if your kernel has BTF enabled by verifying if `/sys/kernel/btf/vmlinux` exists on your system.
 - eBPF enabled on the host.
 - Elevated permissions on the host or within the Docker container running the agent:
-    - on host run with `sudo`
-    - within docker it's best to run with `CAP_BPF`, host pids, and privileged. For example:
-    ``` bash
-    docker run \
-        --user 0:0 \
-        --privileged \
-        --cap-add CAP_BPF \
-        --cap-add CAP_SYS_ADMIN \
-        --pid=host \
-        --network=host \
-        -v /sys:/sys \
-        --ulimit=memlock=-1 \
-        us-docker.pkg.dev/qpoint-edge/public/qpoint:v0 \
-        tap \
-        --log-level=info
-    ```
+  - on host run with `sudo`
+  - within docker it's best to run with `CAP_BPF`, host pids, and privileged. For example:
+  ```bash
+  docker run \
+      --user 0:0 \
+      --privileged \
+      --cap-add CAP_BPF \
+      --cap-add CAP_SYS_ADMIN \
+      --pid=host \
+      --network=host \
+      -v /sys:/sys \
+      --ulimit=memlock=-1 \
+      us-docker.pkg.dev/qpoint-edge/public/qpoint:v0 \
+      tap \
+      --log-level=info
+  ```
 
 ## Development
+
 ### Prerequisites
+
 #### OS
 
 - linux (kernel 5.10+)
-    - MacOS developers at Qpoint have enjoyed using [Lima](https://lima-vm.io/) as a quick, easy linux VM for development.
+  - MacOS developers at Qpoint have enjoyed using [Lima](https://lima-vm.io/) as a quick, easy linux VM for development.
 
 #### Tools:
+
 - go1.24+
 - make
 - clang14 (version 14 is required)
 - clang-tidy (optional/recommended)
 
 ### Quick Start
+
 ```bash
 $ git clone https://github.com/qpoint-io/qtap.git
 $ make build
 ```
 
 #### Popular `Makefile` targets
+
 These are the most commonly used targets by Qpoint devs:
 
 - `build` - generates the eBPF binaries and builds the Go application

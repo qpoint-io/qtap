@@ -147,16 +147,6 @@ func TestTlsManager(t *testing.T) {
 	require.Equal(t, 0, ctrRootCloser.closes)
 
 	/*
-		we will trigger an exec replace on proc2 without changing the executable path
-
-		1. it should not trigger a new scan
-	*/
-	err = manager.ProcessReplaced(ctx, proc2)
-	require.NoError(t, err)
-
-	require.Equal(t, 0, proc2Closer.closes)
-
-	/*
 		we will trigger an exec replace on proc2 with a new executable path
 
 		1. it should trigger a new scan

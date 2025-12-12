@@ -46,6 +46,8 @@ type targetScanner struct {
 	logger *zap.Logger
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
+	// scanMu is used to ensure that we don't scan the same target multiple times concurrently.
+	scanMu *synq.MutexMap[string]
 }
 
 // TargetScannerOption configures the TargetScanner
@@ -57,6 +59,7 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 		logger: logger,
 		probes: make(map[string]Probe, len(probes)),
 		cache:  synq.NewTTLCache[string, *ScanResult](DefaultCacheTTL, DefaultCacheCleanupInterval),
+		scanMu: synq.NewMutexMap[string](),
 	}
 
 	for _, probe := range probes {
@@ -105,6 +108,7 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	if err != nil {
 		return nil, fmt.Errorf("opening executable: %w", err)
 	}
+	defer elf.Close()
 
 	hash, err := elf.Hash(ctx)
 	if err != nil {
@@ -113,8 +117,12 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	}
 	span.SetAttributes(attribute.String("hash", hash))
 
+	mu := s.scanMu.Get(hash)
+	mu.Lock()
+	defer mu.Unlock()
+
 	if cached, ok := s.cache.LoadAndRenew(hash); ok {
-		if cached.Mtime == elf.Mtime() {
+		if cached.Mtime == elf.Mtime().Unix() {
 			span.SetAttributes(attribute.String("cache_status", "hit"))
 			return cached, nil
 		}
@@ -125,18 +133,20 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	}
 	span.SetAttributes(attribute.String("cache_status", "miss"))
 
-	// TODO: check if there is an in-progress scan for this hash
-	// if so, wait for it. if it returns an error, try again. otherwise, return the cached result.
-
 	res := &ScanResult{
 		Hash:         hash,
-		Mtime:        elf.Mtime(),
+		Mtime:        elf.Mtime().Unix(),
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
 	scannable := &ExeElfScannable{
 		ExeScannable: *target,
 		Elf:          elf,
 	}
+	s.logger.Debug("scanning target",
+		zap.String("path", target.Path),
+		zap.String("hash", hash),
+		zap.Time("mtime", elf.Mtime()),
+	)
 	for probeName, probe := range s.probes {
 		probeRes, err := probe.Scan(ctx, scannable)
 		if err != nil {

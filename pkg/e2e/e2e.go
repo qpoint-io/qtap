@@ -282,7 +282,7 @@ func NewLogger(start time.Time) *zap.Logger {
 }
 
 func (c *Context) ProcessScanStarted(ctx context.Context, proc *process.Process) error {
-	return nil
+	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessAttachCompleted(ctx context.Context, proc *process.Process) error {
@@ -290,7 +290,7 @@ func (c *Context) ProcessAttachCompleted(ctx context.Context, proc *process.Proc
 }
 
 func (c *Context) ProcessScanCompleted(ctx context.Context, proc *process.Process) error {
-	return nil
+	return c.ProcessWaiter.Reset(NewProcessKey(proc.ContainerID, proc.Pid))
 }
 
 func (c *Context) ProcessStopped(ctx context.Context, proc *process.Process) error {

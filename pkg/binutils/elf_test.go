@@ -28,7 +28,7 @@ func TestNewElf(t *testing.T) {
 	assert.Equal(t, "v1:5fc052f589b5b2bf", hash)
 	require.NoError(t, e.Close())
 
-	assert.Equal(t, fakeMtime.Unix(), e.Mtime())
+	assert.Equal(t, "2000-01-01 00:00:00 +0000 UTC", e.Mtime().String())
 }
 
 func TestNewElfNonExistent(t *testing.T) {

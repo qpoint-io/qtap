@@ -137,6 +137,16 @@ func TestKeyedCoordinator_CleansUpAfterExecution(t *testing.T) {
 	_, hasInflight := c.inflight["key"]
 	c.mu.Unlock()
 
+	require.True(t, hasVersion, "version should not be cleaned up yet")
+	require.False(t, hasInflight, "inflight should be cleaned up")
+
+	c.Cleanup("key", false)
+
+	c.mu.Lock()
+	_, hasVersion = c.versions["key"]
+	_, hasInflight = c.inflight["key"]
+	c.mu.Unlock()
+
 	require.False(t, hasVersion, "version should be cleaned up")
 	require.False(t, hasInflight, "inflight should be cleaned up")
 }

@@ -31,6 +31,18 @@ func (c *KeyedCoordinator[K]) Start(key K) *opToken[K] {
 	return &opToken[K]{c: c, key: key, version: c.versions[key]}
 }
 
+func (c *KeyedCoordinator[K]) Cleanup(key K, cancelInflight bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.versions, key)
+	if cancelInflight {
+		if inflight := c.inflight[key]; inflight != nil {
+			inflight.cancel(ErrOpSuperseded)
+		}
+	}
+	delete(c.inflight, key)
+}
+
 // opToken is an operation token provided by KeyedCoordinator.
 type opToken[K comparable] struct {
 	c       *KeyedCoordinator[K]
@@ -57,7 +69,7 @@ func (t *opToken[K]) Execute(ctx context.Context, fn func(context.Context) error
 	if old := t.c.inflight[t.key]; old != nil {
 		t.c.mu.Unlock()
 		// cancel in-flight op and wait for it to complete
-		old.cancel(errOpSuperseded)
+		old.cancel(ErrOpSuperseded)
 		<-old.done
 		t.c.mu.Lock()
 
@@ -69,6 +81,7 @@ func (t *opToken[K]) Execute(ctx context.Context, fn func(context.Context) error
 	}
 
 	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	op := &inflightOp{done: make(chan struct{}), cancel: cancel}
 	t.c.inflight[t.key] = op
 	t.c.mu.Unlock()
@@ -80,17 +93,18 @@ func (t *opToken[K]) Execute(ctx context.Context, fn func(context.Context) error
 	if t.c.inflight[t.key] == op {
 		// clean up
 		delete(t.c.inflight, t.key)
-		delete(t.c.versions, t.key)
 	}
 	t.c.mu.Unlock()
 
-	if errors.Is(context.Cause(ctx), errOpSuperseded) {
-		return nil
+	// On CancelCause, the ctx.Err() will still be context.Canceled, so we need to bubble up the cause
+	if cause := context.Cause(ctx); cause != nil && errors.Is(ErrOpSuperseded, cause) {
+		return cause
 	}
+
 	return err
 }
 
-var errOpSuperseded = errors.New("operation superseded")
+var ErrOpSuperseded = errors.New("operation superseded")
 
 // inflightOp is an in-flight operation tracked by KeyedCoordinator.
 type inflightOp struct {

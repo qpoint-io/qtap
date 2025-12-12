@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
@@ -59,11 +60,27 @@ type Elf struct {
 	hash        resolvable.Ctx[string]
 	elf         resolvable.Ctx[*elf.File]
 
-	mtime int64
+	mtime time.Time
 	exe   string
 	root  string
 	file  *os.File
 }
+
+// func (e *Elf) Debug(l *zap.Logger) {
+// 	stat, err := e.file.Stat()
+// 	if err != nil {
+// 		l.Warn("failed to stat file", zap.Error(err))
+// 	}
+// 	l.Debug("Elf debug",
+// 		zap.Bool("isContainer", e.isContainer),
+// 		zap.String("exe", e.exe),
+// 		zap.String("root", e.root),
+// 		zap.String("file", e.file.Name()),
+// 		zap.String("stat.name", stat.Name()),
+// 		zap.Int64("stat.mtime", stat.ModTime().Unix()),
+// 		zap.Int64("stat.size", stat.Size()),
+// 	)
+// }
 
 // NewElf creates a new Elf instance
 // Returns ErrNotELF if the file is not an ELF
@@ -91,7 +108,7 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 	if err != nil {
 		return nil, err
 	}
-	e.mtime = stat.ModTime().Unix()
+	e.mtime = stat.ModTime().UTC()
 
 	// Check if it's actually an ELF file
 	_, err = e.isELF()
@@ -119,7 +136,7 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 	return e, nil
 }
 
-func (e *Elf) Mtime() int64 {
+func (e *Elf) Mtime() time.Time {
 	return e.mtime
 }
 
@@ -167,6 +184,11 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 	}
 
 	var allMatches []elf.Symbol
+	type seenKey struct {
+		name  string
+		value uint64
+	}
+	var seen = make(map[seenKey]struct{})
 
 	for _, sectionType := range sectionTypes {
 		var matches []elf.Symbol
@@ -188,11 +210,13 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 			return nil, fmt.Errorf("searching symbols in section type %v: %w", sectionType, err)
 		}
 
-		allMatches = append(allMatches, matches...)
-
-		// If we've found all the targets, we can stop searching
-		if len(allMatches) == len(targets) {
-			break
+		for _, match := range matches {
+			key := seenKey{name: match.Name, value: match.Value}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			allMatches = append(allMatches, match)
 		}
 	}
 
@@ -227,10 +251,6 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 
 	var sym elf.Sym32
 	for {
-		if len(matches) == len(targets) {
-			break
-		}
-
 		err := binary.Read(tabReader, f.ByteOrder, &sym)
 		if errors.Is(err, io.EOF) {
 			break
@@ -264,7 +284,7 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
 	ctx, span := tracer.Start(ctx, "Elf.getSymbols64") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
-	matches := []elf.Symbol{}
+	var matches []elf.Symbol
 
 	symtabSection := f.SectionByType(typ)
 	if symtabSection == nil {
@@ -289,10 +309,6 @@ func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSea
 
 	var sym elf.Sym64
 	for {
-		if len(matches) == len(targets) {
-			break
-		}
-
 		err := binary.Read(tabReader, f.ByteOrder, &sym)
 		if errors.Is(err, io.EOF) {
 			break
@@ -671,14 +687,18 @@ func match(symName, targetName string, strategy MatchStrategy) bool {
 // 	return false, nil
 // }
 
-func FindSymbol(symbols []elf.Symbol, target SymbolSearch, filter func(*elf.Symbol) bool) (*elf.Symbol, error) {
+func FindSymbols(symbols []elf.Symbol, target SymbolSearch, filter func(*elf.Symbol) bool) ([]*elf.Symbol, error) {
+	var results []*elf.Symbol
 	for _, sym := range symbols {
 		if match(sym.Name, target.Name, target.MatchStrategy) {
 			if filter != nil && !filter(&sym) {
 				continue
 			}
-			return &sym, nil
+			results = append(results, &sym)
 		}
 	}
-	return nil, ErrNoSymbols
+	if len(results) == 0 {
+		return nil, ErrNoSymbols
+	}
+	return results, nil
 }

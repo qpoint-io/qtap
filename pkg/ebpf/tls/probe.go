@@ -136,31 +136,34 @@ func AttachProbes[T interface {
 	}
 
 	for _, probe := range probes {
-		sym, err := binutils.FindSymbol(
+		ll := ll.With(
+			zap.String("function", probe.Function),
+			zap.String("probe", probe.ID()),
+			zap.String("ebpf_prog", probe.Prog.String()),
+		)
+		syms, err := binutils.FindSymbols(
 			symbols, binutils.SymbolSearch{
 				Name:          probe.Function,
 				MatchStrategy: matchStrategy,
 			}, filter)
 		if err != nil {
-			if errors.Is(err, binutils.ErrNoSymbols) {
-				continue
+			if !errors.Is(err, binutils.ErrNoSymbols) {
+				ll.Debug("failed to find symbols", zap.Error(err))
 			}
-
-			return nil, fmt.Errorf("finding symbol %s: %w", probe.Function, err)
+			continue
 		}
 
-		if !probe.IsRet {
+		for _, sym := range syms {
 			ll.Debug("attaching probe",
-				zap.String("function", probe.Function),
 				zap.String("symbol", sym.Name),
 				zap.Uint64("address", sym.Value),
+				zap.Bool("is_ret", probe.IsRet),
 			)
+			if err := probe.Attach(ctx, exe, sym.Value); err != nil {
+				return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
+			}
+			closer = append(closer, probe)
 		}
-
-		if err := probe.Attach(ctx, exe, sym.Value); err != nil {
-			return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
-		}
-		closer = append(closer, probe)
 	}
 
 	return closer, nil

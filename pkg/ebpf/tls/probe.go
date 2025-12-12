@@ -30,7 +30,7 @@ type Probe interface {
 	// Attach attaches probes to the process using the scan result.
 	//
 	// Returns a Closer that must be called when the process exits to clean up the probes.
-	Attach(ctx context.Context, target *ExeAttachable, result ProbeScanResult) (io.Closer, error)
+	Attach(ctx context.Context, target *ExeLinkAttachable, result ProbeScanResult) (io.Closer, error)
 
 	// SharedLibraries returns the list of shared libraries this probe can attach to.
 	// Each string is a library name prefix (e.g., "libssl.so", "libcrypto.so")
@@ -40,6 +40,9 @@ type Probe interface {
 
 	// AttachLibrary attaches probes to a shared library.
 	AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error)
+
+	// Close cleans up any global resources used by the probe.
+	Close() error
 }
 
 // ExeScannable contains information about a binary available during the scan phase.
@@ -61,9 +64,18 @@ type ProbeScanResult interface {
 }
 
 type ExeAttachable struct {
-	PID  int
+	// PID is the process ID of the process that is being attached.
+	PID int
+	// Path is the path to the executable of the process that is being attached.
 	Path string
-	Exe  *link.Executable
+	// Root is the root fs path of the process that is being attached.
+	Root string
+}
+
+type ExeLinkAttachable struct {
+	ExeAttachable
+
+	Exe *link.Executable
 }
 
 // MultiCloser wraps multiple closers into a single Closer.
@@ -84,10 +96,12 @@ func (m MultiCloser) Close() error {
 }
 
 // AttachProbes is helper for attaching uprobes to a pre-processed list of symbols.
-func AttachProbes(
+func AttachProbes[T interface {
+	*link.Executable | *ExeLinkAttachable
+}](
 	ctx context.Context,
 	logger *zap.Logger,
-	exe *link.Executable,
+	target T,
 	symbols []elf.Symbol,
 	matchStrategy binutils.MatchStrategy,
 	probes []*common.Uprobe,
@@ -108,28 +122,48 @@ func AttachProbes(
 		}
 	}
 
+	var (
+		exe *link.Executable
+		ll  = logger
+	)
+
+	switch t := any(target).(type) {
+	case *link.Executable:
+		exe = t
+	case *ExeLinkAttachable:
+		exe = t.Exe
+		ll = ll.With(zap.Int("pid", t.PID))
+	}
+
 	for _, probe := range probes {
-		sym, err := binutils.FindSymbol(
+		ll := ll.With(
+			zap.String("function", probe.Function),
+			zap.String("probe", probe.ID()),
+			zap.String("ebpf_prog", probe.Prog.String()),
+		)
+		syms, err := binutils.FindSymbols(
 			symbols, binutils.SymbolSearch{
 				Name:          probe.Function,
 				MatchStrategy: matchStrategy,
 			}, filter)
 		if err != nil {
-			if errors.Is(err, binutils.ErrNoSymbols) {
-				continue
+			if !errors.Is(err, binutils.ErrNoSymbols) {
+				ll.Debug("failed to find symbols", zap.Error(err))
 			}
-
-			return nil, fmt.Errorf("finding symbol %s: %w", probe.Function, err)
+			continue
 		}
 
-		if !probe.IsRet {
-			logger.Debug("attaching probe", zap.String("function", probe.Function), zap.String("symbol", sym.Name), zap.Uint64("address", sym.Value))
+		for _, sym := range syms {
+			ll.Debug("attaching probe",
+				zap.String("symbol", sym.Name),
+				zap.Uint64("address", sym.Value),
+				zap.Bool("is_ret", probe.IsRet),
+			)
+			if err := probe.Attach(ctx, exe, sym.Value); err != nil {
+				return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
+			}
+			closer = append(closer, probe)
 		}
-
-		if err := probe.Attach(ctx, exe, sym.Value); err != nil {
-			return nil, fmt.Errorf("attaching probe %s: %w", probe.Function, err)
-		}
-		closer = append(closer, probe)
 	}
 
 	return closer, nil

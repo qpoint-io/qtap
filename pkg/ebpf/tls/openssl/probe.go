@@ -98,7 +98,7 @@ func (s *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 }
 
 // Attach attaches uprobes to the binary.
-func (s *Probe) Attach(ctx context.Context, target *tls.ExeAttachable, result tls.ProbeScanResult) (io.Closer, error) {
+func (s *Probe) Attach(ctx context.Context, target *tls.ExeLinkAttachable, result tls.ProbeScanResult) (io.Closer, error) {
 	ctx, span := tracer.Start(ctx, "OpenSSLScanner.Attach")
 	defer span.End()
 
@@ -111,7 +111,7 @@ func (s *Probe) Attach(ctx context.Context, target *tls.ExeAttachable, result tl
 		return nil, errors.New("invalid result type: expected *OpenSSLScanResult")
 	}
 
-	return tls.AttachProbes(ctx, ll, target.Exe, r.Symbols, binutils.MatchStrategyExact, s.probeFn(), true)
+	return tls.AttachProbes(ctx, ll, target, r.Symbols, binutils.MatchStrategyExact, s.probeFn(), true)
 }
 
 // AttachLibrary implements tls.LibraryAttacher.
@@ -160,7 +160,7 @@ func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer
 		return nil, fmt.Errorf("attaching probes: %w", err)
 	}
 
-	ll.Info("attached OpenSSL probes (shared)",
+	ll.Debug("attached OpenSSL probes (shared)",
 		zap.String("name", name),
 		zap.String("path", path),
 	)
@@ -170,4 +170,8 @@ func (s *Probe) attachLibrary(ctx context.Context, name, path string) (io.Closer
 
 func (s *Probe) SharedLibraries() []string {
 	return []string{LibSSL}
+}
+
+func (s *Probe) Close() error {
+	return nil
 }

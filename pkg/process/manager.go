@@ -249,6 +249,7 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 		processRenamedTotal.WithLabelValues(getProcessLabels(p)...).Inc()
 
 		// replace the process
+		proc.Args = p.Args
 		p = proc
 	}
 

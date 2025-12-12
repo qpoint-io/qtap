@@ -2,9 +2,9 @@ package tls
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -29,8 +29,8 @@ type TlsManager struct {
 
 	// procAttachments tracks process attachments by PID
 	// These should be closed on the ProcessStopped signal.
-	procAttachments  *synq.Map[int, *procAttachment]
-	procAttachTokens *tokenProvider[int]
+	procAttachments *synq.Map[int, *procAttachment]
+	procCoordinator *KeyedCoordinator[int]
 
 	// containers tracks scanned containers by ID.
 	// These should be closed when the manager is stopped.
@@ -49,6 +49,20 @@ type procAttachment struct {
 	// This path should not be used for scanning or attaching.
 	localExe string
 	closer   io.Closer
+}
+
+// processInfo contains the fields we need from *process.Process as that one is mutable.
+type processInfo struct {
+	pid         int
+	exe         string
+	containerID string
+	root        string
+	pidExe      string
+	cmdline     []string
+	strategy    process.QpointStrategy
+
+	// IMPORTANT: proc might be mutated after creation. users should mind this.
+	proc *process.Process
 }
 
 // NewTlsManager creates a new TlsManager with the given options.
@@ -78,10 +92,10 @@ func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 		ctx:     ctx,
 		cancel:  cancel,
 
-		procAttachments:  synq.NewMap[int, *procAttachment](),
-		procAttachTokens: newTokenProvider[int](),
-		containers:       synq.NewMap[string, io.Closer](),
-		containerMu:      synq.NewMutexMap[string](),
+		procAttachments: synq.NewMap[int, *procAttachment](),
+		procCoordinator: NewKeyedCoordinator[int](),
+		containers:      synq.NewMap[string, io.Closer](),
+		containerMu:     synq.NewMutexMap[string](),
 	}
 
 	return m
@@ -92,36 +106,32 @@ func (m *TlsManager) Close() error {
 
 	var eg multierror.Group
 
-	eg.Go(func() error {
-		var err error
-		m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
-			if attachment.closer == nil {
-				return true
-			}
-
-			if e := attachment.closer.Close(); e != nil {
-				err = fmt.Errorf("detaching probes for pid %d: %w", pid, e)
-				return false
-			}
-
+	m.procAttachments.Iter(func(pid int, attachment *procAttachment) bool {
+		if attachment.closer == nil {
 			return true
+		}
+
+		eg.Go(func() error {
+			if err := attachment.closer.Close(); err != nil {
+				return fmt.Errorf("closing process attachment for pid %d: %w", pid, err)
+			}
+			return nil
 		})
-		return err
+
+		return true
 	})
 
-	eg.Go(func() error {
-		var err error
-		m.containers.Iter(func(id string, closer io.Closer) bool {
-			if closer == nil {
-				return true
-			}
-			if e := closer.Close(); e != nil {
-				err = fmt.Errorf("detaching container %s: %w", id, e)
-				return false
-			}
+	m.containers.Iter(func(id string, closer io.Closer) bool {
+		if closer == nil {
 			return true
+		}
+		eg.Go(func() error {
+			if err := closer.Close(); err != nil {
+				return fmt.Errorf("closing container attachment for id %s: %w", id, err)
+			}
+			return nil
 		})
-		return err
+		return true
 	})
 
 	eg.Go(func() error {
@@ -138,22 +148,30 @@ func (m *TlsManager) Close() error {
 // It runs all scanners concurrently and caches results by binary hash.
 // Returns a combined Detacher for all attached probes.
 func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) error {
-	if proc.Exe == "" {
+	// copy the process info asap because *process.Process is mutable
+	info := newProcessInfo(proc)
+
+	if info.exe == "" {
 		return nil // not a real process
+	}
+	if m.ctx.Err() != nil {
+		return m.ctx.Err()
 	}
 
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStarted")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int("pid", proc.Pid),
-		attribute.String("exe", proc.Exe),
-		attribute.String("container_id", proc.ContainerID),
+		attribute.Int("pid", info.pid),
+		attribute.String("exe", info.exe),
+		attribute.String("container_id", info.containerID),
 	)
+
+	attachToken := m.procCoordinator.Start(info.pid)
 
 	// Start scanning the container for shared libraries
 	containerScan := make(chan struct{})
 	go func() {
-		m.ContainerStarted(ctx, proc.ContainerID, proc.Root)
+		m.containerStarted(ctx, info.containerID, info.root)
 		close(containerScan)
 	}()
 	defer func() {
@@ -163,15 +181,20 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 	if proc.Exited() {
 		return nil
 	}
-	if proc.Strategy != process.StrategyObserve {
+	if info.strategy != process.StrategyObserve {
 		return nil
 	}
 	if proc.IsFiltered(config.FilterLevel_TLS) {
 		return nil
 	}
 
-	err := m.scanAndAttachProcess(ctx, proc)
-	if err != nil {
+	if m.observer != nil {
+		if e := m.observer.ProcessScanStarted(ctx, proc); e != nil {
+			m.logger.Debug("error notifying tls observer of process scan", zap.Error(e))
+		}
+	}
+	err := m.scanAndAttachProcess(ctx, info, attachToken)
+	if err != nil && !errors.Is(err, ErrOpSuperseded) {
 		return fmt.Errorf("scanning and attaching process: %w", err)
 	}
 
@@ -180,40 +203,38 @@ func (m *TlsManager) ProcessStarted(ctx context.Context, proc *process.Process) 
 
 // ProcessReplaced handles when a process's binary is replaced (via exec())
 func (m *TlsManager) ProcessReplaced(ctx context.Context, proc *process.Process) error {
-	if proc.Exe == "" {
+	// copy the process info asap because *process.Process is mutable
+	info := newProcessInfo(proc)
+
+	if info.exe == "" {
 		return nil // not a real process
+	}
+	if m.ctx.Err() != nil {
+		return m.ctx.Err()
 	}
 
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessReplaced")
 	defer span.End()
-	span.SetAttributes(attribute.Int("pid", proc.Pid))
+	span.SetAttributes(attribute.Int("pid", info.pid))
 
-	attachment, exists := m.procAttachments.Load(proc.Pid)
-	if !exists {
-		// ProcessStarted did not run. This is likely because the process was replaced before the scan was complete.
-		// We will start a new scan and attach.
-		return m.scanAndAttachProcess(ctx, proc)
+	attachToken := m.procCoordinator.Start(info.pid)
+	if m.observer != nil {
+		if e := m.observer.ProcessScanStarted(ctx, proc); e != nil {
+			m.logger.Debug("error notifying tls observer of process scan", zap.Error(e))
+		}
 	}
 
-	ll := m.logger.With(zap.Int("pid", proc.Pid))
-	span.SetAttributes(attribute.String("old_exe_path", attachment.localExe))
-
-	if attachment.localExe != proc.Exe {
-		// the path has changed. Rescan.
-		ll.Debug("executable path has changed, rescanning process",
-			zap.String("old_exe_path", attachment.localExe),
-			zap.String("new_exe_path", proc.Exe),
-		)
-
-		if err := m.detachProcess(ctx, proc.Pid); err != nil {
+	attachment, exists := m.procAttachments.Load(info.pid)
+	if exists {
+		if err := m.detachProcess(ctx, info.pid, attachment); err != nil {
 			return fmt.Errorf("detaching existing probes: %w", err)
 		}
-		return m.scanAndAttachProcess(ctx, proc)
 	}
 
-	// technically it is possible that the old binary was moved to a different path and a new one replaced it.
-	// this is very unlikely so we will ignore this case for now.
-
+	err := m.scanAndAttachProcess(ctx, info, attachToken)
+	if err != nil && !errors.Is(err, ErrOpSuperseded) {
+		return err
+	}
 	return nil
 }
 
@@ -222,14 +243,23 @@ func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) 
 	if proc.Exe == "" {
 		return nil // not a real process
 	}
+	if m.ctx.Err() != nil {
+		return m.ctx.Err()
+	}
 
 	ctx, span := tracer.WithRemoteCancel(ctx, m.ctx, "TlsManager.ProcessStopped")
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", proc.Pid))
 
-	err := m.detachProcess(ctx, proc.Pid)
-	if err != nil {
-		return fmt.Errorf("detaching process: %w", err)
+	m.procCoordinator.Cleanup(proc.Pid, true)
+
+	var err error
+	attachment, exists := m.procAttachments.Load(proc.Pid)
+	if exists {
+		err = m.detachProcess(ctx, proc.Pid, attachment)
+		if err != nil {
+			err = fmt.Errorf("detaching process: %w", err)
+		}
 	}
 
 	if m.observer != nil {
@@ -238,75 +268,80 @@ func (m *TlsManager) ProcessStopped(ctx context.Context, proc *process.Process) 
 		}
 	}
 
-	return nil
+	return err
 }
 
 // scanAndAttachProcess scans a process binary and attaches applicable TLS probes.
-func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *process.Process) error {
+func (m *TlsManager) scanAndAttachProcess(ctx context.Context, proc *processInfo, attachToken *opToken[int]) error {
 	ctx, span := tracer.Start(ctx, "TlsManager.scanAndAttachProcess",
-		trace.WithAttributes(attribute.Int("pid", proc.Pid)),
+		trace.WithAttributes(attribute.Int("pid", proc.pid)),
 	)
 	defer span.End()
 
-	attachToken := m.procAttachTokens.Get(proc.Pid)
-
-	if m.observer != nil {
-		if e := m.observer.ProcessScanStarted(ctx, proc); e != nil {
-			m.logger.Debug("error notifying tls observer of process scan", zap.Error(e))
-		}
+	if attachToken == nil {
+		attachToken = m.procCoordinator.Start(proc.pid)
 	}
 
 	res, err := m.scanner.Scan(ctx, &ExeScannable{
-		Path:    proc.PidExe,
-		Cmdline: proc.FullCmd(),
-		Root:    proc.RootFS(),
+		Path:    proc.pidExe,
+		Cmdline: proc.cmdline,
+		Root:    proc.root,
 	})
 	if err != nil {
 		return err
 	}
 
-	if !attachToken() {
-		// a newer scan has started. we will not attach as the data we have is now likely outdated.
+	var closer io.Closer
+	err = attachToken.Execute(ctx, func(ctx context.Context) error {
+		m.logger.Debug("attaching probes to process",
+			zap.Int("pid", proc.pid),
+			zap.String("exe", proc.exe),
+			zap.String("container_id", proc.containerID),
+		)
+
+		var e error
+		closer, e = m.scanner.Attach(ctx, &ExeAttachable{
+			PID:  proc.pid,
+			Path: proc.pidExe,
+			Root: proc.root,
+		}, res)
+		return e
+	})
+	if err != nil {
+		return err
+	}
+
+	// attach can take a while, so we need to check again if we are still the latest token
+	err = attachToken.Execute(ctx, func(ctx context.Context) error {
+		var detectedProbes []string
+		for _, res := range res.ProbeResults {
+			if res.ProbeDetected() {
+				detectedProbes = append(detectedProbes, res.ProbeName())
+			}
+		}
+
+		proc.proc.SetDetectedTLSProbeTypes(detectedProbes)
+		m.procAttachments.Store(proc.pid, &procAttachment{
+			localExe: proc.exe,
+			closer:   closer,
+		})
+
+		if m.observer != nil {
+			if e := m.observer.ProcessAttachCompleted(ctx, proc.proc); e != nil {
+				m.logger.Debug("error notifying tls observer of process attach", zap.Error(e))
+			}
+		}
 		return nil
-	}
-
-	closer, err := m.scanner.Attach(ctx, proc.Pid, proc.PidExe, res)
-	if err != nil {
-		return err
-	}
-
-	var detectedProbes []string
-	for _, res := range res.ProbeResults {
-		if res.ProbeDetected() {
-			detectedProbes = append(detectedProbes, res.ProbeName())
-		}
-	}
-	proc.SetDetectedTLSProbeTypes(detectedProbes)
-
-	m.procAttachments.Store(proc.Pid, &procAttachment{
-		localExe: proc.Exe,
-		closer:   closer,
 	})
 
-	if m.observer != nil {
-		if e := m.observer.ProcessAttachCompleted(ctx, proc); e != nil {
-			m.logger.Debug("error notifying tls observer of process attach", zap.Error(e))
-		}
-	}
-
-	return nil
+	return err
 }
 
 // detachProcess removes and closes all attachments for a PID
-func (m *TlsManager) detachProcess(ctx context.Context, pid int) error {
+func (m *TlsManager) detachProcess(ctx context.Context, pid int, attachment *procAttachment) error {
 	ctx, span := tracer.Start(ctx, "TlsManager.detachProcess") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	span.SetAttributes(attribute.Int("pid", pid))
-
-	attachment, exists := m.procAttachments.Load(pid)
-	if !exists {
-		return nil
-	}
 	span.SetAttributes(attribute.Bool("was_attached", attachment.closer != nil))
 
 	if attachment.closer != nil {
@@ -319,7 +354,7 @@ func (m *TlsManager) detachProcess(ctx context.Context, pid int) error {
 	return nil
 }
 
-func (m *TlsManager) ContainerStarted(ctx context.Context, id, root string) {
+func (m *TlsManager) containerStarted(ctx context.Context, id, root string) {
 	mu := m.containerMu.Get(id)
 	mu.Lock()
 	defer mu.Unlock()
@@ -331,7 +366,7 @@ func (m *TlsManager) ContainerStarted(ctx context.Context, id, root string) {
 	}
 
 	if m.observer != nil {
-		if e := m.observer.ContainerScanStarted(ctx, id); e != nil {
+		if e := m.observer.ContainerScanStarted(m.ctx, id); e != nil {
 			m.logger.Debug("error notifying tls observer of container scan", zap.Error(e))
 		}
 	}
@@ -339,13 +374,13 @@ func (m *TlsManager) ContainerStarted(ctx context.Context, id, root string) {
 	closer, err := m.scanAndAttachContainer(ctx, id, root)
 	// mark container as scanned
 	m.containers.Store(id, closer)
-	if err != nil {
+	if err != nil && !errors.Is(err, context.Canceled) {
 		// NOTE: perhaps we should track the number of failed attempts and allow one retry before giving up.
 		m.logger.Info("failed to scan container", zap.String("container_id", id), zap.Error(err))
 	}
 
 	if m.observer != nil {
-		if e := m.observer.ContainerAttachCompleted(ctx, id); e != nil {
+		if e := m.observer.ContainerAttachCompleted(m.ctx, id); e != nil {
 			m.logger.Debug("error notifying tls observer of container attach", zap.Error(e))
 		}
 	}
@@ -364,45 +399,11 @@ func (m *TlsManager) scanAndAttachContainer(ctx context.Context, id, root string
 		return nil, err
 	}
 
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	return m.scanner.AttachContainer(ctx, res)
-}
-
-// tokenProviders allows multiple goroutines to coordinate operation
-// on a shared resource where only the latest goroutine wins.
-type tokenProvider[T comparable] struct {
-	mu     sync.Mutex
-	tokens map[T]int
-}
-
-func (p *tokenProvider[T]) Get(key T) (valid func() bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	token, exists := p.tokens[key]
-	if exists {
-		token++
-	}
-	p.tokens[key] = token
-
-	return func() bool {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-
-		latest, exists := p.tokens[key]
-		if !exists || latest != token {
-			return false
-		}
-
-		// clean up
-		delete(p.tokens, key)
-		return true
-	}
-}
-
-func newTokenProvider[T comparable]() *tokenProvider[T] {
-	return &tokenProvider[T]{
-		tokens: make(map[T]int),
-	}
 }
 
 type TlsObserver interface {
@@ -415,4 +416,21 @@ type TlsObserver interface {
 
 func (m *TlsManager) SetObserver(o TlsObserver) {
 	m.observer = o
+}
+
+func newProcessInfo(proc *process.Process) *processInfo {
+	if proc == nil {
+		return nil
+	}
+	return &processInfo{
+		pid:         proc.Pid,
+		exe:         proc.Exe,
+		containerID: proc.ContainerID,
+		root:        proc.RootFS(),
+		pidExe:      proc.PidExe,
+		cmdline:     proc.FullCmd(),
+		strategy:    proc.Strategy,
+
+		proc: proc,
+	}
 }

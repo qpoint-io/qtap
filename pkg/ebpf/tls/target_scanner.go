@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf/link"
+	"github.com/hashicorp/go-multierror"
 	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/process"
@@ -26,7 +27,7 @@ const (
 //go:generate go tool go.uber.org/mock/mockgen --destination=target_scanner_mock.go --package tls . TargetScanner
 type TargetScanner interface {
 	Scan(ctx context.Context, target *ExeScannable) (*ScanResult, error)
-	Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error)
+	Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error)
 	ScanContainer(ctx context.Context, id, root string) (*ContainerScanResult, error)
 	AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error)
 	Close() error
@@ -46,6 +47,8 @@ type targetScanner struct {
 	logger *zap.Logger
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
+	// scanMu is used to ensure that we don't scan the same target multiple times concurrently.
+	scanMu *synq.MutexMap[string]
 }
 
 // TargetScannerOption configures the TargetScanner
@@ -57,6 +60,7 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 		logger: logger,
 		probes: make(map[string]Probe, len(probes)),
 		cache:  synq.NewTTLCache[string, *ScanResult](DefaultCacheTTL, DefaultCacheCleanupInterval),
+		scanMu: synq.NewMutexMap[string](),
 	}
 
 	for _, probe := range probes {
@@ -73,7 +77,18 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 
 func (s *targetScanner) Close() error {
 	s.cache.Stop()
-	return nil
+
+	var eg multierror.Group
+	for _, probe := range s.probes {
+		eg.Go(func() error {
+			if err := probe.Close(); err != nil {
+				return fmt.Errorf("closing probe %s: %w", probe.Name(), err)
+			}
+			return nil
+		})
+	}
+
+	return eg.Wait().ErrorOrNil()
 }
 
 // ScanResult is the result of scanning a target
@@ -94,6 +109,7 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	if err != nil {
 		return nil, fmt.Errorf("opening executable: %w", err)
 	}
+	defer elf.Close()
 
 	hash, err := elf.Hash(ctx)
 	if err != nil {
@@ -102,8 +118,12 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	}
 	span.SetAttributes(attribute.String("hash", hash))
 
+	mu := s.scanMu.Get(hash)
+	mu.Lock()
+	defer mu.Unlock()
+
 	if cached, ok := s.cache.LoadAndRenew(hash); ok {
-		if cached.Mtime == elf.Mtime() {
+		if cached.Mtime == elf.Mtime().Unix() {
 			span.SetAttributes(attribute.String("cache_status", "hit"))
 			return cached, nil
 		}
@@ -116,13 +136,18 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 
 	res := &ScanResult{
 		Hash:         hash,
-		Mtime:        elf.Mtime(),
+		Mtime:        elf.Mtime().Unix(),
 		ProbeResults: make(map[string]ProbeScanResult),
 	}
 	scannable := &ExeElfScannable{
 		ExeScannable: *target,
 		Elf:          elf,
 	}
+	s.logger.Debug("scanning target",
+		zap.String("path", target.Path),
+		zap.String("hash", hash),
+		zap.Time("mtime", elf.Mtime()),
+	)
 	for probeName, probe := range s.probes {
 		probeRes, err := probe.Scan(ctx, scannable)
 		if err != nil {
@@ -140,7 +165,7 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	return res, nil
 }
 
-func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *ScanResult) (io.Closer, error) {
+func (s *targetScanner) Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error) {
 	if len(res.ProbeResults) == 0 {
 		return nil, nil
 	}
@@ -148,14 +173,14 @@ func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *S
 	ctx, span := tracer.Start(ctx, "TargetScanner.Attach")
 	defer span.End()
 	span.SetAttributes(
-		attribute.Int("pid", pid),
-		attribute.String("path", path),
+		attribute.Int("pid", attachable.PID),
+		attribute.String("path", attachable.Path),
 	)
 
 	// lazy open the executable
 	// if no probes indicated detection, we won't open the executable
 	openEx := resolvable.New(func(ctx context.Context) (*link.Executable, error) {
-		return link.OpenExecutable(path)
+		return link.OpenExecutable(attachable.Path)
 	}, resolvable.WithRetry())
 
 	var closers MultiCloser
@@ -178,10 +203,9 @@ func (s *targetScanner) Attach(ctx context.Context, pid int, path string, res *S
 			return nil, fmt.Errorf("opening executable: %w", err)
 		}
 
-		closer, err := probe.Attach(ctx, &ExeAttachable{
-			PID:  pid,
-			Path: path,
-			Exe:  ex,
+		closer, err := probe.Attach(ctx, &ExeLinkAttachable{
+			ExeAttachable: *attachable,
+			Exe:           ex,
 		}, probeRes)
 		if err != nil {
 			err = &process.TlsProbeError{

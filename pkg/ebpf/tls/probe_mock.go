@@ -42,7 +42,7 @@ func (m *MockProbe) EXPECT() *MockProbeMockRecorder {
 }
 
 // Attach mocks base method.
-func (m *MockProbe) Attach(ctx context.Context, target *ExeAttachable, result ProbeScanResult) (io.Closer, error) {
+func (m *MockProbe) Attach(ctx context.Context, target *ExeLinkAttachable, result ProbeScanResult) (io.Closer, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Attach", ctx, target, result)
 	ret0, _ := ret[0].(io.Closer)
@@ -69,6 +69,20 @@ func (m *MockProbe) AttachLibrary(ctx context.Context, library *SharedLibrary) (
 func (mr *MockProbeMockRecorder) AttachLibrary(ctx, library any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachLibrary", reflect.TypeOf((*MockProbe)(nil).AttachLibrary), ctx, library)
+}
+
+// Close mocks base method.
+func (m *MockProbe) Close() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockProbeMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockProbe)(nil).Close))
 }
 
 // Name mocks base method.

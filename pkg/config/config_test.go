@@ -125,61 +125,6 @@ func TestValidate(t *testing.T) {
 		test   func(*testing.T, *Config, validator.ValidationErrors) // use validatorErrors if needed
 	}{
 		{
-			name: "happy path",
-			config: &Config{
-				Tap: &TapConfig{},
-				Control: &Control{
-					Rules: []Rule{
-						{
-							Name:    "test",
-							Expr:    "src.ip == 192.168.1.1",
-							Actions: []AccessControlAction{AccessControlAction("aLLow")},
-						},
-					},
-				},
-			},
-			test: func(t *testing.T, c *Config, errs validator.ValidationErrors) {
-				assert.Equal(t, AccessControlAction_ALLOW, c.Control.Default)
-				assert.Equal(t, []AccessControlAction{AccessControlAction_ALLOW}, c.Control.Rules[0].Actions) // normalized casing
-			},
-		},
-		{
-			name: "control invalid default",
-			config: &Config{
-				Control: &Control{
-					Default: "log",
-				},
-			},
-			errors: []string{
-				"Key: 'Config.Control.Default' Error:Field validation for 'Default' failed on the 'access_control_default_action' tag",
-			},
-		},
-		{
-			name: "control invalid rule action",
-			config: &Config{
-				Control: &Control{
-					Rules: []Rule{{Actions: []AccessControlAction{"invalid"}}},
-				},
-			},
-			errors: []string{
-				"Key: 'Config.Control.Rules[0].Name' Error:Field validation for 'Name' failed on the 'required' tag",
-				"Key: 'Config.Control.Rules[0].Expr' Error:Field validation for 'Expr' failed on the 'required' tag",
-				"Key: 'Config.Control.Rules[0].Actions[0]' Error:Field validation for 'Actions[0]' failed on the 'access_control_action' tag",
-			},
-		},
-		{
-			name: "control invalid rule expression",
-			config: &Config{
-				Control: &Control{
-					Rules: []Rule{{Expr: "true !+ false"}},
-				},
-			},
-			errors: []string{
-				"Key: 'Config.Control.Rules[0].Name' Error:Field validation for 'Name' failed on the 'required' tag",
-				"Key: 'Config.Control.Rules[0].Expr' Error:Field validation for 'Expr' failed on the 'rule_expression' tag",
-			},
-		},
-		{
 			name: "rulekit valid macros",
 			config: &Config{
 				Rulekit: &Rulekit{

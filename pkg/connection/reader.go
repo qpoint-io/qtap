@@ -48,7 +48,6 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 		WithDNSRecord(dnsRecord),
 		WithServices(m),
 		WithTags(m.deploymentTags),
-		WithControlManager(m.controlManager),
 		WithServiceFactoryRegistry(m.svcFactoryRegistry),
 	)
 

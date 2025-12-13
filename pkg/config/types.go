@@ -25,19 +25,6 @@ func (vs ValueSource) String() string {
 	}
 }
 
-type AccessControlAction string
-
-var (
-	AccessControlAction_UNKNOWN AccessControlAction = ""
-	AccessControlAction_ALLOW   AccessControlAction = "allow"
-	AccessControlAction_DENY    AccessControlAction = "deny"
-	AccessControlAction_LOG     AccessControlAction = "log"
-)
-
-func (a AccessControlAction) String() string {
-	return string(a)
-}
-
 type Cert struct {
 	Ca  string `yaml:"ca" validate:"required,stringnotempty"`
 	Crt string `yaml:"crt" validate:"required,stringnotempty"`

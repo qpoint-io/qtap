@@ -529,9 +529,10 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 				return false
 			}
 			// Update buffer offset and length, reset index
-			*strBufferOffset += *strBufferLen
+			oldLen := *strBufferLen
+			*strBufferOffset += oldLen
 			*strBufferLen = int64(n)
-			bufferIndex = 0
+			bufferIndex -= int(oldLen)
 		}
 		// Compare each byte of the symbol name
 		if strBuffer[bufferIndex+i] != target[i] {

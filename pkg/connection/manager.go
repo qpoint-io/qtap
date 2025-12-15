@@ -3,6 +3,7 @@ package connection
 import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/dns"
+	"github.com/qpoint-io/qtap/pkg/log"
 	"github.com/qpoint-io/qtap/pkg/process"
 	servicespkg "github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/synq"
@@ -132,7 +133,7 @@ func (m *Manager) HandleEvent(event Keyer) {
 }
 
 func (m *Manager) finalizeConnection(conn *Connection) {
-	conn.logger.Debug("deleting connection from manager map")
+	conn.logger.Log(log.TraceLevel, "deleting connection from manager map")
 	m.connections.Delete(conn.cookie)
 }
 

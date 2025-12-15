@@ -7,15 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 	"unicode"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
+	"github.com/qpoint-io/qtap/pkg/log"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"golang.org/x/term"
 )
 
 var (
@@ -56,9 +53,6 @@ var (
 			runTapCmd(logger)
 		},
 	}
-
-	colorMuted = lipgloss.AdaptiveColor{Light: "#b0b0b0", Dark: "#737373"}
-	muteText   = lipgloss.NewStyle().Foreground(colorMuted).Render
 )
 
 func Execute() error {
@@ -69,9 +63,9 @@ func init() {
 	// Logging options
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level",
 		getEnvOr("LOG_LEVEL", "info"),
-		"Log level (debug, info, warn, error, dpanic, panic, fatal)")
+		"Log level (trace, debug, info, warn, error, dpanic, panic, fatal)")
 	rootCmd.PersistentFlags().StringVar(&logEncoding, "log-encoding",
-		getEnvOr("LOG_ENCODING", defaultLogEncoding()),
+		getEnvOr("LOG_ENCODING", ""),
 		"Log encoding (console, json)")
 	rootCmd.PersistentFlags().BoolVar(&logCaller, "log-caller",
 		getEnvBoolOr("LOG_CALLER", false),
@@ -79,14 +73,6 @@ func init() {
 
 	// Add commands
 	rootCmd.AddCommand(reloadConfigCmd)
-}
-
-// defaultLogEncoding determines the default log encoding based on whether stdout is a terminal
-func defaultLogEncoding() string {
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		return "console"
-	}
-	return "json"
 }
 
 // getEnvBoolOr returns environment variable as bool or default if not set
@@ -120,37 +106,17 @@ func getEnvIntOr(key string, defaultValue int) int {
 	return defaultValue
 }
 
-func convertStringToZapLevel(levelStr string) (zapcore.Level, error) {
-	var l zapcore.Level
-	err := l.UnmarshalText([]byte(levelStr))
-	if err != nil {
-		return 0, fmt.Errorf("invalid log level: %s", levelStr)
-	}
-	return l, nil
-}
-
 func initLogger() *zap.Logger {
-	level, err := convertStringToZapLevel(logLevel)
-	if err != nil {
-		panic("error: invalid log level: " + err.Error())
-	}
+	l, err := log.NewLogger(func(cfg *zap.Config) {
+		cfg.DisableCaller = !logCaller
 
-	cfg := zap.NewProductionConfig()
-	cfg.DisableCaller = !logCaller
-	cfg.Level = zap.NewAtomicLevelAt(level)
-	cfg.Encoding = logEncoding
-	cfg.EncoderConfig.MessageKey = "message"
-
-	if strings.EqualFold(logEncoding, "console") {
-		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		cfg.EncoderConfig.EncodeTime = consoleTimeEncoder
-	}
-
-	if cfg.Level.Level() == zapcore.DebugLevel {
-		cfg.Sampling = nil // disable sampling in debug mode
-	}
-
-	l, err := cfg.Build()
+		if logEncoding != "" {
+			log.SetEncoding(cfg, logEncoding)
+		}
+		if logLevel != "" {
+			log.SetLevel(cfg, logLevel)
+		}
+	})
 	if err != nil {
 		panic("error: couldn't create a logger: " + err.Error())
 	}
@@ -160,10 +126,6 @@ func initLogger() *zap.Logger {
 	zap.ReplaceGlobals(l)
 
 	return l
-}
-
-func consoleTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(muteText(t.Format("2006-01-02 15:04:05.000")))
 }
 
 func syncLogger(logger *zap.Logger) {

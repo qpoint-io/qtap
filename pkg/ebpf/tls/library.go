@@ -42,12 +42,17 @@ func FindSharedLibraries(ctx context.Context, root string, libNamePrefixes []str
 	)
 
 	// scan for matches
-	scan := func(path string, info os.FileInfo, err error) error {
+	scan := func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("failed to get file info for %s: %w", path, err)
 		}
 
 		base := filepath.Base(path)
@@ -87,8 +92,7 @@ func FindSharedLibraries(ctx context.Context, root string, libNamePrefixes []str
 		absLibDir := filepath.Join(root, libDir)
 
 		// walk directories and scan
-		// TODO: use WalkDir
-		if err := filepath.Walk(absLibDir, scan); err != nil {
+		if err := filepath.WalkDir(absLibDir, scan); err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}

@@ -12,24 +12,23 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/kamaln7/resolvable"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = telemetry.Tracer()
 
 var (
-	ErrNotELF       = errors.New("file is not an ELF")
-	ErrNoFileLoaded = errors.New("no file loaded")
-	ErrNoSymbols    = errors.New("no symbol section")
-	ErrFileClosed   = errors.New("file is closed")
+	ErrNotELF     = errors.New("file is not an ELF")
+	ErrNoSymbols  = errors.New("no symbol section")
+	ErrFileClosed = errors.New("file is closed")
 )
 
-const (
-	chunkSize  = 1024
-	bufferSize = 4096
-)
+const bufferSize = 4096
 
 var bufferPool = sync.Pool{
 	New: func() interface{} {
@@ -58,20 +57,36 @@ func (s *SymbolSearch) Bytes() []byte {
 
 type Elf struct {
 	isContainer bool
+	hash        resolvable.Ctx[string]
+	elf         resolvable.Ctx[*elf.File]
 
-	exe  string
-	root string
-	file *os.File
-	ef   *elf.File
-
-	isClosed bool
+	mtime time.Time
+	exe   string
+	root  string
+	file  *os.File
 }
+
+// func (e *Elf) Debug(l *zap.Logger) {
+// 	stat, err := e.file.Stat()
+// 	if err != nil {
+// 		l.Warn("failed to stat file", zap.Error(err))
+// 	}
+// 	l.Debug("Elf debug",
+// 		zap.Bool("isContainer", e.isContainer),
+// 		zap.String("exe", e.exe),
+// 		zap.String("root", e.root),
+// 		zap.String("file", e.file.Name()),
+// 		zap.String("stat.name", stat.Name()),
+// 		zap.Int64("stat.mtime", stat.ModTime().Unix()),
+// 		zap.Int64("stat.size", stat.Size()),
+// 	)
+// }
 
 // NewElf creates a new Elf instance
 // Returns ErrNotELF if the file is not an ELF
 // Remember to call Close() when done
 func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*Elf, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "NewElf") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "NewElf") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	e := &Elf{
@@ -80,7 +95,7 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 		isContainer: isContainer,
 	}
 
-	filePath := e.getFilePath()
+	filePath := e.Path()
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -89,34 +104,54 @@ func NewElf(ctx context.Context, exe string, root string, isContainer bool) (*El
 
 	e.file = file
 
+	stat, err := e.file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	e.mtime = stat.ModTime().UTC()
+
 	// Check if it's actually an ELF file
-	isElf, err := e.isELF()
+	_, err = e.isELF()
 	if err != nil {
 		file.Close()
 		return nil, ErrNotELF
 	}
-	if !isElf {
-		file.Close()
-		return nil, fmt.Errorf("file is not an ELF: %s", filePath)
-	}
+
+	e.hash = resolvable.New(func(ctx context.Context) (string, error) {
+		_, span := tracer.Start(ctx, "Elf.Hash",
+			trace.WithAttributes(attribute.String("path", filePath)),
+		)
+		defer span.End()
+
+		return ComputeBinaryHash(e.file)
+	}, resolvable.WithRetry())
+
+	e.elf = resolvable.New(func(ctx context.Context) (*elf.File, error) {
+		_, span := tracer.Start(ctx, "Elf.NewFile")
+		defer span.End()
+
+		return elf.NewFile(e.file)
+	}, resolvable.WithRetry())
 
 	return e, nil
 }
 
-func (e *Elf) Close() error {
-	if e.isClosed {
-		return nil
-	}
+func (e *Elf) Mtime() time.Time {
+	return e.mtime
+}
 
+func (e *Elf) Hash(ctx context.Context) (string, error) {
+	return e.hash(ctx)
+}
+
+func (e *Elf) Close() error {
 	if e.file != nil {
 		return e.file.Close()
 	}
-
-	e.isClosed = true
 	return nil
 }
 
-func (e *Elf) getFilePath() string {
+func (e *Elf) Path() string {
 	if e.isContainer {
 		return filepath.Join(e.root, e.exe)
 	}
@@ -124,10 +159,6 @@ func (e *Elf) getFilePath() string {
 }
 
 func (e Elf) isELF() (bool, error) {
-	if e.file == nil {
-		return false, ErrNoFileLoaded
-	}
-
 	var ident [4]uint8
 	if _, err := e.file.ReadAt(ident[0:], 0); err != nil {
 		return false, err
@@ -140,32 +171,12 @@ func (e Elf) isELF() (bool, error) {
 }
 
 func (p *Elf) Elf(ctx context.Context) (*elf.File, error) {
-	if p.isClosed {
-		return nil, ErrFileClosed
-	}
-	if p.file == nil {
-		return nil, ErrNoFileLoaded
-	}
-	if p.ef == nil {
-		_, span := tracer.Start(context.TODO(), "Elf.NewFile", trace.WithLinks(trace.LinkFromContext(ctx)))
-		defer span.End()
-
-		var err error
-		p.ef, err = elf.NewFile(p.file)
-		if err != nil {
-			return nil, fmt.Errorf("opening ELF: %w", err)
-		}
-	}
-
-	return p.ef, nil
+	return p.elf(ctx)
 }
 
 func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, sectionTypes ...elf.SectionType) ([]elf.Symbol, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.SearchSymbols")
+	ctx, span := tracer.Start(ctx, "Elf.SearchSymbols")
 	defer span.End()
-	if p.file == nil {
-		return nil, ErrNoFileLoaded
-	}
 
 	f, err := p.Elf(ctx)
 	if err != nil {
@@ -173,6 +184,11 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 	}
 
 	var allMatches []elf.Symbol
+	type seenKey struct {
+		name  string
+		value uint64
+	}
+	var seen = make(map[seenKey]struct{})
 
 	for _, sectionType := range sectionTypes {
 		var matches []elf.Symbol
@@ -194,11 +210,13 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 			return nil, fmt.Errorf("searching symbols in section type %v: %w", sectionType, err)
 		}
 
-		allMatches = append(allMatches, matches...)
-
-		// If we've found all the targets, we can stop searching
-		if len(allMatches) == len(targets) {
-			break
+		for _, match := range matches {
+			key := seenKey{name: match.Name, value: match.Value}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			allMatches = append(allMatches, match)
 		}
 	}
 
@@ -206,7 +224,7 @@ func (p *Elf) SearchSymbols(ctx context.Context, targets []SymbolSearch, section
 }
 
 func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.getSymbols32") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "Elf.getSymbols32") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 	matches := []elf.Symbol{}
 
@@ -233,10 +251,6 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 
 	var sym elf.Sym32
 	for {
-		if len(matches) == len(targets) {
-			break
-		}
-
 		err := binary.Read(tabReader, f.ByteOrder, &sym)
 		if errors.Is(err, io.EOF) {
 			break
@@ -268,9 +282,9 @@ func (p *Elf) getSymbols32(ctx context.Context, f *elf.File, targets []SymbolSea
 }
 
 func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSearch, typ elf.SectionType) ([]elf.Symbol, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.getSymbols64") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "Elf.getSymbols64") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
-	matches := []elf.Symbol{}
+	var matches []elf.Symbol
 
 	symtabSection := f.SectionByType(typ)
 	if symtabSection == nil {
@@ -295,10 +309,6 @@ func (p *Elf) getSymbols64(ctx context.Context, f *elf.File, targets []SymbolSea
 
 	var sym elf.Sym64
 	for {
-		if len(matches) == len(targets) {
-			break
-		}
-
 		err := binary.Read(tabReader, f.ByteOrder, &sym)
 		if errors.Is(err, io.EOF) {
 			break
@@ -354,7 +364,7 @@ func readString(r io.ReadSeeker, offset int64) (string, error) {
 }
 
 func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSearch, typ ...elf.SectionType) (bool, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.ContainsAnySymbols")
+	ctx, span := tracer.Start(ctx, "Elf.ContainsAnySymbols")
 	defer span.End()
 
 	f, err := p.Elf(ctx)
@@ -399,7 +409,7 @@ func (p *Elf) ContainsAnySymbols(ctx context.Context, targetSymbols []SymbolSear
 }
 
 func (p *Elf) containsAnySymbols(ctx context.Context, f *elf.File, typ elf.SectionType, targetSymbols []SymbolSearch) (bool, error) {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.containsAnySymbols") //nolint:ineffassign,wastedassign,staticcheck
+	ctx, span := tracer.Start(ctx, "Elf.containsAnySymbols") //nolint:ineffassign,wastedassign,staticcheck
 	defer span.End()
 
 	var recordSize int64
@@ -519,9 +529,10 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 				return false
 			}
 			// Update buffer offset and length, reset index
-			*strBufferOffset += *strBufferLen
+			oldLen := *strBufferLen
+			*strBufferOffset += oldLen
 			*strBufferLen = int64(n)
-			bufferIndex = 0
+			bufferIndex -= int(oldLen)
 		}
 		// Compare each byte of the symbol name
 		if strBuffer[bufferIndex+i] != target[i] {
@@ -553,8 +564,10 @@ func searchSymbol(strReader io.ReadSeeker, nameOffset int64, target []byte, strB
 
 // CalculateUprobeAddresses calculates the loaded address of a symbol (needed for uprobes)
 func (p *Elf) CalculateUprobeAddresses(ctx context.Context, symbols []elf.Symbol) []elf.Symbol {
-	ctx, span := tracer.WithoutCancel(ctx, "Elf.CalculateUprobeAddresses")
+	ctx, span := tracer.Start(ctx, "Elf.CalculateUprobeAddresses")
 	defer span.End()
+
+	// TODO: the caller should create a copy if necessary
 
 	// create a copy of the input symbols to modify .Value
 	results := make([]elf.Symbol, len(symbols))
@@ -600,6 +613,9 @@ func (p *Elf) GetSections(ctx context.Context) []*elf.Section {
 }
 
 func (p *Elf) Ldd(ctx context.Context) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "Elf.Ldd")
+	defer span.End()
+
 	file, err := p.Elf(ctx)
 	if err != nil {
 		return nil, err
@@ -671,3 +687,19 @@ func match(symName, targetName string, strategy MatchStrategy) bool {
 
 // 	return false, nil
 // }
+
+func FindSymbols(symbols []elf.Symbol, target SymbolSearch, filter func(*elf.Symbol) bool) ([]*elf.Symbol, error) {
+	var results []*elf.Symbol
+	for _, sym := range symbols {
+		if match(sym.Name, target.Name, target.MatchStrategy) {
+			if filter != nil && !filter(&sym) {
+				continue
+			}
+			results = append(results, &sym)
+		}
+	}
+	if len(results) == 0 {
+		return nil, ErrNoSymbols
+	}
+	return results, nil
+}

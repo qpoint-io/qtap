@@ -249,6 +249,7 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 		processRenamedTotal.WithLabelValues(getProcessLabels(p)...).Inc()
 
 		// replace the process
+		proc.Args = p.Args
 		p = proc
 	}
 
@@ -343,14 +344,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 				var tlsErr *TlsProbeError
 				if errors.As(err, &tlsErr) {
 					logger.Info("tls probe error", zap.String("probe_name", tlsErr.ProbeName), zap.Error(tlsErr.Err))
-					return
-				}
-
-				switch {
-				case errors.Is(err, ErrNewScanStarting): // noop
-				case errors.Is(err, ErrProcessStopped): // noop
-				case errors.Is(err, ErrProcessReplaced): // noop
-				default:
+				} else {
 					logger.Debug("notifying observer of process start/replace", zap.Error(err))
 				}
 			}

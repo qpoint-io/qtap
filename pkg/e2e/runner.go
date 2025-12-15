@@ -130,7 +130,7 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 			containerID = containerID[:12]
 		}
 
-		r.Logger.Debug("Waiting for process information", zap.String("container_id", containerID))
+		r.Logger.Debug("waiting for process information", zap.String("container_id", containerID))
 		var pid int
 		select {
 		case pid = <-container.processPID:
@@ -139,13 +139,13 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 			return
 		}
 
-		r.Logger.Debug("Waiting for process to be ready", zap.Int("pid", pid), zap.String("container_id", containerID))
+		r.Logger.Debug("waiting for TLS attachment on process and container", zap.Int("pid", pid), zap.String("container_id", containerID))
 		if err := tctx.WaitForProcess(NewProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
-			r.Logger.Warn("Failed to wait for process", zap.Error(err))
+			r.Logger.Warn("failed to wait for process", zap.Error(err))
 		} else {
 			r.Logger.Debug("🆕 creating readiness signal in container")
 			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
-				r.Logger.Warn("Failed to create file in container", zap.Error(err))
+				r.Logger.Warn("failed to create file in container", zap.Error(err))
 			}
 		}
 	}

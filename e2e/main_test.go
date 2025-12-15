@@ -309,12 +309,12 @@ func mainSetup() error {
 		return fmt.Errorf("initializing TLS probes: %w", err)
 	}
 	if tlsManager != nil {
-		tlsManager.SetFinalObserver(e2ectx) // set the final probe so when we know when scans are done.
+		tlsManager.SetObserver(e2ectx) // set the observer so when we know when scans are done.
 
 		// add tls probes as process observers
 		pm.Observe(tlsManager)
 
-		e2ectx.RegisterErrCloser(tlsManager.Stop)
+		e2ectx.RegisterErrCloser(tlsManager.Close)
 	}
 
 	// Start managers

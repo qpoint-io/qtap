@@ -30,7 +30,6 @@ type Manager struct {
 	processManager     *process.Manager
 	dnsManager         *dns.DNSManager
 	streamFactory      ConnectionStreamer
-	controlManager     ControlManager
 	svcFactoryRegistry *servicespkg.FactoryRegistry
 
 	// deployment tags
@@ -78,12 +77,6 @@ func SetConfig(conf *config.Config) ManagerOpt {
 func SetDeploymentTags(tags tags.List) ManagerOpt {
 	return func(m *Manager) {
 		m.deploymentTags = tags
-	}
-}
-
-func SetControlManager(cm ControlManager) ManagerOpt {
-	return func(m *Manager) {
-		m.controlManager = cm
 	}
 }
 

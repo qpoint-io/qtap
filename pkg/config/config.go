@@ -2,9 +2,7 @@ package config
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
-	"strings"
 
 	validator "github.com/go-playground/validator/v10"
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
@@ -127,7 +125,6 @@ type Config struct {
 	Tap      *TapConfig       `yaml:"tap"`
 	Services Services         `yaml:"services"`
 	Tags     []Tag            `yaml:"tags" validate:"omitempty,dive"`
-	Control  *Control         `yaml:"control"`
 	Rulekit  *Rulekit         `yaml:"rulekit"`
 }
 
@@ -135,17 +132,6 @@ type Tag struct {
 	Key      string `yaml:"key" validate:"required"`
 	Source   string `yaml:"source" validate:"required,oneof=env k8s.label k8s.annotation container.label"`
 	Location string `yaml:"location" validate:"required"`
-}
-
-type Control struct {
-	Default AccessControlAction `yaml:"default" validate:"required,access_control_default_action"`
-	Rules   []Rule              `yaml:"rules" validate:"dive"`
-}
-
-type Rule struct {
-	Name    string                `yaml:"name" validate:"required"`
-	Expr    string                `yaml:"expr" validate:"required,rule_expression"`
-	Actions []AccessControlAction `yaml:"actions" validate:"omitempty,dive,required,access_control_action"`
 }
 
 type Rulekit struct {
@@ -157,38 +143,17 @@ type RulekitMacro struct {
 	Expr string `yaml:"expr" validate:"required,rule_expression"`
 }
 
-func (c *Config) SetDefaults() {
-	if c.Control != nil && c.Control.Default == "" {
-		c.Control.Default = AccessControlAction_ALLOW
-	}
-}
-
-func (c *Config) Normalize() {
-	if c.Control != nil {
-		for _, rule := range c.Control.Rules {
-			for i, action := range rule.Actions {
-				rule.Actions[i] = AccessControlAction(strings.ToLower(string(action)))
-			}
-		}
-	}
-}
-
 func (c *Config) Validate() error {
 	validate := validator.New()
 
 	for name, fn := range map[string]validator.Func{
-		"stringnotempty":                validateStringNotEmpty,
-		"access_control_action":         ValidateAccessControlAction,
-		"access_control_default_action": ValidateAccessControlDefaultAction,
-		"rule_expression":               ValidateRuleExpression,
+		"stringnotempty":  validateStringNotEmpty,
+		"rule_expression": ValidateRuleExpression,
 	} {
 		if err := validate.RegisterValidation(name, fn); err != nil {
 			return fmt.Errorf("failed to register %s validation: %w", name, err)
 		}
 	}
-
-	c.SetDefaults()
-	c.Normalize()
 
 	if c.Rulekit != nil {
 		macros, err := c.Rulekit.ParseMacros()
@@ -225,23 +190,6 @@ func (c *Config) Validate() error {
 
 func validateStringNotEmpty(fl validator.FieldLevel) bool {
 	return len(fl.Field().String()) != 0
-}
-
-// ValidateAccessControlAction validates that the field is a valid access control action
-func ValidateAccessControlAction(fl validator.FieldLevel) bool {
-	return slices.Contains([]AccessControlAction{
-		AccessControlAction_ALLOW,
-		AccessControlAction_DENY,
-		// AccessControlAction_LOG, // TODO(ENG-321)
-	}, AccessControlAction(fl.Field().String()))
-}
-
-// ValidateAccessControlDefaultAction validates that the field is a valid default access control action
-func ValidateAccessControlDefaultAction(fl validator.FieldLevel) bool {
-	return slices.Contains([]AccessControlAction{
-		AccessControlAction_ALLOW,
-		// AccessControlAction_DENY, // TODO(ENG-320)
-	}, AccessControlAction(fl.Field().String()))
 }
 
 // ValidateRuleExpression validates that the field is a valid rule expression

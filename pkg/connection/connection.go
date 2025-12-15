@@ -37,11 +37,6 @@ type services interface {
 	createStreamer(conn *Connection) StreamProcessor
 }
 
-type ControlManager interface {
-	Control(conn *Connection)
-	Delete(conn *Connection) error
-}
-
 type ErrStreamUnrecoverable error
 
 type Connection struct {
@@ -59,7 +54,6 @@ type Connection struct {
 	svcFactoryRegistry *servicespkg.FactoryRegistry
 	svcRegistry        *servicespkg.ServiceRegistry
 
-	controlManager  ControlManager
 	streamProcessor StreamProcessor
 	dnsRecord       *dns.Record
 
@@ -133,12 +127,6 @@ func WithTags(t tags.List) ConnOpt {
 		}
 
 		c.tags.Merge(t)
-	}
-}
-
-func WithControlManager(controlManager ControlManager) ConnOpt {
-	return func(c *Connection) {
-		c.controlManager = controlManager
 	}
 }
 
@@ -358,21 +346,12 @@ func (c *Connection) watch() {
 		}
 	}()
 
-	if c.controlManager != nil {
-		// evaluate control rules following the open event
-		c.controlManager.Control(c)
-	}
-
 	for {
 		event, hasMore := c.eventQueue.Next()
 		if !hasMore {
 			break
 		}
 		c.processEvent(event)
-
-		if c.controlManager != nil {
-			go c.controlManager.Control(c)
-		}
 	}
 }
 
@@ -407,12 +386,6 @@ func (c *Connection) Close() {
 	// close the stream processor
 	if c.streamProcessor != nil {
 		c.streamProcessor.Close()
-	}
-
-	if c.controlManager != nil {
-		if err := c.controlManager.Delete(c); err != nil {
-			c.logger.Warn("error deleting connection from control", zap.Error(err))
-		}
 	}
 
 	// close all connection services

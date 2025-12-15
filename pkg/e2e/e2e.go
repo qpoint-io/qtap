@@ -123,10 +123,6 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 				Stack: "e2e",
 			},
 		},
-		Control: &config.Control{
-			Default: config.AccessControlAction_ALLOW,
-			Rules:   []config.Rule{},
-		},
 	}
 	if mut != nil {
 		mut(conf)

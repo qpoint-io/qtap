@@ -25,15 +25,7 @@ func (r *TestSuiteRunner) Run(t *testing.T, ctx *Context) {
 // run executes all tests in the suite
 func (r *TestSuiteRunner) run(t *testing.T, ctx *Context) {
 	r.Logger.Info("Running test suite", zap.String("suite", r.Suite.name))
-	r.Logger.Debug("Total test cases", zap.Int("count", len(r.Suite.testCases)))
-
-	if len(r.Suite.skipped) > 0 {
-		for _, skip := range r.Suite.skipped {
-			t.Run(skip.name, func(t *testing.T) {
-				t.Skip(skip.reason)
-			})
-		}
-	}
+	r.Logger.Debug("Total test cases", zap.Int("count", len(r.Suite.testCases)), zap.Int("skipped", len(r.Suite.skipped)))
 
 	r.Logger = ctx.L
 

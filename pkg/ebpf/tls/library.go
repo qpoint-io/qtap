@@ -3,6 +3,7 @@ package tls
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -18,11 +19,22 @@ var commonLibDirs = []string{"/lib", "/usr/lib", "/usr/local/lib", "/nix/store"}
 
 // SharedLibrary represents a shared library that a probe can attach to.
 type SharedLibrary struct {
-	// Name corresponds to the library name prefix returned by Probe.SharedLibraries().
+	// Name corresponds to the library name prefix.
 	Name string
 
 	// Paths is a list of unique filesystem paths to the library.
 	Paths []string
+}
+
+func FindSharedLibrary(ctx context.Context, root string, libNamePrefix string) ([]string, error) {
+	res, err := FindSharedLibraries(ctx, root, []string{libNamePrefix})
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 1 {
+		return res[0].Paths, nil
+	}
+	return nil, fs.ErrNotExist
 }
 
 // FindSharedLibraries searches for shared libraries in a filesystem root.

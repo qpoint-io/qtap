@@ -47,8 +47,8 @@ type targetScanner struct {
 	logger *zap.Logger
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
-	// scanMu is used to ensure that we don't scan the same target multiple times concurrently.
-	scanMu *synq.MutexMap[string]
+	// scanGroup ensures that we don't scan the same target multiple times concurrently.
+	scanGroup synq.SingleFlight[string, *ScanResult]
 }
 
 // TargetScannerOption configures the TargetScanner
@@ -60,7 +60,6 @@ func NewTargetScanner(logger *zap.Logger, probes []Probe, opts ...TargetScannerO
 		logger: logger,
 		probes: make(map[string]Probe, len(probes)),
 		cache:  synq.NewTTLCache[string, *ScanResult](DefaultCacheTTL, DefaultCacheCleanupInterval),
-		scanMu: synq.NewMutexMap[string](),
 	}
 
 	for _, probe := range probes {
@@ -118,10 +117,7 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 	}
 	span.SetAttributes(attribute.String("hash", hash))
 
-	mu := s.scanMu.Get(hash)
-	mu.Lock()
-	defer mu.Unlock()
-
+	// check if we have a cached result for this hash
 	if cached, ok := s.cache.LoadAndRenew(hash); ok {
 		if cached.Mtime == elf.Mtime().Unix() {
 			span.SetAttributes(attribute.String("cache_status", "hit"))
@@ -131,38 +127,51 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 		// the cached file has a different mtime, we should re-scan
 		s.cache.ExpireRecord(hash)
 		span.SetAttributes(attribute.String("cache_status", "mtime_mismatch"))
+	} else {
+		span.SetAttributes(attribute.String("cache_status", "miss"))
 	}
-	span.SetAttributes(attribute.String("cache_status", "miss"))
 
-	res := &ScanResult{
-		Hash:         hash,
-		Mtime:        elf.Mtime().Unix(),
-		ProbeResults: make(map[string]ProbeScanResult),
-	}
-	scannable := &ExeElfScannable{
-		ExeScannable: *target,
-		Elf:          elf,
-	}
-	s.logger.Debug("scanning target",
-		zap.String("path", target.Path),
-		zap.String("hash", hash),
-		zap.Time("mtime", elf.Mtime()),
-	)
-	for probeName, probe := range s.probes {
-		probeRes, err := probe.Scan(ctx, scannable)
-		if err != nil {
-			err = &process.TlsProbeError{
-				ProbeName: probeName,
-				Err:       err,
+	// queue a scan. scanGroup ensures that we don't scan the same target multiple times concurrently.
+	return s.scanGroup.Do(hash, func() (*ScanResult, error) {
+		// the cache may have been updated by the time our scan is executed.
+		// check again:
+		if cached, ok := s.cache.LoadAndRenew(hash); ok {
+			if cached.Mtime == elf.Mtime().Unix() {
+				span.SetAttributes(attribute.String("cache_status", "hit"))
+				return cached, nil
 			}
-			span.RecordError(err)
-			return nil, err
 		}
-		res.ProbeResults[probeName] = probeRes
-	}
 
-	s.cache.Store(hash, res)
-	return res, nil
+		res := &ScanResult{
+			Hash:         hash,
+			Mtime:        elf.Mtime().Unix(),
+			ProbeResults: make(map[string]ProbeScanResult),
+		}
+		scannable := &ExeElfScannable{
+			ExeScannable: *target,
+			Elf:          elf,
+		}
+		s.logger.Debug("scanning target",
+			zap.String("path", target.Path),
+			zap.String("hash", hash),
+			zap.Time("mtime", elf.Mtime()),
+		)
+		for probeName, probe := range s.probes {
+			probeRes, err := probe.Scan(ctx, scannable)
+			if err != nil {
+				err = &process.TlsProbeError{
+					ProbeName: probeName,
+					Err:       err,
+				}
+				span.RecordError(err)
+				return nil, err
+			}
+			res.ProbeResults[probeName] = probeRes
+		}
+
+		s.cache.Store(hash, res)
+		return res, nil
+	})
 }
 
 func (s *targetScanner) Attach(ctx context.Context, attachable *ExeAttachable, res *ScanResult) (io.Closer, error) {

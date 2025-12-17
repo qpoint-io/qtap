@@ -73,7 +73,8 @@ type ServiceRegistry struct {
 	factories    *FactoryRegistry
 	configurator ServiceConfigurator
 
-	mu *synq.MutexMap[ServiceKey]
+	// group ensures that we don't create the same service multiple times concurrently.
+	group synq.SingleFlight[ServiceKey, Service]
 }
 
 type ServiceConfigurator func(ctx context.Context, service Service) (Service, error)
@@ -85,7 +86,6 @@ func NewServiceRegistry(fr *FactoryRegistry) *ServiceRegistry {
 	return &ServiceRegistry{
 		services:  NewRegistry[ServiceKey, Service](),
 		factories: fr,
-		mu:        synq.NewMutexMap[ServiceKey](),
 	}
 }
 
@@ -96,39 +96,44 @@ func (sr *ServiceRegistry) SetConfigurator(configurator ServiceConfigurator) {
 }
 
 // Get retrieves a service by type and optional ID.
-// If the such a service hasn't been created yet, it will be created using the corresponding factory, configured, and returned on future Get calls.
+// If a service hasn't been created yet, it will be created using the corresponding factory, configured, and cached
+// for future Get calls.
 func (sr *ServiceRegistry) Get(ctx context.Context, key ServiceKey) (Service, error) {
 	// per-key mutex to allow for resolving of cross-service dependencies
-	mu := sr.mu.Get(key)
-	mu.Lock()
-	defer mu.Unlock()
-
-	service, ok := sr.services.Load(key)
-	if ok {
+	if service, ok := sr.services.Load(key); ok {
 		// the service has already been created
 		return service, nil
 	}
 
-	// create the service and store it
-	factory, ok := sr.factories.Load(key)
-	if !ok {
-		return nil, fmt.Errorf("factory not found for service %s", key)
-	}
-	service, err := factory.Create(ctx, sr)
-	if err != nil {
-		return nil, fmt.Errorf("creating service: %w", err)
-	}
-
-	// configure the service
-	if sr.configurator != nil {
-		service, err = sr.configurator(ctx, service)
-		if err != nil {
-			return nil, fmt.Errorf("configuring service: %w", err)
+	// queue a service creation. group ensures that we don't create the same service multiple times concurrently.
+	return sr.group.Do(key, func() (Service, error) {
+		// the service may have been created by the time our creation is executed.
+		// check again:
+		if service, ok := sr.services.Load(key); ok {
+			return service, nil
 		}
-	}
 
-	sr.services.Register(key, service)
-	return service, nil
+		// create the service and store it
+		factory, ok := sr.factories.Load(key)
+		if !ok {
+			return nil, fmt.Errorf("factory not found for service %s", key)
+		}
+		service, err := factory.Create(ctx, sr)
+		if err != nil {
+			return nil, fmt.Errorf("creating service: %w", err)
+		}
+
+		// configure the service
+		if sr.configurator != nil {
+			service, err = sr.configurator(ctx, service)
+			if err != nil {
+				return nil, fmt.Errorf("configuring service: %w", err)
+			}
+		}
+
+		sr.services.Register(key, service)
+		return service, nil
+	})
 }
 
 func (sr *ServiceRegistry) AvailableServicesForType(typ ServiceType) []ServiceKey {

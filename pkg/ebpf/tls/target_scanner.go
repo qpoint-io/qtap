@@ -50,7 +50,8 @@ type targetScanner struct {
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
 	// scanGroup ensures that we don't scan the same target multiple times concurrently.
-	scanGroup synq.SingleFlight[string, *ScanResult]
+	scanGroup        synq.SingleFlight[string, *ScanResult]
+	libraryScanGroup synq.SingleFlight[string, ProbeScanResult]
 }
 
 // TargetScannerOption configures the TargetScanner
@@ -309,22 +310,38 @@ func (s *targetScanner) scanLibrary(ctx context.Context, probe Probe, path strin
 		// rescan
 	}
 
-	res, err := probe.ScanLibrary(ctx, ef)
-	if err != nil {
-		err = &process.TlsProbeError{
-			ProbeName: probe.Name(),
-			Err:       fmt.Errorf("scanning library: %w", err),
-		}
-		span.RecordError(err)
-		return nil, err
-	}
+	return s.libraryScanGroup.Do(hash, func() (ProbeScanResult, error) {
+		if cached, ok := s.cache.LoadAndRenew(hash); ok {
+			res := cached.ProbeResults[probe.Name()]
+			if res != nil {
+				return res, nil
+			}
 
-	s.cache.Store(hash, &ScanResult{
-		Hash:         hash,
-		Mtime:        ef.Mtime().Unix(),
-		ProbeResults: map[string]ProbeScanResult{probe.Name(): res},
+			s.logger.Debug("invalid cached library scan result",
+				zap.String("hash", hash),
+				zap.String("probe", probe.Name()),
+				zap.Any("result", cached.ProbeResults),
+			)
+			// rescan
+		}
+
+		res, err := probe.ScanLibrary(ctx, ef)
+		if err != nil {
+			err = &process.TlsProbeError{
+				ProbeName: probe.Name(),
+				Err:       fmt.Errorf("scanning library: %w", err),
+			}
+			span.RecordError(err)
+			return nil, err
+		}
+
+		s.cache.Store(hash, &ScanResult{
+			Hash:         hash,
+			Mtime:        ef.Mtime().Unix(),
+			ProbeResults: map[string]ProbeScanResult{probe.Name(): res},
+		})
+		return res, nil
 	})
-	return res, nil
 }
 
 func (s *targetScanner) AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error) {

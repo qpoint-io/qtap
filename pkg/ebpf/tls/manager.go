@@ -35,8 +35,8 @@ type TlsManager struct {
 	// containers tracks scanned containers by ID.
 	// These should be closed when the manager is stopped.
 	containers *synq.Map[string, io.Closer]
-	// containerMu is used to ensure that we don't scan the same container multiple times concurrently.
-	containerMu *synq.MutexMap[string]
+	// containerGroup ensures that we don't scan the same container multiple times concurrently.
+	containerGroup synq.SingleFlight[string, any]
 
 	// ctx is canceled when the manager is stopped
 	ctx    context.Context
@@ -95,7 +95,6 @@ func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 		procAttachments: synq.NewMap[int, *procAttachment](),
 		procCoordinator: NewKeyedCoordinator[int](),
 		containers:      synq.NewMap[string, io.Closer](),
-		containerMu:     synq.NewMutexMap[string](),
 	}
 
 	return m
@@ -355,35 +354,41 @@ func (m *TlsManager) detachProcess(ctx context.Context, pid int, attachment *pro
 }
 
 func (m *TlsManager) containerStarted(ctx context.Context, id, root string) {
-	mu := m.containerMu.Get(id)
-	mu.Lock()
-	defer mu.Unlock()
-
-	_, scanned := m.containers.Load(id)
-	if scanned {
+	if _, scanned := m.containers.Load(id); scanned {
 		// already scanned
 		return
 	}
 
-	if m.observer != nil {
-		if e := m.observer.ContainerScanStarted(m.ctx, id); e != nil {
-			m.logger.Debug("error notifying tls observer of container scan", zap.Error(e))
+	// queue a scan. containerGroup ensures that we don't scan the same container multiple times concurrently.
+	_, _ = m.containerGroup.Do(id, func() (any, error) {
+		// the cache may have been updated by the time our scan is executed.
+		// check again:
+		if _, scanned := m.containers.Load(id); scanned {
+			// already scanned
+			return nil, nil
 		}
-	}
 
-	closer, err := m.scanAndAttachContainer(ctx, id, root)
-	// mark container as scanned
-	m.containers.Store(id, closer)
-	if err != nil && !errors.Is(err, context.Canceled) {
-		// NOTE: perhaps we should track the number of failed attempts and allow one retry before giving up.
-		m.logger.Info("failed to scan container", zap.String("container_id", id), zap.Error(err))
-	}
-
-	if m.observer != nil {
-		if e := m.observer.ContainerAttachCompleted(m.ctx, id); e != nil {
-			m.logger.Debug("error notifying tls observer of container attach", zap.Error(e))
+		if m.observer != nil {
+			if e := m.observer.ContainerScanStarted(m.ctx, id); e != nil {
+				m.logger.Debug("error notifying tls observer of container scan", zap.Error(e))
+			}
 		}
-	}
+
+		closer, err := m.scanAndAttachContainer(ctx, id, root)
+		// mark container as scanned
+		m.containers.Store(id, closer)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			// NOTE: perhaps we should track the number of failed attempts and allow one retry before giving up.
+			m.logger.Info("failed to scan container", zap.String("container_id", id), zap.Error(err))
+		}
+
+		if m.observer != nil {
+			if e := m.observer.ContainerAttachCompleted(m.ctx, id); e != nil {
+				m.logger.Debug("error notifying tls observer of container attach", zap.Error(e))
+			}
+		}
+		return nil, nil
+	})
 }
 
 // scanAndAttachContainer scans a container for shared libraries

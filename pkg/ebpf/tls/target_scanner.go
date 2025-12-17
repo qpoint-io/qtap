@@ -2,8 +2,10 @@ package tls
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"time"
 
 	"github.com/cilium/ebpf/link"
@@ -48,7 +50,8 @@ type targetScanner struct {
 	probes map[string]Probe
 	cache  *synq.TTLCache[string, *ScanResult]
 	// scanGroup ensures that we don't scan the same target multiple times concurrently.
-	scanGroup synq.SingleFlight[string, *ScanResult]
+	scanGroup        synq.SingleFlight[string, *ScanResult]
+	libraryScanGroup synq.SingleFlight[string, ProbeScanResult]
 }
 
 // TargetScannerOption configures the TargetScanner
@@ -231,8 +234,8 @@ func (s *targetScanner) Attach(ctx context.Context, attachable *ExeAttachable, r
 }
 
 type ContainerScanResult struct {
-	// SharedLibraries is a map of shared libraries by probe name
-	SharedLibraries map[string][]*SharedLibrary
+	// SharedLibraries is a map of probe name to (library path -> scan result)
+	SharedLibraries map[string]map[string]ProbeScanResult
 }
 
 // ScanContainer scans a container for shared libraries.
@@ -244,34 +247,105 @@ func (s *targetScanner) ScanContainer(ctx context.Context, id, root string) (*Co
 	)
 	defer span.End()
 
-	res := &ContainerScanResult{
-		SharedLibraries: make(map[string][]*SharedLibrary),
-	}
+	// NOTE: we assume that probes do not share libraries with each other.
+	// In fact, currently only OpenSSL implements shared library scanning and attachment.
+	// This keeps the caching logic simple.
 
-	// TODO: we can further optimize this by collecting all libraries from all probes
-	// and scanning the fs only once.
+	libResults := make(map[string]map[string]ProbeScanResult)
+
 	for _, probe := range s.probes {
-		libs := probe.SharedLibraries()
-		if len(libs) == 0 {
+		libSearch := probe.SharedLibraries()
+		if len(libSearch) == 0 {
 			continue
 		}
-
-		libPaths, err := FindSharedLibraries(ctx, root, libs)
-		if err != nil {
-			span.RecordError(err)
-			return nil, fmt.Errorf("scanning for shared libraries for probe %s: %w", probe.Name(), err)
+		paths, err := FindSharedLibrary(ctx, root, libSearch)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("scanning filesystem for shared libraries: %w", err)
 		}
 
-		if len(libPaths) > 0 {
-			res.SharedLibraries[probe.Name()] = libPaths
+		for _, path := range paths {
+			res, err := s.scanLibrary(ctx, probe, path)
+			if err != nil {
+				return nil, err
+			}
+			if libResults[probe.Name()] == nil {
+				libResults[probe.Name()] = make(map[string]ProbeScanResult)
+			}
+			libResults[probe.Name()][path] = res
 		}
 	}
 
-	return res, nil
+	return &ContainerScanResult{
+		SharedLibraries: libResults,
+	}, nil
+}
+
+func (s *targetScanner) scanLibrary(ctx context.Context, probe Probe, path string) (ProbeScanResult, error) {
+	ctx, span := tracer.Start(ctx, "TargetScanner.scanLibrary")
+	defer span.End()
+	span.SetAttributes(attribute.String("path", path))
+
+	ef, err := binutils.NewElf(ctx, path, "/", false)
+	if err != nil {
+		return nil, fmt.Errorf("opening library: %w", err)
+	}
+	defer ef.Close()
+
+	hash, err := ef.Hash(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("getting hash: %w", err)
+	}
+
+	if cached, ok := s.cache.LoadAndRenew(hash); ok {
+		res := cached.ProbeResults[probe.Name()]
+		if res != nil {
+			return res, nil
+		}
+
+		s.logger.Debug("invalid cached library scan result",
+			zap.String("hash", hash),
+			zap.String("probe", probe.Name()),
+			zap.Any("result", cached.ProbeResults),
+		)
+		// rescan
+	}
+
+	return s.libraryScanGroup.Do(hash, func() (ProbeScanResult, error) {
+		if cached, ok := s.cache.LoadAndRenew(hash); ok {
+			res := cached.ProbeResults[probe.Name()]
+			if res != nil {
+				return res, nil
+			}
+
+			s.logger.Debug("invalid cached library scan result",
+				zap.String("hash", hash),
+				zap.String("probe", probe.Name()),
+				zap.Any("result", cached.ProbeResults),
+			)
+			// rescan
+		}
+
+		res, err := probe.ScanLibrary(ctx, ef)
+		if err != nil {
+			err = &process.TlsProbeError{
+				ProbeName: probe.Name(),
+				Err:       fmt.Errorf("scanning library: %w", err),
+			}
+			span.RecordError(err)
+			return nil, err
+		}
+
+		s.cache.Store(hash, &ScanResult{
+			Hash:         hash,
+			Mtime:        ef.Mtime().Unix(),
+			ProbeResults: map[string]ProbeScanResult{probe.Name(): res},
+		})
+		return res, nil
+	})
 }
 
 func (s *targetScanner) AttachContainer(ctx context.Context, res *ContainerScanResult) (io.Closer, error) {
-	if len(res.SharedLibraries) == 0 {
+	if res == nil || len(res.SharedLibraries) == 0 {
 		return nil, nil
 	}
 
@@ -282,15 +356,36 @@ func (s *targetScanner) AttachContainer(ctx context.Context, res *ContainerScanR
 	for probeName, libs := range res.SharedLibraries {
 		probe := s.probes[probeName]
 		if probe == nil {
-			s.logger.Warn("unrecognized probe in scan result", zap.String("probe_name", probeName))
+			s.logger.Info("unrecognized probe in scan result", zap.String("probe_name", probeName))
 			continue
 		}
 
-		for _, lib := range libs {
-			closer, err := probe.AttachLibrary(ctx, lib)
+		for path, res := range libs {
+			if !res.ProbeDetected() {
+				continue
+			}
+
+			ex, err := link.OpenExecutable(path)
 			if err != nil {
+				err = &process.TlsProbeError{
+					ProbeName: probeName,
+					Err:       fmt.Errorf("opening library %s: %w", path, err),
+				}
 				span.RecordError(err)
-				return nil, fmt.Errorf("attaching library %s for probe %s: %w", lib.Name, probeName, err)
+				return nil, err
+			}
+
+			closer, err := probe.AttachLibrary(ctx, &ExeLibraryAttachable{
+				Path: path,
+				Exe:  ex,
+			}, res)
+			if err != nil {
+				err = &process.TlsProbeError{
+					ProbeName: probeName,
+					Err:       fmt.Errorf("attaching library %s: %w", path, err),
+				}
+				span.RecordError(err)
+				return nil, err
 			}
 			closers = append(closers, closer)
 		}

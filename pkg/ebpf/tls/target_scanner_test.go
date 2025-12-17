@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/stretchr/testify/require"
 	gomock "go.uber.org/mock/gomock"
 	"go.uber.org/zap/zaptest"
@@ -26,7 +27,7 @@ func Test_targetScanner(t *testing.T) {
 	gnutlsProbe.EXPECT().Name().AnyTimes().Return("gnutls")
 	scanner := NewTargetScanner(zaptest.NewLogger(t), []Probe{opensslProbe, gnutlsProbe})
 
-	f1 := createTestElf(t)
+	f1 := createTestElf(t, "")
 	fakeMtime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
 	require.NoError(t, os.Chtimes(f1, time.Unix(fakeMtime, 0), time.Unix(fakeMtime, 0)))
 
@@ -131,64 +132,99 @@ func Test_targetScanner_Container(t *testing.T) {
 
 	opensslProbe := NewMockProbe(ctrl)
 	opensslProbe.EXPECT().Name().AnyTimes().Return("openssl")
-	opensslProbe.EXPECT().SharedLibraries().AnyTimes().Return([]string{"libssl.so"})
+	opensslProbe.EXPECT().SharedLibraries().AnyTimes().Return("libssl.so")
 	gnutlsProbe := NewMockProbe(ctrl)
 	gnutlsProbe.EXPECT().Name().AnyTimes().Return("gnutls")
-	gnutlsProbe.EXPECT().SharedLibraries().AnyTimes().Return([]string{"libgnutls.so"})
+	gnutlsProbe.EXPECT().SharedLibraries().AnyTimes().Return("libgnutls.so")
 	scanner := NewTargetScanner(zaptest.NewLogger(t), []Probe{opensslProbe, gnutlsProbe})
 
 	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "usr/lib"), 0755))
 	libOpenssl1 := filepath.Join(root, "usr/lib/libssl.so.1")
 	libOpenssl2 := filepath.Join(root, "usr/lib/libssl.so")
 	libGnutls := filepath.Join(root, "usr/lib/libgnutls.so")
+	libGnutlsDupe := filepath.Join(root, "usr/lib/libgnutls.so.1")
 
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "usr/lib"), 0755))
-	require.NoError(t, os.WriteFile(libOpenssl1, []byte("test"), 0644))
-	require.NoError(t, os.WriteFile(libOpenssl2, []byte("test"), 0644))
-	require.NoError(t, os.WriteFile(libGnutls, []byte("test"), 0644))
+	createTestElf(t, libOpenssl1)
+	createTestElf(t, libOpenssl2)
+	createTestElf(t, libGnutls)
+	createTestElf(t, libGnutlsDupe)
+	// append data to the files to make them different.
+	appendToFile(t, libOpenssl1, []byte("1"))
+	appendToFile(t, libOpenssl2, []byte("2"))
+	appendToFile(t, libGnutls, []byte("3"))
+	appendToFile(t, libGnutlsDupe, []byte("3")) // identical to libGnutls
 
 	var containerScanRes *ContainerScanResult
 	t.Run("Scan", func(t *testing.T) {
+		opensslProbe.EXPECT().ScanLibrary(gomock.Any(), gomock.Cond(func(ef *binutils.Elf) bool {
+			return ef.Path() == libOpenssl1
+		})).Return(&testProbeScanResult{name: "openssl1", detected: false}, nil)
+		opensslProbe.EXPECT().ScanLibrary(gomock.Any(), gomock.Cond(func(ef *binutils.Elf) bool {
+			return ef.Path() == libOpenssl2
+		})).Return(&testProbeScanResult{name: "openssl2", detected: true}, nil)
+
+		gnutlsProbe.EXPECT().ScanLibrary(gomock.Any(), gomock.Cond(func(ef *binutils.Elf) bool {
+			// these files are identical so only one should be scanned and the result should be cached.
+			return ef.Path() == libGnutls || ef.Path() == libGnutlsDupe
+		})).Return(&testProbeScanResult{name: "gnutls", detected: true}, nil)
+
 		var err error
 		containerScanRes, err = scanner.ScanContainer(ctx, "container-id", root)
 		require.NoError(t, err)
-		require.Len(t, containerScanRes.SharedLibraries, 2)
-
-		require.Len(t, containerScanRes.SharedLibraries["openssl"], 1)
-		require.Equal(t, "libssl.so", containerScanRes.SharedLibraries["openssl"][0].Name)
-		require.ElementsMatch(t, []string{libOpenssl1, libOpenssl2}, containerScanRes.SharedLibraries["openssl"][0].Paths)
-
-		require.Len(t, containerScanRes.SharedLibraries["gnutls"], 1)
-		require.Equal(t, "libgnutls.so", containerScanRes.SharedLibraries["gnutls"][0].Name)
-		require.ElementsMatch(t, []string{libGnutls}, containerScanRes.SharedLibraries["gnutls"][0].Paths)
+		require.Equal(t, &ContainerScanResult{
+			SharedLibraries: map[string]map[string]ProbeScanResult{
+				"openssl": {
+					libOpenssl1: &testProbeScanResult{name: "openssl1", detected: false},
+					libOpenssl2: &testProbeScanResult{name: "openssl2", detected: true},
+				},
+				"gnutls": {
+					libGnutls:     &testProbeScanResult{name: "gnutls", detected: true},
+					libGnutlsDupe: &testProbeScanResult{name: "gnutls", detected: true},
+				},
+			},
+		}, containerScanRes)
 	})
 
 	t.Run("Attach", func(t *testing.T) {
 		opensslCloser := &testCloser{}
-		opensslProbe.EXPECT().AttachLibrary(gomock.Any(), gomock.Cond(func(l *SharedLibrary) bool {
-			require.ElementsMatch(t, []string{libOpenssl1, libOpenssl2}, l.Paths)
-			return l.Name == "libssl.so"
-		})).Return(opensslCloser, nil)
+		opensslProbe.EXPECT().AttachLibrary(gomock.Any(),
+			gomock.Cond(func(ex *ExeLibraryAttachable) bool {
+				return ex.Path == libOpenssl2
+			}),
+			&testProbeScanResult{name: "openssl2", detected: true},
+		).Return(opensslCloser, nil)
 
 		gnutlsCloser := &testCloser{}
-		gnutlsProbe.EXPECT().AttachLibrary(gomock.Any(), gomock.Cond(func(l *SharedLibrary) bool {
-			require.ElementsMatch(t, []string{libGnutls}, l.Paths)
-			return l.Name == "libgnutls.so"
-		})).Return(gnutlsCloser, nil)
+		gnutlsProbe.EXPECT().AttachLibrary(gomock.Any(),
+			gomock.Cond(func(ex *ExeLibraryAttachable) bool {
+				return ex.Path == libGnutls
+			}),
+			&testProbeScanResult{name: "gnutls", detected: true},
+		).Return(gnutlsCloser, nil)
+		gnutlsProbe.EXPECT().AttachLibrary(gomock.Any(),
+			gomock.Cond(func(ex *ExeLibraryAttachable) bool {
+				return ex.Path == libGnutlsDupe
+			}),
+			&testProbeScanResult{name: "gnutls", detected: true},
+		).Return(gnutlsCloser, nil)
 
 		closer, err := scanner.AttachContainer(ctx, containerScanRes)
 		require.NoError(t, err)
 		require.NoError(t, closer.Close())
 		require.Equal(t, 1, opensslCloser.closes)
-		require.Equal(t, 1, gnutlsCloser.closes)
+		require.Equal(t, 2, gnutlsCloser.closes)
 	})
 }
 
 // createTestElf creates a minimal valid ELF64 binary with symbols for testing.
+// If path is empty, a temporary file will be created.
 // Returns the path to the created file.
-func createTestElf(t *testing.T) string {
+func createTestElf(t *testing.T, path string) string {
 	t.Helper()
-	elfPath := t.TempDir() + "/test.elf"
+	if path == "" {
+		path = t.TempDir() + "/test.elf"
+	}
 
 	// Build a minimal ELF64 with:
 	// - ELF header
@@ -328,7 +364,7 @@ func createTestElf(t *testing.T) string {
 	binary.LittleEndian.PutUint64(shdr3[56:64], 0)                     // sh_entsize
 
 	// Write the ELF file
-	f, err := os.Create(elfPath)
+	f, err := os.Create(path)
 	if err != nil {
 		t.Fatalf("failed to create test ELF: %v", err)
 	}
@@ -350,5 +386,17 @@ func createTestElf(t *testing.T) string {
 		t.Fatalf("failed to write section headers: %v", err)
 	}
 
-	return elfPath
+	return path
+}
+
+func appendToFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open file: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.Write(data); err != nil {
+		t.Fatalf("failed to write data: %v", err)
+	}
 }

@@ -14,6 +14,7 @@ import (
 	io "io"
 	reflect "reflect"
 
+	binutils "github.com/qpoint-io/qtap/pkg/binutils"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -57,18 +58,18 @@ func (mr *MockProbeMockRecorder) Attach(ctx, target, result any) *gomock.Call {
 }
 
 // AttachLibrary mocks base method.
-func (m *MockProbe) AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error) {
+func (m *MockProbe) AttachLibrary(ctx context.Context, target *ExeLibraryAttachable, result ProbeScanResult) (io.Closer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AttachLibrary", ctx, library)
+	ret := m.ctrl.Call(m, "AttachLibrary", ctx, target, result)
 	ret0, _ := ret[0].(io.Closer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AttachLibrary indicates an expected call of AttachLibrary.
-func (mr *MockProbeMockRecorder) AttachLibrary(ctx, library any) *gomock.Call {
+func (mr *MockProbeMockRecorder) AttachLibrary(ctx, target, result any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachLibrary", reflect.TypeOf((*MockProbe)(nil).AttachLibrary), ctx, library)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachLibrary", reflect.TypeOf((*MockProbe)(nil).AttachLibrary), ctx, target, result)
 }
 
 // Close mocks base method.
@@ -114,11 +115,26 @@ func (mr *MockProbeMockRecorder) Scan(ctx, target any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Scan", reflect.TypeOf((*MockProbe)(nil).Scan), ctx, target)
 }
 
+// ScanLibrary mocks base method.
+func (m *MockProbe) ScanLibrary(ctx context.Context, ef *binutils.Elf) (ProbeScanResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ScanLibrary", ctx, ef)
+	ret0, _ := ret[0].(ProbeScanResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ScanLibrary indicates an expected call of ScanLibrary.
+func (mr *MockProbeMockRecorder) ScanLibrary(ctx, ef any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ScanLibrary", reflect.TypeOf((*MockProbe)(nil).ScanLibrary), ctx, ef)
+}
+
 // SharedLibraries mocks base method.
-func (m *MockProbe) SharedLibraries() []string {
+func (m *MockProbe) SharedLibraries() string {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SharedLibraries")
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].(string)
 	return ret0
 }
 

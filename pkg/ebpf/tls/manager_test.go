@@ -52,12 +52,9 @@ func TestTlsManager(t *testing.T) {
 	}, proc2ScanRes).Return(proc2Closer, nil)
 
 	ctrRootScanRes := &ContainerScanResult{
-		SharedLibraries: map[string][]*SharedLibrary{
+		SharedLibraries: map[string]map[string]ProbeScanResult{
 			"openssl": {
-				{
-					Name:  "libssl.so",
-					Paths: []string{"/usr/lib/libssl.so"},
-				},
+				"/usr/lib/libssl.so": &testProbeScanResult{name: "test-openssl"},
 			},
 		},
 	}
@@ -107,7 +104,7 @@ func TestTlsManager(t *testing.T) {
 	}, proc4ScanRes).Return(proc4Closer, nil)
 
 	ctr1ScanRes := &ContainerScanResult{
-		SharedLibraries: map[string][]*SharedLibrary{},
+		SharedLibraries: map[string]map[string]ProbeScanResult{},
 	}
 	ctr1Closer := &testCloser{}
 	mockScanner.EXPECT().ScanContainer(gomock.Any(), "container-1", "/proc/3/root").Return(ctr1ScanRes, nil)

@@ -32,14 +32,17 @@ type Probe interface {
 	// Returns a Closer that must be called when the process exits to clean up the probes.
 	Attach(ctx context.Context, target *ExeLinkAttachable, result ProbeScanResult) (io.Closer, error)
 
-	// SharedLibraries returns the list of shared libraries this probe can attach to.
-	// Each string is a library name prefix (e.g., "libssl.so", "libcrypto.so")
-	SharedLibraries() []string
+	// SharedLibraries returns the name prefix of the shared libraries this probe can attach to.
+	//
+	// The string is a library name prefix (e.g., "libssl.so", "libcrypto.so")
+	SharedLibraries() string
 
-	// TODO: add ScanLibrary() and cache result
+	// ScanLibrary scans a shared library for TLS probe attachment points.
+	// This will be called for each of the libraries returned by SharedLibraries() that were found.
+	ScanLibrary(ctx context.Context, ef *binutils.Elf) (ProbeScanResult, error)
 
 	// AttachLibrary attaches probes to a shared library.
-	AttachLibrary(ctx context.Context, library *SharedLibrary) (io.Closer, error)
+	AttachLibrary(ctx context.Context, target *ExeLibraryAttachable, result ProbeScanResult) (io.Closer, error)
 
 	// Close cleans up any global resources used by the probe.
 	Close() error
@@ -78,6 +81,11 @@ type ExeLinkAttachable struct {
 	Exe *link.Executable
 }
 
+type ExeLibraryAttachable struct {
+	Path string
+	Exe  *link.Executable
+}
+
 // MultiCloser wraps multiple closers into a single Closer.
 type MultiCloser []io.Closer
 
@@ -97,7 +105,7 @@ func (m MultiCloser) Close() error {
 
 // AttachProbes is helper for attaching uprobes to a pre-processed list of symbols.
 func AttachProbes[T interface {
-	*link.Executable | *ExeLinkAttachable
+	*link.Executable | *ExeLinkAttachable | *ExeLibraryAttachable
 }](
 	ctx context.Context,
 	logger *zap.Logger,
@@ -133,6 +141,8 @@ func AttachProbes[T interface {
 	case *ExeLinkAttachable:
 		exe = t.Exe
 		ll = ll.With(zap.Int("pid", t.PID))
+	case *ExeLibraryAttachable:
+		exe = t.Exe
 	}
 
 	for _, probe := range probes {

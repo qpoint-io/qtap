@@ -16,6 +16,7 @@ const (
 	displayModeNone    displayMode = "none"
 	displayModeSummary displayMode = "summary"
 	displayModeDetails displayMode = "details"
+	displayModeHeaders displayMode = "headers" // Equivalent to details
 	displayModeFull    displayMode = "full"
 )
 

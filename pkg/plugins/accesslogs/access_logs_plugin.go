@@ -90,6 +90,11 @@ func (f *factory) Init(logger *zap.Logger, config yaml.Node) {
 		cfg.Rules[i].rule = rule
 	}
 
+	// Adds cross support for headers -> details (from http_capture)
+	if cfg.Mode == displayModeHeaders {
+		cfg.Mode = displayModeDetails
+	}
+
 	f.config = &cfg
 }
 

@@ -29,6 +29,7 @@ const (
 
 	// CaptureLevelHeaders captures everything in Summary, plus HTTP request and response headers.
 	CaptureLevelHeaders CaptureLevel = "headers"
+	CaptureLevelDetails CaptureLevel = "details" // Legacy from `access_logs`
 
 	// CaptureLevelFull captures everything in Headers, plus HTTP request and response bodies (i.e., the complete transaction).
 	CaptureLevelFull CaptureLevel = "full"
@@ -89,6 +90,12 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 		if err != nil {
 			logger.Error("error parsing log rule", zap.Error(err), zap.String("rule", cfg.Rules[i].Name))
 		}
+	}
+
+	// Legacy support for `details` level
+	if cfg.Level == CaptureLevelDetails {
+		logger.Warn("`details` level is deprecated, using `headers` level instead")
+		cfg.Level = CaptureLevelHeaders
 	}
 
 	f.config = &cfg

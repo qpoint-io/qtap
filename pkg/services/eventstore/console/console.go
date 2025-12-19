@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/qpoint-io/qtap/pkg/log"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
@@ -46,7 +47,7 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 		ll.DPanic("event stores do not support artifacts", zap.Any("artifact", i))
 		return
 	default:
-		ll.Info("event store submission",
+		zap.L().Log(log.QpointLevel, "event store submission",
 			zap.String("type", fmt.Sprintf("%T", item)),
 			zap.Any("item", item))
 	}

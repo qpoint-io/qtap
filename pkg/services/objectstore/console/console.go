@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/qpoint-io/qtap/pkg/log"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
@@ -43,5 +44,5 @@ func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 	fields := append(s.LogFields(artifact),
 		zap.String("data_base64", base64.StdEncoding.EncodeToString(artifact.Data)))
 
-	s.Log().Info("object store submission", fields...)
+	zap.L().Log(log.QpointLevel, "object store submission", fields...)
 }

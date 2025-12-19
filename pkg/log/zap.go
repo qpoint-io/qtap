@@ -13,9 +13,24 @@ import (
 )
 
 var (
-	colorMuted = lipgloss.AdaptiveColor{Light: "#b0b0b0", Dark: "#737373"}
-	muteText   = lipgloss.NewStyle().Foreground(colorMuted).Render
+	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
+	colorMuted  = lipgloss.AdaptiveColor{Light: "#b0b0b0", Dark: "#737373"}
+	colorPurple = lipgloss.AdaptiveColor{Light: "#9333EA", Dark: "#A855F7"}
 )
+
+func muteText(s string) string {
+	if !isTTY {
+		return s
+	}
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(s)
+}
+
+func purpleText(s string) string {
+	if !isTTY {
+		return s
+	}
+	return lipgloss.NewStyle().Foreground(colorPurple).Render(s)
+}
 
 // Log levels
 const (
@@ -33,6 +48,9 @@ const (
 	// Use these on a *zap.Logger like so:
 	//		zap.L().Log(log.TraceLevel, "trace msg")
 	TraceLevel = zapcore.DebugLevel - 1
+
+	// QpointLevel
+	QpointLevel = zapcore.DebugLevel - 2
 )
 
 // Encoding types
@@ -55,21 +73,49 @@ func NewLogger(mut func(cfg *zap.Config)) (*zap.Logger, error) {
 	cfg.Encoding = EncodingJSON
 	cfg.EncoderConfig.MessageKey = "message"
 
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if isTTY {
 		SetEncoding(&cfg, EncodingConsole)
 	} else {
 		SetEncoding(&cfg, EncodingJSON)
 	}
 
-	if cfg.Level.Level() <= DebugLevel {
-		cfg.Sampling = nil // disable sampling in debug mode
-	}
+	// disable sampling
+	// Note(Jon): If sampling is enabled we will need to add a custom
+	// sampling hook to always show QPOINT level logs.
+	cfg.Sampling = nil
 
 	if mut != nil {
 		mut(&cfg)
 	}
 
-	return cfg.Build()
+	return cfg.Build(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
+		return &qpointLevelCore{
+			Core: core,
+			enabler: zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+				if lvl == QpointLevel {
+					return true
+				}
+				return core.Enabled(lvl)
+			}),
+		}
+	}))
+}
+
+// qpointLevelCore wraps a zapcore.Core to always enable QpointLevel logs
+type qpointLevelCore struct {
+	zapcore.Core
+	enabler zapcore.LevelEnabler
+}
+
+func (c *qpointLevelCore) Enabled(lvl zapcore.Level) bool {
+	return c.enabler.Enabled(lvl)
+}
+
+func (c *qpointLevelCore) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if c.Enabled(ent.Level) {
+		return ce.AddCore(ent, c)
+	}
+	return ce
 }
 
 func SetEncoding(cfg *zap.Config, encoding string) {
@@ -95,8 +141,11 @@ func SetLevel(cfg *zap.Config, level string) {
 }
 
 func StringToLevel(levelStr string) (zapcore.Level, error) {
-	if strings.EqualFold(levelStr, "trace") {
+	switch strings.ToLower(levelStr) {
+	case "trace":
 		return TraceLevel, nil
+	case "qpoint":
+		return QpointLevel, nil
 	}
 
 	var l zapcore.Level
@@ -108,19 +157,31 @@ func StringToLevel(levelStr string) (zapcore.Level, error) {
 }
 
 func LevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	if level == TraceLevel {
+	switch level {
+	case TraceLevel:
 		enc.AppendString("trace")
+		return
+	case QpointLevel:
+		enc.AppendString("qpoint")
 		return
 	}
 	zapcore.LowercaseLevelEncoder(level, enc)
 }
 
 func ConsoleLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
-	if level == TraceLevel {
+	switch level {
+	case TraceLevel:
 		enc.AppendString(muteText("TRACE"))
 		return
+	case QpointLevel:
+		enc.AppendString(purpleText("QPOINT"))
+		return
 	}
-	zapcore.CapitalColorLevelEncoder(level, enc)
+	if isTTY {
+		zapcore.CapitalColorLevelEncoder(level, enc)
+	} else {
+		zapcore.CapitalLevelEncoder(level, enc)
+	}
 }
 
 func ConsoleTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {

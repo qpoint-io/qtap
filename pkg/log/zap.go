@@ -13,11 +13,24 @@ import (
 )
 
 var (
+	isTTY       = term.IsTerminal(int(os.Stdout.Fd()))
 	colorMuted  = lipgloss.AdaptiveColor{Light: "#b0b0b0", Dark: "#737373"}
-	muteText    = lipgloss.NewStyle().Foreground(colorMuted).Render
 	colorPurple = lipgloss.AdaptiveColor{Light: "#9333EA", Dark: "#A855F7"}
-	purpleText  = lipgloss.NewStyle().Foreground(colorPurple).Render
 )
+
+func muteText(s string) string {
+	if !isTTY {
+		return s
+	}
+	return lipgloss.NewStyle().Foreground(colorMuted).Render(s)
+}
+
+func purpleText(s string) string {
+	if !isTTY {
+		return s
+	}
+	return lipgloss.NewStyle().Foreground(colorPurple).Render(s)
+}
 
 // Log levels
 const (
@@ -60,7 +73,7 @@ func NewLogger(mut func(cfg *zap.Config)) (*zap.Logger, error) {
 	cfg.Encoding = EncodingJSON
 	cfg.EncoderConfig.MessageKey = "message"
 
-	if term.IsTerminal(int(os.Stdout.Fd())) {
+	if isTTY {
 		SetEncoding(&cfg, EncodingConsole)
 	} else {
 		SetEncoding(&cfg, EncodingJSON)
@@ -164,7 +177,11 @@ func ConsoleLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder)
 		enc.AppendString(purpleText("QPOINT"))
 		return
 	}
-	zapcore.CapitalColorLevelEncoder(level, enc)
+	if isTTY {
+		zapcore.CapitalColorLevelEncoder(level, enc)
+	} else {
+		zapcore.CapitalLevelEncoder(level, enc)
+	}
 }
 
 func ConsoleTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {

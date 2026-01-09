@@ -142,7 +142,11 @@ function handleParsedEvent(eventType: string, data: any) {
       break
 
     case 'process_started':
-      processesStore.addProcess(data.process)
+      if (processesStore.getProcessByPid(data.process.pid)) {
+        processesStore.updateProcess(data.process.pid, data.process)
+      } else {
+        processesStore.addProcess(data.process)
+      }
       break
 
     case 'process_stopped':

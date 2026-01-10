@@ -122,6 +122,12 @@ function handleParsedEvent(eventType: string, data: any) {
 
     case 'connection_opened':
       connectionsStore.addConnection(data.connection)
+      // Increment connection count for the process
+      // PID is on source for egress connections, destination for ingress
+      const openedPid = data.connection.source?.pid || data.connection.destination?.pid
+      if (openedPid) {
+        processesStore.incrementConnectionCount(openedPid)
+      }
       break
 
     case 'connection_updated':

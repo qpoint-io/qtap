@@ -275,7 +275,14 @@
                 </div>
                 <div class="text-xs font-mono" v-if="selectedConnection!.source.exe">
                   <span class="text-dt-text-secondary dark:text-dt-text-dark-secondary">Executable:</span>
-                  <span class="text-dt-text-primary dark:text-dt-text-dark-primary ml-2">{{ selectedConnection!.source.exe }}</span>
+                  <button
+                    v-if="selectedConnection!.source.pid"
+                    @click="navigateToProcess"
+                    class="text-dt-accent dark:text-dt-accent-dark-blue hover:underline cursor-pointer ml-2"
+                  >
+                    {{ selectedConnection!.source.exe }}
+                  </button>
+                  <span v-else class="text-dt-text-primary dark:text-dt-text-dark-primary ml-2">{{ selectedConnection!.source.exe }}</span>
                 </div>
                 <div class="text-xs font-mono" v-if="selectedConnection!.source.user">
                   <span class="text-dt-text-secondary dark:text-dt-text-dark-secondary">User:</span>
@@ -627,6 +634,14 @@ const selectConnection = (connection: Connection) => {
 
 const closeConnection = () => {
   delete params.connection_id
+}
+
+const navigateToProcess = () => {
+  // PID is on source for egress, destination for ingress
+  const pid = selectedConnection.value?.source?.pid || selectedConnection.value?.destination?.pid
+  if (!pid) return
+  params.process_id = String(pid)
+  params.tab = 'processes'
 }
 
 const selectedConnection = computed(() => {

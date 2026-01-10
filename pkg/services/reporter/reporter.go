@@ -155,6 +155,7 @@ func toEventStoreConnection(conn *connection.Connection) *eventstore.Connection 
 		c.SocketProtocol = toEventStoreSocketType(conn.OpenEvent.SocketType)
 		localEndpoint := &eventstore.ConnectionEndpointLocal{
 			Address: conn.OpenEvent.Local,
+			PID:     conn.OpenEvent.PID,
 		}
 		if proc := conn.Process(); proc != nil {
 			localEndpoint.Exe = proc.Exe

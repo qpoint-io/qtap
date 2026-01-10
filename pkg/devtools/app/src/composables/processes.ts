@@ -3,14 +3,18 @@ import { storeToRefs } from 'pinia'
 import { useProcessesStore } from '@/stores/processes'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
+import { useProcessSettings } from '@/composables/processSettings'
 import type { Filter } from '@/stores/filter'
 
 export function useProcesses() {
   // get the store
   const store = useProcessesStore()
-  
+
   // get reactive pause state and filters from store
   const { paused, filters } = storeToRefs(store)
+
+  // get process-specific settings
+  const { showOnlyWithConnections } = useProcessSettings()
 
   // watch URL params to sync selected item with buffer GC protection
   const params = useUrlParams()
@@ -32,7 +36,12 @@ export function useProcesses() {
 
   const filtered = computed(() => {
     let result = store.processesBuffer
-    
+
+    // Filter by connection count if setting enabled
+    if (showOnlyWithConnections.value) {
+      result = result.filter(p => (p.connectionCount || 0) > 0)
+    }
+
     // Apply each filter
     filters.value.forEach(filter => {
       result = result.filter(process => {
@@ -151,7 +160,7 @@ export function useProcesses() {
     return Array.from(values).sort()
   }
 
-  return { 
+  return {
     processes: filtered,
     isPaused: paused,
     filters,
@@ -162,6 +171,8 @@ export function useProcesses() {
     maxSize,
     maxSizeUnit,
     resetBufferSettings,
+    // Process settings
+    showOnlyWithConnections,
   }
 }
 

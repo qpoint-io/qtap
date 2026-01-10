@@ -43,6 +43,7 @@ export interface ConnectionEndpoint {
   hostname?: string // Only present on source
   exe?: string // Only present on source (executable path)
   user?: string // Only present on source
+  pid?: number // Only present on source (process ID)
 }
 
 export interface NetworkAddress {

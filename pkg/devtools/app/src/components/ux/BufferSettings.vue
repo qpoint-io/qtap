@@ -57,6 +57,9 @@
             </select>
           </div>
         </div>
+
+        <!-- Extra settings slot for page-specific options -->
+        <slot name="extra-settings"></slot>
       </div>
 
       <!-- Separator -->

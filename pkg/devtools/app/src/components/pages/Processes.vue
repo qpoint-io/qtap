@@ -20,7 +20,19 @@
           v-model:maxSize="maxSize"
           v-model:maxSizeUnit="maxSizeUnit"
           @reset="resetBufferSettings"
-        />
+        >
+          <template #extra-settings>
+            <div class="border-t border-dt-border-light dark:border-dt-border-dark-light my-3"></div>
+            <label class="flex items-center gap-2 text-xs text-dt-text-secondary dark:text-dt-text-dark-secondary cursor-pointer select-none">
+              <input
+                type="checkbox"
+                v-model="showOnlyWithConnections"
+                class="rounded border-dt-border-light dark:border-dt-border-dark-light accent-dt-accent-blue dark:accent-dt-accent-dark-blue"
+              />
+              <span>Show only processes with connections</span>
+            </label>
+          </template>
+        </BufferSettings>
       </template>
     </Toolbar>
 
@@ -150,6 +162,15 @@
                 {{ process.user.name }}
               </div>
 
+              <!-- Connections -->
+              <div
+                v-else-if="column.key === 'connections'"
+                class="px-2 py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light text-dt-text-secondary dark:text-dt-text-dark-secondary text-[11px] text-center"
+                :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
+              >
+                {{ process.connectionCount || 0 }}
+              </div>
+
               <!-- Container -->
               <div
                 v-else-if="column.key === 'container'"
@@ -239,6 +260,10 @@
                 <div class="text-xs font-mono">
                   <span class="text-dt-text-secondary dark:text-dt-text-dark-secondary">PID:</span>
                   <span class="text-dt-text-primary dark:text-dt-text-dark-primary ml-2">{{ selectedProcess!.pid }}</span>
+                </div>
+                <div class="text-xs font-mono">
+                  <span class="text-dt-text-secondary dark:text-dt-text-dark-secondary">Connections:</span>
+                  <span class="text-dt-text-primary dark:text-dt-text-dark-primary ml-2">{{ selectedProcess!.connectionCount || 0 }}</span>
                 </div>
               </div>
             </div>
@@ -335,22 +360,24 @@ const defaultColumns: ColumnConfig[] = [
   { key: 'binary', label: 'Binary', width: 140, minWidth: 80, visible: true, resizable: true },
   { key: 'path', label: 'Path', width: 300, minWidth: 100, visible: true, resizable: true },
   { key: 'user', label: 'User', width: 100, minWidth: 60, visible: true, resizable: true },
+  { key: 'connections', label: 'Connections', width: 90, minWidth: 60, visible: true, resizable: true },
   { key: 'container', label: 'Container', width: 140, minWidth: 80, visible: true, resizable: true },
   { key: 'pod', label: 'Pod', width: 140, minWidth: 80, visible: true, resizable: true },
   { key: 'duration', label: 'Duration', width: 80, minWidth: 50, visible: true, resizable: true },
 ]
 
 // use Processes data
-const { 
-  processes, 
-  isPaused, 
-  filters, 
-  filterableKeys, 
+const {
+  processes,
+  isPaused,
+  filters,
+  filterableKeys,
   getFilterValues,
   maxItems,
   maxSize,
   maxSizeUnit,
   resetBufferSettings,
+  showOnlyWithConnections,
 } = useProcesses()
 
 const store = useProcessesStore()

@@ -48,4 +48,4 @@ tmp/
 CLAUDE.md
 CRUSH.md
 .crush/
-.claude/
+.claude/.llvm/

@@ -20,13 +20,16 @@ type List interface {
 }
 
 type tags struct {
-	mu   sync.RWMutex
-	data map[string][]string
+	mu     sync.RWMutex
+	data   map[string][]string
+	cache  map[string][]string // cached copy for Map()
+	dirty  bool                // true when cache needs rebuild
 }
 
 func New() *tags {
 	return &tags{
-		data: make(map[string][]string),
+		data:  make(map[string][]string),
+		dirty: true, // no cache yet
 	}
 }
 
@@ -73,6 +76,7 @@ func (t *tags) add(key string, values ...string) {
 			continue
 		}
 		t.data[key] = append(t.data[key], v)
+		t.dirty = true // invalidate cache
 	}
 }
 
@@ -131,14 +135,31 @@ func (t *tags) Merge(other List) {
 }
 
 func (t *tags) Map() map[string][]string {
+	// Fast path: return cached copy if available
 	t.mu.RLock()
-	defer t.mu.RUnlock()
-
-	m := make(map[string][]string, len(t.data))
-	for k, v := range t.data {
-		m[k] = append(([]string)(nil), v...)
+	if !t.dirty && t.cache != nil {
+		cache := t.cache
+		t.mu.RUnlock()
+		return cache
 	}
-	return m
+	t.mu.RUnlock()
+
+	// Slow path: rebuild cache
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if !t.dirty && t.cache != nil {
+		return t.cache
+	}
+
+	// Build new cache
+	t.cache = make(map[string][]string, len(t.data))
+	for k, v := range t.data {
+		t.cache[k] = append([]string(nil), v...)
+	}
+	t.dirty = false
+	return t.cache
 }
 
 func (t *tags) Get(key string) ([]string, bool) {

@@ -36,7 +36,8 @@ type Queue struct {
 	draining atomic.Bool
 	count    int64
 
-	notify chan struct{}
+	notify  chan struct{} // signals item pushed
+	popped  chan struct{} // signals item popped (for drain)
 }
 
 func NewQueue(ctx context.Context) *Queue {
@@ -45,6 +46,7 @@ func NewQueue(ctx context.Context) *Queue {
 		ctx:    qCtx,
 		cancel: cancel,
 		notify: make(chan struct{}, 1),
+		popped: make(chan struct{}, 1),
 	}
 }
 
@@ -142,6 +144,14 @@ func (q *Queue) pop() any {
 	}
 	atomic.AddInt64(&q.count, -1)
 
+	// Signal drain waiters that an item was popped
+	if q.draining.Load() {
+		select {
+		case q.popped <- struct{}{}:
+		default:
+		}
+	}
+
 	return value
 }
 
@@ -180,6 +190,15 @@ func (q *Queue) Next() (any, bool) {
 				q.tail = nil
 			}
 			atomic.AddInt64(&q.count, -1)
+
+			// Signal drain waiters that an item was popped
+			if q.draining.Load() {
+				select {
+				case q.popped <- struct{}{}:
+				default:
+				}
+			}
+
 			q.mu.Unlock()
 			return value, true
 		}
@@ -234,11 +253,13 @@ func (q *Queue) Drain(d time.Duration) error {
 		}
 		q.mu.Unlock()
 
+		// Wait for item to be popped or timeout
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-			time.Sleep(10 * time.Millisecond) // Small delay to avoid busy-waiting
+		case <-q.popped:
+			// Item was popped, check if queue is empty now
+			continue
 		}
 	}
 }

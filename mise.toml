@@ -1,0 +1,51 @@
+[tools]
+go = "1.24"
+
+[env]
+LLVM_DIR = "{{cwd}}/.llvm"
+_.path = ["{{cwd}}/.llvm/bin"]
+
+[tasks.setup-llvm]
+description = "Download and setup LLVM 14 pre-built binaries"
+run = """
+#!/usr/bin/env bash
+set -e
+
+LLVM_VERSION="14.0.6"
+LLVM_DIR="${MISE_PROJECT_ROOT:-.}/.llvm"
+LLVM_URL="https://github.com/terralang/llvm-build/releases/download/llvm-${LLVM_VERSION}/clang%2Bllvm-${LLVM_VERSION}-x86_64-linux-gnu.tar.xz"
+
+if [[ -x "${LLVM_DIR}/bin/clang" ]]; then
+    echo "LLVM ${LLVM_VERSION} already installed at ${LLVM_DIR}"
+    ${LLVM_DIR}/bin/clang --version
+    exit 0
+fi
+
+echo "Downloading LLVM ${LLVM_VERSION}..."
+mkdir -p "${LLVM_DIR}"
+curl -sL "${LLVM_URL}" | tar -xJ --strip-components=1 -C "${LLVM_DIR}"
+
+echo "LLVM ${LLVM_VERSION} installed successfully!"
+${LLVM_DIR}/bin/clang --version
+"""
+
+[tasks.build]
+description = "Build qtap"
+depends = ["setup-llvm"]
+run = "make build"
+
+[tasks.test]
+description = "Run tests"
+run = "make test"
+
+[tasks.lint]
+description = "Run linters"
+run = "make lint"
+
+[tasks.ci]
+description = "Run all CI checks"
+run = "make ci"
+
+[tasks.clean-llvm]
+description = "Remove LLVM installation"
+run = "rm -rf ${MISE_PROJECT_ROOT:-.}/.llvm"

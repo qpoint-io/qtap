@@ -22,6 +22,7 @@ export interface Process {
   user: ProcessUser
   status: 'running' | 'exited'
   duration?: number // Duration in milliseconds (present when status is 'exited')
+  connectionCount?: number // Number of connections observed for this process
 }
 
 export interface ProcessContainer {
@@ -66,6 +67,8 @@ export const useProcessesStore = defineStore('processes', {
     },
 
     addProcess(process: Process) {
+      // Initialize connection count to 0 for new processes
+      process.connectionCount = 0
       bufferManager.addAndPersist(this.processesBuffer, process)
     },
 
@@ -74,8 +77,18 @@ export const useProcessesStore = defineStore('processes', {
         proc.pid === pid
       )
       if (index !== -1) {
+        const existingProcess = this.processesBuffer[index]
+        // Preserve connection count from existing process
+        process.connectionCount = existingProcess?.connectionCount || 0
         this.processesBuffer[index] = process
         bufferManager.updateAndPersist(this.processesBuffer)
+      }
+    },
+
+    incrementConnectionCount(pid: number) {
+      const process = this.processesBuffer.find((p) => p.pid === pid)
+      if (process) {
+        process.connectionCount = (process.connectionCount || 0) + 1
       }
     },
 

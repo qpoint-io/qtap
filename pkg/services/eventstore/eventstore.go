@@ -293,6 +293,7 @@ type ConnectionEndpointLocal struct {
 	Exe       string       `json:"exe,omitempty"`
 	User      string       `json:"user,omitempty"`
 	UserID    uint         `json:"userId,omitempty"`
+	PID       uint32       `json:"pid,omitempty"`
 	Container *Container   `json:"container,omitempty"`
 }
 

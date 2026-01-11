@@ -102,16 +102,14 @@ func (f *EventFilter) IsEmpty() bool {
 // This enables cross-entity filtering (e.g., process.* filters apply to connection events).
 // Note: "http" filter entity applies to "request" topic events (request.created, request.http_transaction)
 var entityAppliesTo = map[string]map[string]bool{
-	"process":    {"process": true, "connection": true, "request": true, "issue": true, "pii": true},
-	"connection": {"connection": true, "request": true, "issue": true, "pii": true},
+	"process":    {"process": true, "connection": true, "request": true},
+	"connection": {"connection": true, "request": true},
 	"http":       {"request": true},
-	"issue":      {"issue": true},
-	"pii":        {"pii": true},
 }
 
 // Matches checks if an event matches the filter conditions.
 // The cache parameter enables cross-entity filtering by looking up connection data
-// for request/issue/pii events.
+// for request events.
 // Returns true if:
 // - No applicable conditions exist for this event's entity type (pass through)
 // - All applicable conditions match (AND logic)
@@ -174,11 +172,11 @@ func extractAttributeWithCache(filterEntity, eventEntity string, data map[string
 		// Connection events have process data embedded in source
 		return extractProcessFromConnection(data, attr)
 
-	case filterEntity == "process" && (eventEntity == "request" || eventEntity == "issue" || eventEntity == "pii"):
+	case filterEntity == "process" && eventEntity == "request":
 		// Need to lookup connection, then extract process data
 		return extractProcessFromRequest(data, cache, attr)
 
-	case filterEntity == "connection" && (eventEntity == "request" || eventEntity == "issue" || eventEntity == "pii"):
+	case filterEntity == "connection" && eventEntity == "request":
 		// Need to lookup connection data from cache
 		return extractConnectionFromRequest(data, cache, attr)
 	}
@@ -320,10 +318,6 @@ func extractAttribute(entity string, data map[string]any, attr string) any {
 		return extractHttpAttribute(data, attr)
 	case "connection":
 		return extractConnectionAttribute(data, attr)
-	case "issue":
-		return extractIssueAttribute(data, attr)
-	case "pii":
-		return extractPIIAttribute(data, attr)
 	default:
 		return nil
 	}
@@ -552,54 +546,6 @@ func extractEndpointPort(data map[string]any, endpoint string) any {
 		}
 	}
 	return nil
-}
-
-// extractIssueAttribute extracts attributes from issue event data
-func extractIssueAttribute(data map[string]any, attr string) any {
-	issueData := toMapAny(data["data"])
-	if issueData == nil {
-		issueData = data
-	}
-
-	switch attr {
-	case "method":
-		return issueData["method"]
-	case "status":
-		return issueData["status"]
-	case "path":
-		return issueData["path"]
-	case "url":
-		return issueData["url"]
-	case "direction":
-		return issueData["direction"]
-	case "error":
-		return issueData["error"]
-	default:
-		return nil
-	}
-}
-
-// extractPIIAttribute extracts attributes from PII event data
-func extractPIIAttribute(data map[string]any, attr string) any {
-	piiData := toMapAny(data["data"])
-	if piiData == nil {
-		piiData = data
-	}
-
-	switch attr {
-	case "entityType":
-		return piiData["entityType"]
-	case "entitySource":
-		return piiData["entitySource"]
-	case "fieldPath":
-		return piiData["fieldPath"]
-	case "requestMethod":
-		return piiData["requestMethod"]
-	case "requestPath":
-		return piiData["requestPath"]
-	default:
-		return nil
-	}
 }
 
 // matchCondition checks if a value matches a filter condition

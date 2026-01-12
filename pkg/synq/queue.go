@@ -15,6 +15,14 @@ var (
 	ErrQueueDraining = errors.New("queue draining")
 )
 
+// Op represents a queue operation type for notifications
+type Op int
+
+const (
+	Pushed Op = iota // Item was pushed to queue
+	Popped           // Item was popped from queue
+)
+
 // Prioritized is an interface for items that can be prioritized in the queue
 type Prioritized interface {
 	QueuePriority() int
@@ -36,7 +44,7 @@ type Queue struct {
 	draining atomic.Bool
 	count    int64
 
-	notify chan struct{}
+	notify chan Op // signals queue operations (Pushed/Popped)
 }
 
 func NewQueue(ctx context.Context) *Queue {
@@ -44,7 +52,7 @@ func NewQueue(ctx context.Context) *Queue {
 	return &Queue{
 		ctx:    qCtx,
 		cancel: cancel,
-		notify: make(chan struct{}, 1),
+		notify: make(chan Op, 1),
 	}
 }
 
@@ -67,7 +75,7 @@ func (q *Queue) Push(values ...any) error {
 
 	// Signal waiting consumers
 	select {
-	case q.notify <- struct{}{}:
+	case q.notify <- Pushed:
 	default:
 	}
 
@@ -142,6 +150,14 @@ func (q *Queue) pop() any {
 	}
 	atomic.AddInt64(&q.count, -1)
 
+	// Signal drain waiters that an item was popped
+	if q.draining.Load() {
+		select {
+		case q.notify <- Popped:
+		default:
+		}
+	}
+
 	return value
 }
 
@@ -180,6 +196,15 @@ func (q *Queue) Next() (any, bool) {
 				q.tail = nil
 			}
 			atomic.AddInt64(&q.count, -1)
+
+			// Signal drain waiters that an item was popped
+			if q.draining.Load() {
+				select {
+				case q.notify <- Popped:
+				default:
+				}
+			}
+
 			q.mu.Unlock()
 			return value, true
 		}
@@ -192,6 +217,7 @@ func (q *Queue) Next() (any, bool) {
 		// Wait for new items or context cancellation
 		select {
 		case <-q.notify:
+			// Any operation (Pushed/Popped) means we should check the queue again
 			continue
 		case <-q.ctx.Done():
 			return nil, false
@@ -234,11 +260,13 @@ func (q *Queue) Drain(d time.Duration) error {
 		}
 		q.mu.Unlock()
 
+		// Wait for any operation or timeout
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-			time.Sleep(10 * time.Millisecond) // Small delay to avoid busy-waiting
+		case <-q.notify:
+			// Any operation means we should check if queue is empty
+			continue
 		}
 	}
 }

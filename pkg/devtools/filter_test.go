@@ -1,73 +1,74 @@
 package devtools
 
 import (
-	"net/url"
 	"testing"
+
+	"github.com/qpoint-io/rulekit"
 )
 
-func TestParseFilters(t *testing.T) {
+func TestParseFilter(t *testing.T) {
 	tests := []struct {
-		name       string
-		query      string
-		wantErr    bool
-		wantEmpty  bool
-		wantEntity string
-		wantCount  int
+		name      string
+		expr      string
+		wantErr   bool
+		wantEmpty bool
 	}{
 		{
-			name:      "empty query",
-			query:     "",
+			name:      "empty expression",
+			expr:      "",
 			wantEmpty: true,
 		},
 		{
-			name:       "single filter",
-			query:      "process.pid.eq=1234",
-			wantEntity: "process",
-			wantCount:  1,
+			name: "simple equality",
+			expr: "process.pid == 1234",
 		},
 		{
-			name:       "multiple filters same entity",
-			query:      "process.pid.eq=1234&process.container.eq=nginx",
-			wantEntity: "process",
-			wantCount:  2,
+			name: "string equality",
+			expr: "http.method == 'GET'",
 		},
 		{
-			name:      "multiple filters different entities",
-			query:     "process.pid.eq=1234&http.method.eq=POST",
-			wantCount: 2, // 1 per entity
+			name: "numeric comparison",
+			expr: "http.status >= 400",
 		},
 		{
-			name:    "invalid operator",
-			query:   "process.pid.invalid=1234",
+			name: "compound AND",
+			expr: "process.pid == 1234 AND http.status >= 400",
+		},
+		{
+			name: "compound OR",
+			expr: "http.method == 'GET' OR http.method == 'POST'",
+		},
+		{
+			name: "negation",
+			expr: "NOT http.status == 404",
+		},
+		{
+			name: "contains",
+			expr: "http.path contains '/api/'",
+		},
+		{
+			name: "regex match",
+			expr: "http.path matches /api\\/v[0-9]+/",
+		},
+		{
+			name: "function call",
+			expr: "in_zone(http.domain, 'example.com')",
+		},
+		{
+			name:    "invalid syntax - incomplete",
+			expr:    "process.pid ==",
 			wantErr: true,
 		},
 		{
-			name:      "non-filter query params ignored",
-			query:     "foo=bar&baz=qux",
-			wantEmpty: true,
-		},
-		{
-			name:       "mixed filter and non-filter params",
-			query:      "foo=bar&process.pid.eq=1234",
-			wantEntity: "process",
-			wantCount:  1,
-		},
-		{
-			name:       "all operators",
-			query:      "http.status.eq=200&http.status.neq=404&http.status.gt=100&http.status.gte=200&http.status.lt=500&http.status.lte=299&http.path.prefix=/api&http.path.contains=users&http.method.in=GET,POST",
-			wantEntity: "http",
-			wantCount:  9,
+			name:    "invalid syntax - bad operator",
+			expr:    "process.pid === 1234",
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			values, err := url.ParseQuery(tt.query)
-			if err != nil {
-				t.Fatalf("failed to parse query: %v", err)
-			}
-
-			filter, err := ParseFilters(values)
+			filter, err := ParseFilter(tt.expr)
 			if tt.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")
@@ -81,29 +82,16 @@ func TestParseFilters(t *testing.T) {
 
 			if tt.wantEmpty {
 				if !filter.IsEmpty() {
-					t.Errorf("expected empty filter, got %+v", filter.Conditions)
+					t.Error("expected empty filter")
 				}
 				return
 			}
 
-			if tt.wantEntity != "" {
-				conditions, ok := filter.Conditions[tt.wantEntity]
-				if !ok {
-					t.Errorf("expected conditions for entity %q", tt.wantEntity)
-					return
-				}
-				if len(conditions) != tt.wantCount {
-					t.Errorf("expected %d conditions, got %d", tt.wantCount, len(conditions))
-				}
-			} else if tt.wantCount > 0 {
-				// Count total conditions across all entities
-				total := 0
-				for _, conds := range filter.Conditions {
-					total += len(conds)
-				}
-				if total != tt.wantCount {
-					t.Errorf("expected %d total conditions, got %d", tt.wantCount, total)
-				}
+			if filter.IsEmpty() {
+				t.Error("expected non-empty filter")
+			}
+			if filter.Expression() != tt.expr {
+				t.Errorf("Expression() = %q, want %q", filter.Expression(), tt.expr)
 			}
 		})
 	}
@@ -112,137 +100,146 @@ func TestParseFilters(t *testing.T) {
 func TestEventFilter_Matches(t *testing.T) {
 	tests := []struct {
 		name   string
-		filter *EventFilter
+		expr   string
 		event  *Event
 		want   bool
 	}{
 		{
-			name:   "nil filter matches everything",
-			filter: nil,
-			event:  NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
-			want:   true,
+			name:  "nil filter matches everything",
+			expr:  "",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
+			want:  true,
 		},
 		{
-			name:   "empty filter matches everything",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{}},
-			event:  NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
-			want:   true,
-		},
-		{
-			name: "system events always pass",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
+			name:  "system events always pass",
+			expr:  "http.method == 'POST'",
 			event: NewEvent("system.connected", map[string]any{"topics": []string{}}),
 			want:  true,
 		},
 		{
-			name: "unfiltered entity passes through",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
+			name:  "process pid equals - match",
+			expr:  "process.pid == 1234",
 			event: NewEvent("process.started", map[string]any{"pid": 1234}),
 			want:  true,
 		},
 		{
-			name: "matching eq filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "GET"}},
-			}},
+			name:  "process pid equals - no match",
+			expr:  "process.pid == 1234",
+			event: NewEvent("process.started", map[string]any{"pid": 5678}),
+			want:  false,
+		},
+		{
+			name:  "http method equals - match",
+			expr:  "http.method == 'GET'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
 			want:  true,
 		},
 		{
-			name: "non-matching eq filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
+			name:  "http method equals - no match",
+			expr:  "http.method == 'POST'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
 			want:  false,
 		},
 		{
-			name: "matching neq filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpNeq, Value: "POST"}},
-			}},
-			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
-			want:  true,
-		},
-		{
-			name: "matching in filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpIn, Value: "GET,POST,PUT"}},
-			}},
-			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST"}}),
-			want:  true,
-		},
-		{
-			name: "non-matching in filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpIn, Value: "GET,POST,PUT"}},
-			}},
-			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "DELETE"}}),
-			want:  false,
-		},
-		{
-			name: "matching gte filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"}},
-			}},
+			name:  "http status gte - match",
+			expr:  "http.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 500}}),
 			want:  true,
 		},
 		{
-			name: "non-matching gte filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"}},
-			}},
+			name:  "http status gte - no match",
+			expr:  "http.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 200}}),
 			want:  false,
 		},
 		{
-			name: "matching prefix filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "path", Operator: OpPrefix, Value: "/api/"}},
-			}},
+			name:  "http status gte - boundary match",
+			expr:  "http.status >= 400",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 400}}),
+			want:  true,
+		},
+		{
+			name:  "http path contains - match",
+			expr:  "http.path contains 'users'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users/123"}}),
 			want:  true,
 		},
 		{
-			name: "matching contains filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "path", Operator: OpContains, Value: "users"}},
-			}},
+			name:  "http path contains - no match",
+			expr:  "http.path contains 'products'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users/123"}}),
-			want:  true,
+			want:  false,
 		},
 		{
-			name: "multiple conditions AND logic - all match",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {
-					{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"},
-					{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"},
-				},
-			}},
+			name:  "compound AND - both match",
+			expr:  "http.method == 'POST' AND http.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST", "status": 500}}),
 			want:  true,
 		},
 		{
-			name: "multiple conditions AND logic - one fails",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {
-					{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"},
-					{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"},
-				},
-			}},
+			name:  "compound AND - one fails",
+			expr:  "http.method == 'POST' AND http.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST", "status": 200}}),
 			want:  false,
+		},
+		{
+			name:  "compound OR - first matches",
+			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
+			want:  true,
+		},
+		{
+			name:  "compound OR - second matches",
+			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST"}}),
+			want:  true,
+		},
+		{
+			name:  "compound OR - neither matches",
+			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "DELETE"}}),
+			want:  false,
+		},
+		{
+			name:  "NOT - negates match",
+			expr:  "http.status != 404",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": float64(200)}}),
+			want:  true,
+		},
+		{
+			name:  "NOT - negates to false",
+			expr:  "http.status != 404",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": float64(404)}}),
+			want:  false,
+		},
+		{
+			name:  "missing field - no match",
+			expr:  "http.method == 'GET'",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 200}}),
+			want:  false,
+		},
+		{
+			name:  "process container - match",
+			expr:  "process.container == 'nginx'",
+			event: NewEvent("process.started", map[string]any{"container": map[string]any{"name": "nginx", "id": "abc123"}}),
+			want:  true,
+		},
+		{
+			name:  "http domain from url - match",
+			expr:  "http.domain == 'api.example.com'",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/v1/users"}}),
+			want:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.filter.Matches(tt.event, nil)
+			filter, err := ParseFilter(tt.expr)
+			if err != nil {
+				t.Fatalf("failed to parse filter: %v", err)
+			}
+
+			got := filter.Matches(tt.event, nil)
 			if got != tt.want {
 				t.Errorf("Matches() = %v, want %v", got, tt.want)
 			}
@@ -252,21 +249,18 @@ func TestEventFilter_Matches(t *testing.T) {
 
 func TestCrossEntityFiltering(t *testing.T) {
 	tests := []struct {
-		name   string
-		filter *EventFilter
-		event  *Event
-		cache  *ConnectionCache
-		want   bool
+		name  string
+		expr  string
+		event *Event
+		want  bool
 	}{
 		{
 			name: "process filter on connection event - matching pid",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
+			expr: "process.pid == 1234",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
-						"pid": uint32(1234),
+						"pid": float64(1234), // JSON numbers decode as float64
 					},
 				},
 			}),
@@ -274,13 +268,11 @@ func TestCrossEntityFiltering(t *testing.T) {
 		},
 		{
 			name: "process filter on connection event - non-matching pid",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
+			expr: "process.pid == 1234",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
-						"pid": uint32(5678),
+						"pid": float64(5678),
 					},
 				},
 			}),
@@ -288,9 +280,7 @@ func TestCrossEntityFiltering(t *testing.T) {
 		},
 		{
 			name: "process filter on connection event - matching container",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "container", Operator: OpEq, Value: "nginx"}},
-			}},
+			expr: "process.container == 'nginx'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
@@ -301,28 +291,41 @@ func TestCrossEntityFiltering(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "process filter on process event - still works directly",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
+			name:  "process filter on process event - direct match",
+			expr:  "process.pid == 1234",
 			event: NewEvent("process.started", map[string]any{"pid": 1234}),
 			want:  true,
 		},
 		{
-			name: "http filter does not apply to connection",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
+			name: "connection filter on connection event - direction match",
+			expr: "connection.direction == 'egress'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{"direction": "egress"},
 			}),
-			want: true, // passes through - http filter doesn't apply to connection
+			want: true,
+		},
+		{
+			name: "connection filter on connection event - dstPort match",
+			expr: "connection.dstPort == 443",
+			event: NewEvent("connection.opened", map[string]any{
+				"data": map[string]any{
+					"destination": map[string]any{
+						"address": map[string]any{"ip": "10.0.0.1", "port": 443},
+					},
+				},
+			}),
+			want: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.filter.Matches(tt.event, tt.cache)
+			filter, err := ParseFilter(tt.expr)
+			if err != nil {
+				t.Fatalf("failed to parse filter: %v", err)
+			}
+
+			got := filter.Matches(tt.event, nil)
 			if got != tt.want {
 				t.Errorf("Matches() = %v, want %v", got, tt.want)
 			}
@@ -336,8 +339,9 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 	cache.Set("conn-123", map[string]any{
 		"connectionId": "conn-123",
 		"direction":    "egress",
+		"l7Protocol":   "http2",
 		"source": map[string]any{
-			"pid":      uint32(1234),
+			"pid":      float64(1234), // JSON numbers decode as float64
 			"hostname": "web-server",
 			"container": map[string]any{
 				"name": "nginx",
@@ -347,22 +351,20 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		"destination": map[string]any{
 			"address": map[string]any{
 				"ip":   "10.0.0.1",
-				"port": 443,
+				"port": float64(443), // JSON numbers decode as float64
 			},
 		},
 	})
 
 	tests := []struct {
-		name   string
-		filter *EventFilter
-		event  *Event
-		want   bool
+		name  string
+		expr  string
+		event *Event
+		want  bool
 	}{
 		{
 			name: "process filter on request - matching via cache lookup",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
+			expr: "process.pid == 1234",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -374,9 +376,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "process filter on request - non-matching via cache lookup",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "9999"}},
-			}},
+			expr: "process.pid == 9999",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -388,9 +388,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "process container filter on request via cache",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "container", Operator: OpEq, Value: "nginx"}},
-			}},
+			expr: "process.container == 'nginx'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -401,9 +399,18 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "connection filter on request - matching dstPort via cache",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"connection": {{Entity: "connection", Attribute: "dstPort", Operator: OpEq, Value: "443"}},
-			}},
+			expr: "connection.dstPort == 443",
+			event: NewEvent("request.created", map[string]any{
+				"data": map[string]any{
+					"connectionId": "conn-123",
+					"method":       "GET",
+				},
+			}),
+			want: true,
+		},
+		{
+			name: "connection filter on request - matching protocol via cache",
+			expr: "connection.protocol == 'http2'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -414,9 +421,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "request with unknown connectionId - cache miss, filter fails",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
+			expr: "process.pid == 1234",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "unknown-conn",
@@ -426,11 +431,8 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 			want: false, // Can't verify process.pid without connection data
 		},
 		{
-			name: "combined cross-entity and direct filter",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-				"http":    {{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"}},
-			}},
+			name: "combined cross-entity and direct filter - both match",
+			expr: "process.pid == 1234 AND http.status >= 400",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -442,10 +444,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "combined filter - process matches but http fails",
-			filter: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-				"http":    {{Entity: "http", Attribute: "status", Operator: OpGte, Value: "400"}},
-			}},
+			expr: "process.pid == 1234 AND http.status >= 400",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -459,7 +458,12 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.filter.Matches(tt.event, cache)
+			filter, err := ParseFilter(tt.expr)
+			if err != nil {
+				t.Fatalf("failed to parse filter: %v", err)
+			}
+
+			got := filter.Matches(tt.event, cache)
 			if got != tt.want {
 				t.Errorf("Matches() = %v, want %v", got, tt.want)
 			}
@@ -537,482 +541,233 @@ func TestConnectionCache(t *testing.T) {
 	})
 }
 
-func TestExtractProcessAttribute(t *testing.T) {
-	tests := []struct {
-		name string
-		data map[string]any
-		attr string
-		want any
-	}{
-		{
-			name: "pid",
-			data: map[string]any{"pid": 1234},
-			attr: "pid",
-			want: 1234,
-		},
-		{
-			name: "binary",
-			data: map[string]any{"binary": "nginx"},
-			attr: "binary",
-			want: "nginx",
-		},
-		{
-			name: "container name",
-			data: map[string]any{"container": map[string]any{"name": "web-container", "id": "abc123"}},
-			attr: "container",
-			want: "web-container",
-		},
-		{
-			name: "container id",
-			data: map[string]any{"container": map[string]any{"name": "web-container", "id": "abc123"}},
-			attr: "containerId",
-			want: "abc123",
-		},
-		{
-			name: "pod name",
-			data: map[string]any{"pod": map[string]any{"name": "web-pod", "namespace": "default"}},
-			attr: "pod",
-			want: "web-pod",
-		},
-		{
-			name: "pod namespace",
-			data: map[string]any{"pod": map[string]any{"name": "web-pod", "namespace": "default"}},
-			attr: "podNamespace",
-			want: "default",
-		},
-		{
-			name: "user name",
-			data: map[string]any{"user": map[string]any{"name": "root", "id": uint(0)}},
-			attr: "user",
-			want: "root",
-		},
-		{
-			name: "missing attribute",
-			data: map[string]any{"pid": 1234},
-			attr: "nonexistent",
-			want: nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractProcessAttribute(tt.data, tt.attr)
-			if got != tt.want {
-				t.Errorf("extractProcessAttribute() = %v, want %v", got, tt.want)
-			}
+func TestBuildEventKV(t *testing.T) {
+	t.Run("process event", func(t *testing.T) {
+		event := NewEvent("process.started", map[string]any{
+			"pid":      1234,
+			"binary":   "nginx",
+			"path":     "/usr/sbin/nginx",
+			"hostname": "web-server",
+			"user":     map[string]any{"name": "root", "id": 0},
+			"container": map[string]any{
+				"name":  "my-container",
+				"id":    "abc123",
+				"image": "nginx:latest",
+			},
+			"pod": map[string]any{
+				"name":      "web-pod",
+				"namespace": "default",
+			},
 		})
-	}
-}
 
-func TestExtractConnectionAttribute(t *testing.T) {
-	tests := []struct {
-		name string
-		data map[string]any
-		attr string
-		want any
-	}{
-		{
-			name: "direction",
-			data: map[string]any{"data": map[string]any{"direction": "egress"}},
-			attr: "direction",
-			want: "egress",
-		},
-		{
-			name: "protocol",
-			data: map[string]any{"data": map[string]any{"l7Protocol": "http2"}},
-			attr: "protocol",
-			want: "http2",
-		},
-		{
-			name: "srcIp",
-			data: map[string]any{"data": map[string]any{
+		kv := buildEventKV(event, nil)
+
+		assertKVValue(t, kv, "process.pid", 1234)
+		assertKVValue(t, kv, "process.binary", "nginx")
+		assertKVValue(t, kv, "process.path", "/usr/sbin/nginx")
+		assertKVValue(t, kv, "process.hostname", "web-server")
+		assertKVValue(t, kv, "process.user", "root")
+		assertKVValue(t, kv, "process.userId", 0)
+		assertKVValue(t, kv, "process.container", "my-container")
+		assertKVValue(t, kv, "process.containerId", "abc123")
+		assertKVValue(t, kv, "process.containerImage", "nginx:latest")
+		assertKVValue(t, kv, "process.pod", "web-pod")
+		assertKVValue(t, kv, "process.podNamespace", "default")
+	})
+
+	t.Run("connection event", func(t *testing.T) {
+		event := NewEvent("connection.opened", map[string]any{
+			"data": map[string]any{
+				"direction":      "egress",
+				"l7Protocol":     "http2",
+				"socketProtocol": "tcp",
 				"source": map[string]any{
-					"address": map[string]any{"ip": "192.168.1.1", "port": 8080},
+					"pid":      float64(1234),
+					"hostname": "web-server",
+					"exe":      "/usr/bin/curl",
+					"address":  map[string]any{"ip": "192.168.1.1", "port": float64(8080)},
 				},
-			}},
-			attr: "srcIp",
-			want: "192.168.1.1",
-		},
-		{
-			name: "dstPort",
-			data: map[string]any{"data": map[string]any{
 				"destination": map[string]any{
-					"address": map[string]any{"ip": "10.0.0.1", "port": 443},
+					"address": map[string]any{"ip": "10.0.0.1", "port": float64(443)},
 				},
-			}},
-			attr: "dstPort",
-			want: 443,
-		},
-		{
-			name: "container from source",
-			data: map[string]any{"data": map[string]any{
-				"source": map[string]any{
-					"container": map[string]any{"name": "web-app"},
-				},
-			}},
-			attr: "container",
-			want: "web-app",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractConnectionAttribute(tt.data, tt.attr)
-			if got != tt.want {
-				t.Errorf("extractConnectionAttribute() = %v, want %v", got, tt.want)
-			}
+			},
 		})
-	}
-}
 
-func TestCompareEqual(t *testing.T) {
-	tests := []struct {
-		name        string
-		value       any
-		filterValue string
-		want        bool
-	}{
-		{"string match", "hello", "hello", true},
-		{"string no match", "hello", "world", false},
-		{"int match", 42, "42", true},
-		{"int no match", 42, "43", false},
-		{"int64 match", int64(1234567890), "1234567890", true},
-		{"float64 match", float64(200), "200", true},
-		{"float64 decimal", float64(3.14), "3.14", true},
-		{"uint32 match", uint32(443), "443", true},
-		{"uint16 match", uint16(8080), "8080", true},
-	}
+		kv := buildEventKV(event, nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := compareEqual(tt.value, tt.filterValue)
-			if got != tt.want {
-				t.Errorf("compareEqual(%v, %q) = %v, want %v", tt.value, tt.filterValue, got, tt.want)
-			}
+		assertKVValue(t, kv, "connection.direction", "egress")
+		assertKVValue(t, kv, "connection.protocol", "http2")
+		assertKVValue(t, kv, "connection.socketProtocol", "tcp")
+		assertKVValue(t, kv, "connection.srcIp", "192.168.1.1")
+		assertKVValue(t, kv, "connection.srcPort", float64(8080))
+		assertKVValue(t, kv, "connection.dstIp", "10.0.0.1")
+		assertKVValue(t, kv, "connection.dstPort", float64(443))
+		assertKVValue(t, kv, "process.pid", float64(1234))
+		assertKVValue(t, kv, "process.hostname", "web-server")
+		assertKVValue(t, kv, "process.path", "/usr/bin/curl")
+		assertKVValue(t, kv, "process.binary", "curl")
+	})
+
+	t.Run("request event", func(t *testing.T) {
+		event := NewEvent("request.created", map[string]any{
+			"data": map[string]any{
+				"method":        "POST",
+				"status":        200,
+				"path":          "/api/users",
+				"url":           "https://api.example.com/api/users",
+				"direction":     "egress",
+				"duration":      150,
+				"bytesSent":     1024,
+				"bytesReceived": 2048,
+				"connectionId":  "conn-123",
+				"requestId":     "req-456",
+			},
 		})
-	}
-}
 
-func TestCompareNumeric(t *testing.T) {
-	tests := []struct {
-		name        string
-		value       any
-		filterValue string
-		op          func(a, b int64) bool
-		want        bool
-	}{
-		{"int gt true", 100, "50", func(a, b int64) bool { return a > b }, true},
-		{"int gt false", 50, "100", func(a, b int64) bool { return a > b }, false},
-		{"int gte equal", 100, "100", func(a, b int64) bool { return a >= b }, true},
-		{"float64 lt", float64(50), "100", func(a, b int64) bool { return a < b }, true},
-		{"uint32 lte", uint32(100), "100", func(a, b int64) bool { return a <= b }, true},
-	}
+		kv := buildEventKV(event, nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := compareNumeric(tt.value, tt.filterValue, tt.op)
-			if got != tt.want {
-				t.Errorf("compareNumeric(%v, %q) = %v, want %v", tt.value, tt.filterValue, got, tt.want)
-			}
-		})
-	}
-}
+		assertKVValue(t, kv, "http.method", "POST")
+		assertKVValue(t, kv, "http.status", 200)
+		assertKVValue(t, kv, "http.path", "/api/users")
+		assertKVValue(t, kv, "http.url", "https://api.example.com/api/users")
+		assertKVValue(t, kv, "http.domain", "api.example.com")
+		assertKVValue(t, kv, "http.direction", "egress")
+		assertKVValue(t, kv, "http.duration", 150)
+		assertKVValue(t, kv, "http.bytesSent", 1024)
+		assertKVValue(t, kv, "http.bytesReceived", 2048)
+		assertKVValue(t, kv, "http.connectionId", "conn-123")
+		assertKVValue(t, kv, "http.requestId", "req-456")
+	})
 
-func TestExtractHttpDomain(t *testing.T) {
-	tests := []struct {
-		name string
-		data map[string]any
-		want any
-	}{
-		{
-			name: "extract domain from url",
-			data: map[string]any{"data": map[string]any{"url": "https://api.example.com/v1/users"}},
-			want: "api.example.com",
-		},
-		{
-			name: "extract domain with port",
-			data: map[string]any{"data": map[string]any{"url": "http://localhost:8080/api"}},
-			want: "localhost",
-		},
-		{
-			name: "missing url",
-			data: map[string]any{"data": map[string]any{"method": "GET"}},
-			want: nil,
-		},
-		{
-			name: "invalid url",
-			data: map[string]any{"data": map[string]any{"url": "not-a-url"}},
-			want: "",
-		},
-		{
-			name: "http_transaction summary - domain from request_host",
-			data: map[string]any{"data": map[string]any{
+	t.Run("http_transaction summary event", func(t *testing.T) {
+		event := NewEvent("request.http_transaction", map[string]any{
+			"data": map[string]any{
+				"connectionId": "abc123",
+				"type":         "http_transaction",
 				"summary": map[string]any{
-					"request_host":   "api.slack.com",
-					"request_method": "POST",
+					"request_host":     "api.slack.com",
+					"request_method":   "POST",
+					"response_status":  float64(200),
+					"request_path":     "/api/chat.postMessage",
+					"direction":        "egress-external",
+					"request_protocol": "http2",
+					"request_scheme":   "https",
+					"connection_id":    "abc123",
+					"container_name":   "myapp",
+					"container_image":  "myapp:latest",
+					"process_exe":      "/usr/bin/node",
 				},
-			}},
-			want: "api.slack.com",
+			},
+		})
+
+		kv := buildEventKV(event, nil)
+
+		assertKVValue(t, kv, "http.domain", "api.slack.com")
+		assertKVValue(t, kv, "http.method", "POST")
+		assertKVValue(t, kv, "http.status", float64(200))
+		assertKVValue(t, kv, "http.path", "/api/chat.postMessage")
+		assertKVValue(t, kv, "http.direction", "egress-external")
+		assertKVValue(t, kv, "http.protocol", "http2")
+		assertKVValue(t, kv, "http.scheme", "https")
+		assertKVValue(t, kv, "process.container", "myapp")
+		assertKVValue(t, kv, "process.containerImage", "myapp:latest")
+		assertKVValue(t, kv, "process.binary", "/usr/bin/node")
+	})
+}
+
+func TestRegexMatching(t *testing.T) {
+	tests := []struct {
+		name  string
+		expr  string
+		event *Event
+		want  bool
+	}{
+		{
+			name:  "path matches regex",
+			expr:  "http.path matches /api\\/v[0-9]+/",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/v2/users"}}),
+			want:  true,
+		},
+		{
+			name:  "path does not match regex",
+			expr:  "http.path matches /api\\/v[0-9]+/",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users"}}),
+			want:  false,
+		},
+		{
+			name:  "domain matches regex",
+			expr:  "http.domain matches /\\.example\\.com$/",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/test"}}),
+			want:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractHttpAttribute(tt.data, "domain")
-			if got != tt.want {
-				t.Errorf("extractHttpAttribute(domain) = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractFromHttpTransactionSummary(t *testing.T) {
-	// Simulates the structure of request.http_transaction events from ObjectStore
-	data := map[string]any{
-		"data": map[string]any{
-			"connectionId": "abc123",
-			"type":         "http_transaction",
-			"summary": map[string]any{
-				"request_host":     "api.slack.com",
-				"request_method":   "POST",
-				"response_status":  float64(200), // JSON numbers are float64
-				"request_path":     "/api/chat.postMessage",
-				"direction":        "egress-external",
-				"request_protocol": "http2",
-				"request_scheme":   "https",
-				"connection_id":    "abc123",
-				"container_name":   "myapp",
-				"container_image":  "myapp:latest",
-				"process_exe":      "/usr/bin/node",
-			},
-		},
-	}
-
-	tests := []struct {
-		attr string
-		want any
-	}{
-		{"domain", "api.slack.com"},
-		{"method", "POST"},
-		{"status", float64(200)},
-		{"path", "/api/chat.postMessage"},
-		{"direction", "egress-external"},
-		{"protocol", "http2"},
-		{"scheme", "https"},
-		{"connectionId", "abc123"},
-		{"container", "myapp"},
-		{"containerImage", "myapp:latest"},
-		{"binary", "/usr/bin/node"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.attr, func(t *testing.T) {
-			got := extractHttpAttribute(data, tt.attr)
-			if got != tt.want {
-				t.Errorf("extractHttpAttribute(%q) = %v, want %v", tt.attr, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseFiltersFromBody(t *testing.T) {
-	tests := []struct {
-		name       string
-		filters    map[string]string
-		wantErr    bool
-		wantNil    bool
-		wantEntity string
-		wantCount  int
-	}{
-		{
-			name:    "nil map",
-			filters: nil,
-			wantNil: true,
-		},
-		{
-			name:    "empty map",
-			filters: map[string]string{},
-			wantNil: true,
-		},
-		{
-			name:       "single filter",
-			filters:    map[string]string{"process.pid.eq": "1234"},
-			wantEntity: "process",
-			wantCount:  1,
-		},
-		{
-			name: "multiple filters same entity",
-			filters: map[string]string{
-				"process.pid.eq":       "1234",
-				"process.container.eq": "nginx",
-			},
-			wantEntity: "process",
-			wantCount:  2,
-		},
-		{
-			name: "multiple filters different entities",
-			filters: map[string]string{
-				"process.pid.eq": "1234",
-				"http.method.eq": "POST",
-			},
-			wantCount: 2, // 1 per entity
-		},
-		{
-			name:    "invalid operator",
-			filters: map[string]string{"process.pid.invalid": "1234"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			filter, err := ParseFiltersFromBody(tt.filters)
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error, got nil")
-				}
-				return
-			}
+			filter, err := ParseFilter(tt.expr)
 			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+				t.Fatalf("failed to parse filter: %v", err)
 			}
 
-			if tt.wantNil {
-				if filter != nil {
-					t.Errorf("expected nil filter, got %+v", filter)
-				}
-				return
-			}
-
-			if tt.wantEntity != "" {
-				conditions, ok := filter.Conditions[tt.wantEntity]
-				if !ok {
-					t.Errorf("expected conditions for entity %q", tt.wantEntity)
-					return
-				}
-				if len(conditions) != tt.wantCount {
-					t.Errorf("expected %d conditions, got %d", tt.wantCount, len(conditions))
-				}
-			} else if tt.wantCount > 0 {
-				// Count total conditions across all entities
-				total := 0
-				for _, conds := range filter.Conditions {
-					total += len(conds)
-				}
-				if total != tt.wantCount {
-					t.Errorf("expected %d total conditions, got %d", tt.wantCount, total)
-				}
+			got := filter.Matches(tt.event, nil)
+			if got != tt.want {
+				t.Errorf("Matches() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestMergeFilters(t *testing.T) {
+func TestCustomFunctions(t *testing.T) {
 	tests := []struct {
-		name     string
-		base     *EventFilter
-		override *EventFilter
-		wantNil  bool
-		check    func(*EventFilter) bool
+		name  string
+		expr  string
+		event *Event
+		want  bool
 	}{
 		{
-			name:     "both nil",
-			base:     nil,
-			override: nil,
-			wantNil:  true,
+			name:  "in_zone - exact match",
+			expr:  "in_zone(http.domain, 'example.com')",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://example.com/test"}}),
+			want:  true,
 		},
 		{
-			name: "nil base, non-nil override",
-			base: nil,
-			override: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 && f.Conditions["process"][0].Value == "1234"
-			},
+			name:  "in_zone - subdomain match",
+			expr:  "in_zone(http.domain, 'example.com')",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/test"}}),
+			want:  true,
 		},
 		{
-			name: "non-nil base, nil override",
-			base: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
-			override: nil,
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 && f.Conditions["process"][0].Value == "1234"
-			},
-		},
-		{
-			name: "non-nil base, empty override",
-			base: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
-			override: &EventFilter{Conditions: map[string][]FilterCondition{}},
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 && f.Conditions["process"][0].Value == "1234"
-			},
-		},
-		{
-			name: "override replaces same entity",
-			base: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
-			override: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "5678"}},
-			}},
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 && f.Conditions["process"][0].Value == "5678"
-			},
-		},
-		{
-			name: "merge different entities",
-			base: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-			}},
-			override: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 &&
-					f.Conditions["process"][0].Value == "1234" &&
-					len(f.Conditions["http"]) == 1 &&
-					f.Conditions["http"][0].Value == "POST"
-			},
-		},
-		{
-			name: "override one entity, keep another",
-			base: &EventFilter{Conditions: map[string][]FilterCondition{
-				"process": {{Entity: "process", Attribute: "pid", Operator: OpEq, Value: "1234"}},
-				"http":    {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "GET"}},
-			}},
-			override: &EventFilter{Conditions: map[string][]FilterCondition{
-				"http": {{Entity: "http", Attribute: "method", Operator: OpEq, Value: "POST"}},
-			}},
-			check: func(f *EventFilter) bool {
-				return len(f.Conditions["process"]) == 1 &&
-					f.Conditions["process"][0].Value == "1234" &&
-					len(f.Conditions["http"]) == 1 &&
-					f.Conditions["http"][0].Value == "POST"
-			},
+			name:  "in_zone - no match",
+			expr:  "in_zone(http.domain, 'example.com')",
+			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://other.com/test"}}),
+			want:  false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := MergeFilters(tt.base, tt.override)
-			if tt.wantNil {
-				if result != nil {
-					t.Errorf("expected nil, got %+v", result)
-				}
-				return
+			filter, err := ParseFilter(tt.expr)
+			if err != nil {
+				t.Fatalf("failed to parse filter: %v", err)
 			}
-			if result == nil {
-				t.Error("expected non-nil result")
-				return
-			}
-			if tt.check != nil && !tt.check(result) {
-				t.Errorf("check failed for result: %+v", result.Conditions)
+
+			got := filter.Matches(tt.event, nil)
+			if got != tt.want {
+				t.Errorf("Matches() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// Helper function to assert KV values
+func assertKVValue(t *testing.T, kv rulekit.KV, key string, want any) {
+	t.Helper()
+	got, ok := kv[key]
+	if !ok {
+		t.Errorf("key %q not found in KV", key)
+		return
+	}
+	if got != want {
+		t.Errorf("KV[%q] = %v (%T), want %v (%T)", key, got, got, want, want)
 	}
 }

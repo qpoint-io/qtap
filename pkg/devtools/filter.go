@@ -2,191 +2,168 @@ package devtools
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
+
+	"github.com/qpoint-io/qtap/pkg/rulekitext"
+	"github.com/qpoint-io/rulekit"
 )
 
-// FilterOperator defines comparison operations for event filtering
-type FilterOperator string
-
-const (
-	OpEq       FilterOperator = "eq"
-	OpNeq      FilterOperator = "neq"
-	OpIn       FilterOperator = "in"
-	OpGt       FilterOperator = "gt"
-	OpGte      FilterOperator = "gte"
-	OpLt       FilterOperator = "lt"
-	OpLte      FilterOperator = "lte"
-	OpPrefix   FilterOperator = "prefix"
-	OpContains FilterOperator = "contains"
-)
-
-// validOperators is the set of recognized operators
-var validOperators = map[FilterOperator]struct{}{
-	OpEq:       {},
-	OpNeq:      {},
-	OpIn:       {},
-	OpGt:       {},
-	OpGte:      {},
-	OpLt:       {},
-	OpLte:      {},
-	OpPrefix:   {},
-	OpContains: {},
-}
-
-// FilterCondition represents a single filter condition
-type FilterCondition struct {
-	Entity    string         // e.g., "process", "request", "connection"
-	Attribute string         // e.g., "pid", "method", "container"
-	Operator  FilterOperator // e.g., "eq", "gte", "prefix"
-	Value     string         // raw value from query param
-}
-
-// EventFilter holds parsed filter conditions grouped by entity
+// EventFilter holds a compiled rulekit expression for filtering events
 type EventFilter struct {
-	Conditions map[string][]FilterCondition // entity -> conditions
+	expr string       // original expression string
+	rule rulekit.Rule // compiled rule
 }
 
-// ParseFilters parses query parameters into an EventFilter.
-// Query params should be in the format: entity.attribute.operator=value
-// Example: process.pid.eq=1234, request.status.gte=400
-func ParseFilters(query url.Values) (*EventFilter, error) {
-	filter := &EventFilter{
-		Conditions: make(map[string][]FilterCondition),
+// ParseFilter parses a rulekit expression string into an EventFilter
+func ParseFilter(expr string) (*EventFilter, error) {
+	if expr == "" {
+		return nil, nil
 	}
 
-	for key, values := range query {
-		// Skip empty values
-		if len(values) == 0 || values[0] == "" {
-			continue
-		}
-
-		// Parse the key: entity.attribute.operator
-		parts := strings.Split(key, ".")
-		if len(parts) != 3 {
-			// Not a filter param, skip (could be other query params)
-			continue
-		}
-
-		entity := parts[0]
-		attribute := parts[1]
-		operator := FilterOperator(parts[2])
-
-		// Validate operator
-		if _, ok := validOperators[operator]; !ok {
-			return nil, fmt.Errorf("invalid operator %q in filter %q", operator, key)
-		}
-
-		// Create condition (use first value if multiple provided)
-		condition := FilterCondition{
-			Entity:    entity,
-			Attribute: attribute,
-			Operator:  operator,
-			Value:     values[0],
-		}
-
-		filter.Conditions[entity] = append(filter.Conditions[entity], condition)
+	rule, err := rulekit.Parse(expr)
+	if err != nil {
+		return nil, err
 	}
 
-	return filter, nil
+	return &EventFilter{
+		expr: expr,
+		rule: rule,
+	}, nil
 }
 
-// IsEmpty returns true if no filter conditions are defined
+// IsEmpty returns true if no filter is defined
 func (f *EventFilter) IsEmpty() bool {
-	return f == nil || len(f.Conditions) == 0
+	return f == nil || f.rule == nil
 }
 
-// entityAppliesTo defines which event types each filter entity applies to.
-// This enables cross-entity filtering (e.g., process.* filters apply to connection events).
-// Note: "http" filter entity applies to "request" topic events (request.created, request.http_transaction)
-var entityAppliesTo = map[string]map[string]bool{
-	"process":    {"process": true, "connection": true, "request": true},
-	"connection": {"connection": true, "request": true},
-	"http":       {"request": true},
+// Expression returns the original expression string
+func (f *EventFilter) Expression() string {
+	if f == nil {
+		return ""
+	}
+	return f.expr
 }
 
-// Matches checks if an event matches the filter conditions.
+// Matches checks if an event matches the filter expression.
 // The cache parameter enables cross-entity filtering by looking up connection data
 // for request events.
-// Returns true if:
-// - No applicable conditions exist for this event's entity type (pass through)
-// - All applicable conditions match (AND logic)
 func (f *EventFilter) Matches(event *Event, cache *ConnectionCache) bool {
 	if f.IsEmpty() {
 		return true
 	}
 
-	// Extract entity from topic (e.g., "request.created" -> "request")
-	eventEntity := event.TopLevelTopic()
-
 	// System events always pass through
-	if eventEntity == "system" {
+	if event.TopLevelTopic() == "system" {
 		return true
 	}
 
-	// Extract the data from the event
+	// Build KV map from event data
+	kv := buildEventKV(event, cache)
+
+	// Evaluate rule
+	res := f.rule.Eval(&rulekit.Ctx{
+		Functions: rulekitext.Functions,
+		KV:        kv,
+	})
+
+	// Missing fields are not errors - they just don't match
+	if !res.Ok() {
+		// Critical errors (invalid syntax, etc.) should not match
+		// Missing fields also don't match
+		return false
+	}
+
+	return res.Pass()
+}
+
+// buildEventKV creates a flattened key-value map from event data for rulekit evaluation
+func buildEventKV(event *Event, cache *ConnectionCache) rulekit.KV {
+	kv := make(rulekit.KV)
+
 	data, ok := event.Data.(map[string]any)
 	if !ok {
-		// Can't extract data, pass through
-		return true
+		return kv
 	}
 
-	// Check each filter entity's conditions
-	for filterEntity, conditions := range f.Conditions {
-		// Check if this filter entity applies to the event's entity type
-		appliesTo, exists := entityAppliesTo[filterEntity]
-		if !exists || !appliesTo[eventEntity] {
-			// This filter entity doesn't apply to this event type, skip
-			continue
-		}
+	eventEntity := event.TopLevelTopic()
 
-		// All conditions for this filter entity must match
-		for _, cond := range conditions {
-			attrValue := extractAttributeWithCache(filterEntity, eventEntity, data, cond.Attribute, cache)
-			if !matchCondition(attrValue, cond) {
-				return false
-			}
-		}
+	switch eventEntity {
+	case "process":
+		addProcessKV(kv, data)
+
+	case "connection":
+		addConnectionKV(kv, data)
+		// Connection events include process data from source endpoint
+		addProcessFromConnectionKV(kv, data)
+
+	case "request":
+		addHttpKV(kv, data)
+		// Request events need cache lookups for connection/process data
+		addConnectionFromCacheKV(kv, data, cache)
+		addProcessFromCacheKV(kv, data, cache)
 	}
 
-	return true
+	return kv
 }
 
-// extractAttributeWithCache extracts an attribute value, using cache for cross-entity lookups
-func extractAttributeWithCache(filterEntity, eventEntity string, data map[string]any, attr string, cache *ConnectionCache) any {
-	// Same entity - direct extraction
-	if filterEntity == eventEntity {
-		return extractAttribute(filterEntity, data, attr)
+// addProcessKV adds process.* keys to the KV map from process event data
+func addProcessKV(kv rulekit.KV, data map[string]any) {
+	setIfNotNil(kv, "process.pid", data["pid"])
+	setIfNotNil(kv, "process.binary", data["binary"])
+	setIfNotNil(kv, "process.path", data["path"])
+	setIfNotNil(kv, "process.hostname", data["hostname"])
+
+	if user, ok := data["user"].(map[string]any); ok {
+		setIfNotNil(kv, "process.user", user["name"])
+		setIfNotNil(kv, "process.userId", user["id"])
 	}
 
-	// "http" filter entity maps to "request" event entity
-	if filterEntity == "http" && eventEntity == "request" {
-		return extractAttribute("http", data, attr)
+	if container, ok := data["container"].(map[string]any); ok {
+		setIfNotNil(kv, "process.container", container["name"])
+		setIfNotNil(kv, "process.containerId", container["id"])
+		setIfNotNil(kv, "process.containerImage", container["image"])
 	}
 
-	// Cross-entity extraction
-	switch {
-	case filterEntity == "process" && eventEntity == "connection":
-		// Connection events have process data embedded in source
-		return extractProcessFromConnection(data, attr)
-
-	case filterEntity == "process" && eventEntity == "request":
-		// Need to lookup connection, then extract process data
-		return extractProcessFromRequest(data, cache, attr)
-
-	case filterEntity == "connection" && eventEntity == "request":
-		// Need to lookup connection data from cache
-		return extractConnectionFromRequest(data, cache, attr)
+	if pod, ok := data["pod"].(map[string]any); ok {
+		setIfNotNil(kv, "process.pod", pod["name"])
+		setIfNotNil(kv, "process.podNamespace", pod["namespace"])
 	}
-
-	return nil
 }
 
-// extractProcessFromConnection extracts process attributes from connection event data
-// Connection events have process info embedded in the source endpoint
-func extractProcessFromConnection(data map[string]any, attr string) any {
+// addConnectionKV adds connection.* keys to the KV map from connection event data
+func addConnectionKV(kv rulekit.KV, data map[string]any) {
+	// Connection data is nested under "data" key
+	connData := toMapAny(data["data"])
+	if connData == nil {
+		connData = data
+	}
+
+	setIfNotNil(kv, "connection.direction", connData["direction"])
+	setIfNotNil(kv, "connection.protocol", connData["l7Protocol"])
+	setIfNotNil(kv, "connection.socketProtocol", connData["socketProtocol"])
+	setIfNotNil(kv, "connection.vendorId", connData["vendorId"])
+	setIfNotNil(kv, "connection.tlsVersion", connData["tlsVersion"])
+
+	// Source endpoint
+	if src := toMapAny(connData["source"]); src != nil {
+		if addr := toMapAny(src["address"]); addr != nil {
+			setIfNotNil(kv, "connection.srcIp", addr["ip"])
+			setIfNotNil(kv, "connection.srcPort", addr["port"])
+		}
+	}
+
+	// Destination endpoint
+	if dst := toMapAny(connData["destination"]); dst != nil {
+		if addr := toMapAny(dst["address"]); addr != nil {
+			setIfNotNil(kv, "connection.dstIp", addr["ip"])
+			setIfNotNil(kv, "connection.dstPort", addr["port"])
+		}
+	}
+}
+
+// addProcessFromConnectionKV extracts process.* keys from a connection's source endpoint
+func addProcessFromConnectionKV(kv rulekit.KV, data map[string]any) {
 	// Connection data is nested under "data" key
 	connData := toMapAny(data["data"])
 	if connData == nil {
@@ -196,521 +173,173 @@ func extractProcessFromConnection(data map[string]any, attr string) any {
 	// Get source endpoint (local process info)
 	source := toMapAny(connData["source"])
 	if source == nil {
-		return nil
+		return
 	}
 
-	switch attr {
-	case "pid":
-		return source["pid"]
-	case "hostname":
-		return source["hostname"]
-	case "user":
-		return source["user"]
-	case "userId":
-		return source["userId"]
-	case "path":
-		return source["exe"]
-	case "binary":
-		// Extract basename from exe path
-		if exe, ok := source["exe"].(string); ok {
-			parts := strings.Split(exe, "/")
-			if len(parts) > 0 {
-				return parts[len(parts)-1]
-			}
+	setIfNotNil(kv, "process.pid", source["pid"])
+	setIfNotNil(kv, "process.hostname", source["hostname"])
+	setIfNotNil(kv, "process.user", source["user"])
+	setIfNotNil(kv, "process.userId", source["userId"])
+	setIfNotNil(kv, "process.path", source["exe"])
+
+	// Extract binary name from exe path
+	if exe, ok := source["exe"].(string); ok {
+		parts := strings.Split(exe, "/")
+		if len(parts) > 0 {
+			kv["process.binary"] = parts[len(parts)-1]
 		}
-		return nil
-	case "container":
-		if container := toMapAny(source["container"]); container != nil {
-			return container["name"]
+	}
+
+	if container := toMapAny(source["container"]); container != nil {
+		setIfNotNil(kv, "process.container", container["name"])
+		setIfNotNil(kv, "process.containerId", container["id"])
+		setIfNotNil(kv, "process.containerImage", container["image"])
+
+		if pod := toMapAny(container["pod"]); pod != nil {
+			setIfNotNil(kv, "process.pod", pod["name"])
+			setIfNotNil(kv, "process.podNamespace", pod["namespace"])
 		}
-		return nil
-	case "containerId":
-		if container := toMapAny(source["container"]); container != nil {
-			return container["id"]
-		}
-		return nil
-	case "containerImage":
-		if container := toMapAny(source["container"]); container != nil {
-			return container["image"]
-		}
-		return nil
-	case "pod":
-		if container := toMapAny(source["container"]); container != nil {
-			if pod := toMapAny(container["pod"]); pod != nil {
-				return pod["name"]
-			}
-		}
-		return nil
-	case "podNamespace":
-		if container := toMapAny(source["container"]); container != nil {
-			if pod := toMapAny(container["pod"]); pod != nil {
-				return pod["namespace"]
-			}
-		}
-		return nil
-	}
-
-	return nil
-}
-
-// extractConnectionFromRequest extracts connection attributes from request data via cache lookup
-func extractConnectionFromRequest(data map[string]any, cache *ConnectionCache, attr string) any {
-	if cache == nil {
-		return nil
-	}
-
-	// Request data is nested under "data" key
-	reqData := toMapAny(data["data"])
-	if reqData == nil {
-		reqData = data
-	}
-
-	// Get connectionId from request
-	connId, ok := reqData["connectionId"].(string)
-	if !ok {
-		return nil
-	}
-
-	// Lookup connection from cache
-	connData := cache.Get(connId)
-	if connData == nil {
-		return nil
-	}
-
-	// Extract the attribute from connection data
-	return extractConnectionAttribute(map[string]any{"data": connData}, attr)
-}
-
-// extractProcessFromRequest extracts process attributes from request data via cache lookup
-func extractProcessFromRequest(data map[string]any, cache *ConnectionCache, attr string) any {
-	if cache == nil {
-		return nil
-	}
-
-	// Request data is nested under "data" key
-	reqData := toMapAny(data["data"])
-	if reqData == nil {
-		reqData = data
-	}
-
-	// Get connectionId from request
-	connId, ok := reqData["connectionId"].(string)
-	if !ok {
-		return nil
-	}
-
-	// Lookup connection from cache
-	connData := cache.Get(connId)
-	if connData == nil {
-		return nil
-	}
-
-	// Extract process data from connection's source
-	return extractProcessFromConnection(map[string]any{"data": connData}, attr)
-}
-
-// extractAttribute extracts an attribute value from event data based on entity type and attribute name
-func extractAttribute(entity string, data map[string]any, attr string) any {
-	switch entity {
-	case "process":
-		return extractProcessAttribute(data, attr)
-	case "http":
-		return extractHttpAttribute(data, attr)
-	case "connection":
-		return extractConnectionAttribute(data, attr)
-	default:
-		return nil
 	}
 }
 
-// extractProcessAttribute extracts attributes from process event data
-func extractProcessAttribute(data map[string]any, attr string) any {
-	switch attr {
-	case "pid":
-		return data["pid"]
-	case "binary":
-		return data["binary"]
-	case "path":
-		return data["path"]
-	case "hostname":
-		return data["hostname"]
-	case "user":
-		if user, ok := data["user"].(map[string]any); ok {
-			return user["name"]
-		}
-		return nil
-	case "userId":
-		if user, ok := data["user"].(map[string]any); ok {
-			return user["id"]
-		}
-		return nil
-	case "container":
-		if container, ok := data["container"].(map[string]any); ok {
-			return container["name"]
-		}
-		return nil
-	case "containerId":
-		if container, ok := data["container"].(map[string]any); ok {
-			return container["id"]
-		}
-		return nil
-	case "containerImage":
-		if container, ok := data["container"].(map[string]any); ok {
-			return container["image"]
-		}
-		return nil
-	case "pod":
-		if pod, ok := data["pod"].(map[string]any); ok {
-			return pod["name"]
-		}
-		return nil
-	case "podNamespace":
-		if pod, ok := data["pod"].(map[string]any); ok {
-			return pod["namespace"]
-		}
-		return nil
-	default:
-		return nil
-	}
-}
-
-// extractHttpAttribute extracts attributes from HTTP event data.
-// Handles both request.created events (from EventStore) and request.http_transaction
-// events (from ObjectStore/Artifact) which have different data structures.
-func extractHttpAttribute(data map[string]any, attr string) any {
-	// HTTP data is nested under "data" key from eventstore
+// addHttpKV adds http.* keys to the KV map from request event data
+func addHttpKV(kv rulekit.KV, data map[string]any) {
 	httpData := toMapAny(data["data"])
 	if httpData == nil {
-		// Try direct access (in case structure varies)
 		httpData = data
 	}
 
-	// Check if this is an http_transaction artifact (has "summary" field)
-	// These come from ObjectStore and have a different structure
+	// Check for http_transaction summary format
 	if summary := toMapAny(httpData["summary"]); summary != nil {
-		return extractFromHttpSummary(summary, attr)
+		addHttpFromSummaryKV(kv, summary)
+		return
 	}
 
-	// Standard request.created event structure
-	switch attr {
-	case "method":
-		return httpData["method"]
-	case "status":
-		return httpData["status"]
-	case "path":
-		return httpData["path"]
-	case "url":
-		return httpData["url"]
-	case "domain":
-		// Extract domain from URL
-		if urlStr, ok := httpData["url"].(string); ok {
-			if parsed, err := url.Parse(urlStr); err == nil {
-				return parsed.Hostname()
-			}
+	// Standard request.created format
+	setIfNotNil(kv, "http.method", httpData["method"])
+	setIfNotNil(kv, "http.status", httpData["status"])
+	setIfNotNil(kv, "http.path", httpData["path"])
+	setIfNotNil(kv, "http.url", httpData["url"])
+	setIfNotNil(kv, "http.direction", httpData["direction"])
+	setIfNotNil(kv, "http.category", httpData["category"])
+	setIfNotNil(kv, "http.contentType", httpData["contentType"])
+	setIfNotNil(kv, "http.agent", httpData["agent"])
+	setIfNotNil(kv, "http.duration", httpData["duration"])
+	setIfNotNil(kv, "http.bytesSent", httpData["bytesSent"])
+	setIfNotNil(kv, "http.bytesReceived", httpData["bytesReceived"])
+	setIfNotNil(kv, "http.connectionId", httpData["connectionId"])
+	setIfNotNil(kv, "http.requestId", httpData["requestId"])
+
+	// Extract domain from URL
+	if urlStr, ok := httpData["url"].(string); ok {
+		if parsed, err := url.Parse(urlStr); err == nil {
+			kv["http.domain"] = parsed.Hostname()
 		}
-		return nil
-	case "direction":
-		return httpData["direction"]
-	case "category":
-		return httpData["category"]
-	case "contentType":
-		return httpData["contentType"]
-	case "agent":
-		return httpData["agent"]
-	case "duration":
-		return httpData["duration"]
-	case "bytesSent":
-		return httpData["bytesSent"]
-	case "bytesReceived":
-		return httpData["bytesReceived"]
-	case "connectionId":
-		return httpData["connectionId"]
-	case "requestId":
-		return httpData["requestId"]
-	default:
-		return nil
 	}
 }
 
-// extractFromHttpSummary extracts attributes from http_transaction summary data.
-// Summary fields use snake_case naming like request_host, request_method, etc.
-func extractFromHttpSummary(summary map[string]any, attr string) any {
-	switch attr {
-	case "method":
-		return summary["request_method"]
-	case "status":
-		return summary["response_status"]
-	case "path":
-		return summary["request_path"]
-	case "domain":
-		return summary["request_host"]
-	case "direction":
-		return summary["direction"]
-	case "protocol":
-		return summary["request_protocol"]
-	case "scheme":
-		return summary["request_scheme"]
-	case "requestContentType":
-		return summary["request_content_type"]
-	case "responseContentType":
-		return summary["response_content_type"]
-	case "duration":
-		return summary["duration_ms"]
-	case "connectionId":
-		return summary["connection_id"]
-	case "requestId":
-		return summary["request_id"]
-	case "container":
-		return summary["container_name"]
-	case "containerImage":
-		return summary["container_image"]
-	case "pod":
-		return summary["pod_name"]
-	case "podNamespace":
-		return summary["pod_namespace"]
-	case "binary":
-		return summary["process_exe"]
-	default:
-		return nil
-	}
+// addHttpFromSummaryKV extracts http.* keys from http_transaction summary data
+func addHttpFromSummaryKV(kv rulekit.KV, summary map[string]any) {
+	setIfNotNil(kv, "http.method", summary["request_method"])
+	setIfNotNil(kv, "http.status", summary["response_status"])
+	setIfNotNil(kv, "http.path", summary["request_path"])
+	setIfNotNil(kv, "http.domain", summary["request_host"])
+	setIfNotNil(kv, "http.direction", summary["direction"])
+	setIfNotNil(kv, "http.protocol", summary["request_protocol"])
+	setIfNotNil(kv, "http.scheme", summary["request_scheme"])
+	setIfNotNil(kv, "http.requestContentType", summary["request_content_type"])
+	setIfNotNil(kv, "http.responseContentType", summary["response_content_type"])
+	setIfNotNil(kv, "http.duration", summary["duration_ms"])
+	setIfNotNil(kv, "http.connectionId", summary["connection_id"])
+	setIfNotNil(kv, "http.requestId", summary["request_id"])
+
+	// Also add process info from summary if available
+	setIfNotNil(kv, "process.container", summary["container_name"])
+	setIfNotNil(kv, "process.containerImage", summary["container_image"])
+	setIfNotNil(kv, "process.pod", summary["pod_name"])
+	setIfNotNil(kv, "process.podNamespace", summary["pod_namespace"])
+	setIfNotNil(kv, "process.binary", summary["process_exe"])
 }
 
-// extractConnectionAttribute extracts attributes from connection event data
-func extractConnectionAttribute(data map[string]any, attr string) any {
-	// Connection data is nested under "data" key from eventstore
-	connData := toMapAny(data["data"])
+// addConnectionFromCacheKV looks up connection data from cache and adds connection.* keys
+func addConnectionFromCacheKV(kv rulekit.KV, data map[string]any, cache *ConnectionCache) {
+	if cache == nil {
+		return
+	}
+
+	// Request data is nested under "data" key
+	reqData := toMapAny(data["data"])
+	if reqData == nil {
+		reqData = data
+	}
+
+	// Get connectionId from request
+	connId, ok := reqData["connectionId"].(string)
+	if !ok {
+		return
+	}
+
+	// Lookup connection from cache
+	connData := cache.Get(connId)
 	if connData == nil {
-		connData = data
+		return
 	}
 
-	switch attr {
-	case "direction":
-		return connData["direction"]
-	case "protocol":
-		return connData["l7Protocol"]
-	case "socketProtocol":
-		return connData["socketProtocol"]
-	case "vendorId":
-		return connData["vendorId"]
-	case "tlsVersion":
-		return connData["tlsVersion"]
-	case "pid":
-		return extractEndpointField(connData, "source", "pid")
-	case "container":
-		if src := toMapAny(connData["source"]); src != nil {
-			if container := toMapAny(src["container"]); container != nil {
-				return container["name"]
-			}
-		}
-		return nil
-	case "hostname":
-		return extractEndpointField(connData, "source", "hostname")
-	case "exe":
-		return extractEndpointField(connData, "source", "exe")
-	case "srcIp":
-		return extractEndpointIP(connData, "source")
-	case "srcPort":
-		return extractEndpointPort(connData, "source")
-	case "dstIp":
-		return extractEndpointIP(connData, "destination")
-	case "dstPort":
-		return extractEndpointPort(connData, "destination")
-	default:
-		return nil
-	}
-}
+	// Add connection attributes
+	setIfNotNil(kv, "connection.direction", connData["direction"])
+	setIfNotNil(kv, "connection.protocol", connData["l7Protocol"])
+	setIfNotNil(kv, "connection.socketProtocol", connData["socketProtocol"])
+	setIfNotNil(kv, "connection.vendorId", connData["vendorId"])
+	setIfNotNil(kv, "connection.tlsVersion", connData["tlsVersion"])
 
-// extractEndpointField extracts a field from a connection endpoint
-func extractEndpointField(data map[string]any, endpoint, field string) any {
-	if ep := toMapAny(data[endpoint]); ep != nil {
-		return ep[field]
-	}
-	return nil
-}
-
-// extractEndpointIP extracts the IP address from a connection endpoint
-func extractEndpointIP(data map[string]any, endpoint string) any {
-	if ep := toMapAny(data[endpoint]); ep != nil {
-		if addr := toMapAny(ep["address"]); addr != nil {
-			return addr["ip"]
+	if src := toMapAny(connData["source"]); src != nil {
+		if addr := toMapAny(src["address"]); addr != nil {
+			setIfNotNil(kv, "connection.srcIp", addr["ip"])
+			setIfNotNil(kv, "connection.srcPort", addr["port"])
 		}
 	}
-	return nil
-}
 
-// extractEndpointPort extracts the port from a connection endpoint
-func extractEndpointPort(data map[string]any, endpoint string) any {
-	if ep := toMapAny(data[endpoint]); ep != nil {
-		if addr := toMapAny(ep["address"]); addr != nil {
-			return addr["port"]
+	if dst := toMapAny(connData["destination"]); dst != nil {
+		if addr := toMapAny(dst["address"]); addr != nil {
+			setIfNotNil(kv, "connection.dstIp", addr["ip"])
+			setIfNotNil(kv, "connection.dstPort", addr["port"])
 		}
 	}
-	return nil
 }
 
-// matchCondition checks if a value matches a filter condition
-func matchCondition(value any, cond FilterCondition) bool {
-	if value == nil {
-		// If the attribute doesn't exist, the condition doesn't match
-		// unless we're using neq (not equals)
-		return cond.Operator == OpNeq
+// addProcessFromCacheKV looks up connection data from cache and adds process.* keys
+func addProcessFromCacheKV(kv rulekit.KV, data map[string]any, cache *ConnectionCache) {
+	if cache == nil {
+		return
 	}
 
-	switch cond.Operator {
-	case OpEq:
-		return compareEqual(value, cond.Value)
-	case OpNeq:
-		return !compareEqual(value, cond.Value)
-	case OpIn:
-		return compareIn(value, cond.Value)
-	case OpGt:
-		return compareNumeric(value, cond.Value, func(a, b int64) bool { return a > b })
-	case OpGte:
-		return compareNumeric(value, cond.Value, func(a, b int64) bool { return a >= b })
-	case OpLt:
-		return compareNumeric(value, cond.Value, func(a, b int64) bool { return a < b })
-	case OpLte:
-		return compareNumeric(value, cond.Value, func(a, b int64) bool { return a <= b })
-	case OpPrefix:
-		return comparePrefix(value, cond.Value)
-	case OpContains:
-		return compareContains(value, cond.Value)
-	default:
-		return false
+	// Request data is nested under "data" key
+	reqData := toMapAny(data["data"])
+	if reqData == nil {
+		reqData = data
 	}
+
+	// Get connectionId from request
+	connId, ok := reqData["connectionId"].(string)
+	if !ok {
+		return
+	}
+
+	// Lookup connection from cache
+	connData := cache.Get(connId)
+	if connData == nil {
+		return
+	}
+
+	// Extract process data from connection's source
+	addProcessFromConnectionKV(kv, map[string]any{"data": connData})
 }
 
-// compareEqual compares a value for equality with a filter value
-func compareEqual(value any, filterValue string) bool {
-	switch v := value.(type) {
-	case string:
-		return v == filterValue
-	case int:
-		if fv, err := strconv.Atoi(filterValue); err == nil {
-			return v == fv
-		}
-	case int64:
-		if fv, err := strconv.ParseInt(filterValue, 10, 64); err == nil {
-			return v == fv
-		}
-	case float64:
-		// JSON numbers are often float64
-		if fv, err := strconv.ParseFloat(filterValue, 64); err == nil {
-			return v == fv
-		}
-		// Also try int comparison for integer values
-		if fv, err := strconv.ParseInt(filterValue, 10, 64); err == nil {
-			return int64(v) == fv
-		}
-	case uint32:
-		if fv, err := strconv.ParseUint(filterValue, 10, 32); err == nil {
-			return v == uint32(fv)
-		}
-	case uint16:
-		if fv, err := strconv.ParseUint(filterValue, 10, 16); err == nil {
-			return v == uint16(fv)
-		}
+// setIfNotNil sets a key in the KV map only if the value is not nil
+func setIfNotNil(kv rulekit.KV, key string, value any) {
+	if value != nil {
+		kv[key] = value
 	}
-	// Fallback: convert both to string
-	return fmt.Sprintf("%v", value) == filterValue
-}
-
-// compareIn checks if a value is in a comma-separated list
-func compareIn(value any, filterValue string) bool {
-	parts := strings.Split(filterValue, ",")
-	for _, part := range parts {
-		if compareEqual(value, strings.TrimSpace(part)) {
-			return true
-		}
-	}
-	return false
-}
-
-// compareNumeric performs a numeric comparison
-func compareNumeric(value any, filterValue string, cmp func(a, b int64) bool) bool {
-	fv, err := strconv.ParseInt(filterValue, 10, 64)
-	if err != nil {
-		return false
-	}
-
-	var v int64
-	switch val := value.(type) {
-	case int:
-		v = int64(val)
-	case int64:
-		v = val
-	case float64:
-		v = int64(val)
-	case uint32:
-		v = int64(val)
-	case uint16:
-		v = int64(val)
-	default:
-		return false
-	}
-
-	return cmp(v, fv)
-}
-
-// comparePrefix checks if a string value starts with the filter value
-func comparePrefix(value any, filterValue string) bool {
-	if s, ok := value.(string); ok {
-		return strings.HasPrefix(s, filterValue)
-	}
-	return false
-}
-
-// compareContains checks if a string value contains the filter value
-func compareContains(value any, filterValue string) bool {
-	if s, ok := value.(string); ok {
-		return strings.Contains(s, filterValue)
-	}
-	return false
-}
-
-// ParseFiltersFromBody parses filters from a map (from JSON body).
-// The map keys should be in the format: entity.attribute.operator
-// Example: {"process.pid.eq": "1234", "request.status.gte": "400"}
-func ParseFiltersFromBody(filters map[string]string) (*EventFilter, error) {
-	if len(filters) == 0 {
-		return nil, nil
-	}
-
-	// Convert map to url.Values format and reuse ParseFilters
-	values := make(url.Values)
-	for key, val := range filters {
-		values.Set(key, val)
-	}
-	return ParseFilters(values)
-}
-
-// MergeFilters combines two filters, with override taking precedence.
-// Returns override if base is nil, base if override is nil/empty.
-// When both have conditions for the same entity, override's conditions replace base's.
-func MergeFilters(base, override *EventFilter) *EventFilter {
-	if override == nil || override.IsEmpty() {
-		return base
-	}
-	if base == nil || base.IsEmpty() {
-		return override
-	}
-
-	// Merge conditions: override replaces base for same entity
-	merged := &EventFilter{
-		Conditions: make(map[string][]FilterCondition),
-	}
-
-	// Copy base conditions
-	for entity, conds := range base.Conditions {
-		merged.Conditions[entity] = conds
-	}
-
-	// Override with override's conditions
-	for entity, conds := range override.Conditions {
-		merged.Conditions[entity] = conds
-	}
-
-	return merged
 }
 
 // toMapAny converts a value to map[string]any.

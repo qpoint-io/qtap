@@ -94,9 +94,9 @@ func (m *Manager) RegisterRoutes(mux *http.ServeMux, prefix string) error {
 }
 
 type APIEventsRequest struct {
-	FilterTopics        []string          `json:"filter_topics,omitempty"`
-	Filters             map[string]string `json:"filters,omitempty"`
-	SkipProcessSnapshot bool              `json:"skip_process_snapshot,omitempty"`
+	FilterTopics        []string `json:"filter_topics,omitempty"`
+	Filter              string   `json:"filter,omitempty"` // rulekit expression
+	SkipProcessSnapshot bool     `json:"skip_process_snapshot,omitempty"`
 }
 
 func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
@@ -136,28 +136,17 @@ func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse filters: start with body, then merge/override with query params
-	var filter *EventFilter
-	var err error
-
-	// First, parse from body if present
-	if len(req.Filters) > 0 {
-		filter, err = ParseFiltersFromBody(req.Filters)
-		if err != nil {
-			httpError(ll, w, fmt.Errorf("parsing body filters: %w", err), http.StatusBadRequest)
-			return
-		}
+	// Parse filter expression: query param overrides body
+	filterExpr := req.Filter
+	if queryFilter := r.URL.Query().Get("filter"); queryFilter != "" {
+		filterExpr = queryFilter
 	}
 
-	// Then, parse from query params (overrides body)
-	queryFilter, err := ParseFilters(r.URL.Query())
+	filter, err := ParseFilter(filterExpr)
 	if err != nil {
-		httpError(ll, w, fmt.Errorf("parsing query filters: %w", err), http.StatusBadRequest)
+		httpError(ll, w, fmt.Errorf("parsing filter expression: %w", err), http.StatusBadRequest)
 		return
 	}
-
-	// Merge: query params override body
-	filter = MergeFilters(filter, queryFilter)
 
 	// init SSE
 	w.Header().Set("Content-Type", "text/event-stream")

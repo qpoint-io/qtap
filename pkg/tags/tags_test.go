@@ -442,3 +442,436 @@ func TestIsAlphanumeric(t *testing.T) {
 		})
 	}
 }
+
+// Benchmark tests
+
+func BenchmarkAdd(b *testing.B) {
+	tags := New()
+	b.ResetTimer()
+	for range b.N {
+		tags.Add("category", "test")
+	}
+}
+
+func BenchmarkAddMultipleValues(b *testing.B) {
+	tags := New()
+	b.ResetTimer()
+	for range b.N {
+		tags.Add("category", "test1", "test2", "test3", "test4", "test5")
+	}
+}
+
+func BenchmarkAddString(b *testing.B) {
+	tags := New()
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.AddString("category:test")
+	}
+}
+
+func BenchmarkAddString_Invalid(b *testing.B) {
+	tags := New()
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.AddString("invalidformat")
+	}
+}
+
+func BenchmarkGet(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test1", "test2", "test3")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_, _ = tags.Get("category")
+	}
+}
+
+func BenchmarkGet_NonExistent(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	b.ResetTimer()
+	for range b.N {
+		_, _ = tags.Get("nonexistent")
+	}
+}
+
+func BenchmarkList_Small(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.List()
+	}
+}
+
+func BenchmarkList_Large(b *testing.B) {
+	tags := New()
+	for range 100 {
+		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.List()
+	}
+}
+
+func BenchmarkClone_Small(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Clone()
+	}
+}
+
+func BenchmarkClone_Large(b *testing.B) {
+	tags := New()
+	for range 100 {
+		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Clone()
+	}
+}
+
+func BenchmarkMerge_Small(b *testing.B) {
+	source := New()
+	source.Add("category", "test")
+	source.Add("service", "api")
+	b.ResetTimer()
+	for range b.N {
+		target := New()
+		target.Add("environment", "prod")
+		target.Merge(source)
+	}
+}
+
+func BenchmarkMerge_Large(b *testing.B) {
+	source := New()
+	for range 100 {
+		source.Add("key", "value1", "value2", "value3")
+	}
+	b.ResetTimer()
+	for range b.N {
+		target := New()
+		for range 50 {
+			target.Add("key2", "value4", "value5")
+		}
+		target.Merge(source)
+	}
+}
+
+func BenchmarkMap_Small(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Large(b *testing.B) {
+	tags := New()
+	for range 100 {
+		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkFromValues_Small(b *testing.B) {
+	kv := map[string]string{
+		"category":    "test",
+		"service":     "api",
+		"environment": "prod",
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = FromValues(kv)
+	}
+}
+
+func BenchmarkFromValues_Large(b *testing.B) {
+	kv := make(map[string]string, 100)
+	for range 100 {
+		kv["key"] = "value"
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = FromValues(kv)
+	}
+}
+
+func BenchmarkFromMultiValues_Small(b *testing.B) {
+	kv := map[string][]string{
+		"category":    {"test", "test2"},
+		"service":     {"api", "web"},
+		"environment": {"prod", "staging"},
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = FromMultiValues(kv)
+	}
+}
+
+func BenchmarkFromMultiValues_Large(b *testing.B) {
+	kv := make(map[string][]string, 100)
+	for range 100 {
+		kv["key"] = []string{"value1", "value2", "value3", "value4", "value5"}
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = FromMultiValues(kv)
+	}
+}
+
+func BenchmarkFormat(b *testing.B) {
+	testStrings := []string{
+		"Simple Test",
+		"  UPPERCASE WITH SPACES  ",
+		"-starts-with-hyphen-",
+		"has multiple   spaces",
+		"MixedCaseString",
+	}
+	b.ResetTimer()
+	for range b.N {
+		for _, s := range testStrings {
+			_ = format(s)
+		}
+	}
+}
+
+func BenchmarkConcurrentAdd(b *testing.B) {
+	tags := New()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			tags.Add("category", "test")
+			i++
+		}
+	})
+}
+
+func BenchmarkConcurrentGet(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test1", "test2", "test3")
+	tags.Add("service", "api")
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = tags.Get("category")
+		}
+	})
+}
+
+func BenchmarkConcurrentAddAndGet(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			if i%2 == 0 {
+				tags.Add("category", "test")
+			} else {
+				_, _ = tags.Get("category")
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkConcurrentList(b *testing.B) {
+	tags := New()
+	for range 10 {
+		tags.Add("key", "value1", "value2", "value3")
+	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = tags.List()
+		}
+	})
+}
+
+func BenchmarkConcurrentClone(b *testing.B) {
+	tags := New()
+	for range 10 {
+		tags.Add("key", "value1", "value2", "value3")
+	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = tags.Clone()
+		}
+	})
+}
+
+// Comparison benchmarks: Cached vs Non-Cached implementations
+
+func BenchmarkMap_Standard_Small(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Cached_Small(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	tags.Add("environment", "prod")
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Standard_Large(b *testing.B) {
+	tags := New()
+	for range 100 {
+		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Cached_Large(b *testing.B) {
+	tags := New()
+	for range 100 {
+		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
+	}
+	b.ResetTimer()
+	for range b.N {
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Standard_ReadHeavy(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	b.ResetTimer()
+	// Simulate read-heavy workload: 1 write per 1000 reads
+	for i := range b.N {
+		if i%1000 == 0 {
+			tags.Add("temp", "value")
+		}
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Cached_ReadHeavy(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	tags.Add("service", "api")
+	b.ResetTimer()
+	// Simulate read-heavy workload: 1 write per 1000 reads
+	for i := range b.N {
+		if i%1000 == 0 {
+			tags.Add("temp", "value")
+		}
+		_ = tags.Map()
+	}
+}
+
+func BenchmarkMap_Standard_WriteHeavy(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	b.ResetTimer()
+	// Simulate write-heavy workload: 1 Map() per 10 writes
+	for i := range b.N {
+		if i%10 == 0 {
+			_ = tags.Map()
+		}
+		tags.Add("key", "value")
+	}
+}
+
+func BenchmarkMap_Cached_WriteHeavy(b *testing.B) {
+	tags := New()
+	tags.Add("category", "test")
+	b.ResetTimer()
+	// Simulate write-heavy workload: 1 Map() per 10 writes
+	for i := range b.N {
+		if i%10 == 0 {
+			_ = tags.Map()
+		}
+		tags.Add("key", "value")
+	}
+}
+
+func BenchmarkConcurrentMap_Standard(b *testing.B) {
+	tags := New()
+	for range 10 {
+		tags.Add("key", "value1", "value2", "value3")
+	}
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = tags.Map()
+		}
+	})
+}
+
+func BenchmarkConcurrentMap_Cached(b *testing.B) {
+	tags := New()
+	for range 10 {
+		tags.Add("key", "value1", "value2", "value3")
+	}
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = tags.Map()
+		}
+	})
+}
+
+func BenchmarkConcurrentMapWithWrites_Standard(b *testing.B) {
+	tags := New()
+	tags.Add("initial", "value")
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			// 90% reads, 10% writes
+			if i%10 == 0 {
+				tags.Add("key", "value")
+			} else {
+				_ = tags.Map()
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkConcurrentMapWithWrites_Cached(b *testing.B) {
+	tags := New()
+	tags.Add("initial", "value")
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			// 90% reads, 10% writes
+			if i%10 == 0 {
+				tags.Add("key", "value")
+			} else {
+				_ = tags.Map()
+			}
+			i++
+		}
+	})
+}

@@ -448,7 +448,7 @@ func TestIsAlphanumeric(t *testing.T) {
 func BenchmarkAdd(b *testing.B) {
 	tags := New()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		tags.Add("category", "test")
 	}
 }
@@ -456,7 +456,7 @@ func BenchmarkAdd(b *testing.B) {
 func BenchmarkAddMultipleValues(b *testing.B) {
 	tags := New()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		tags.Add("category", "test1", "test2", "test3", "test4", "test5")
 	}
 }
@@ -464,7 +464,7 @@ func BenchmarkAddMultipleValues(b *testing.B) {
 func BenchmarkAddString(b *testing.B) {
 	tags := New()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.AddString("category:test")
 	}
 }
@@ -472,7 +472,7 @@ func BenchmarkAddString(b *testing.B) {
 func BenchmarkAddString_Invalid(b *testing.B) {
 	tags := New()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.AddString("invalidformat")
 	}
 }
@@ -483,7 +483,7 @@ func BenchmarkGet(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = tags.Get("category")
 	}
 }
@@ -492,7 +492,7 @@ func BenchmarkGet_NonExistent(b *testing.B) {
 	tags := New()
 	tags.Add("category", "test")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_, _ = tags.Get("nonexistent")
 	}
 }
@@ -503,18 +503,18 @@ func BenchmarkList_Small(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.List()
 	}
 }
 
 func BenchmarkList_Large(b *testing.B) {
 	tags := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.List()
 	}
 }
@@ -525,18 +525,18 @@ func BenchmarkClone_Small(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Clone()
 	}
 }
 
 func BenchmarkClone_Large(b *testing.B) {
 	tags := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Clone()
 	}
 }
@@ -546,7 +546,7 @@ func BenchmarkMerge_Small(b *testing.B) {
 	source.Add("category", "test")
 	source.Add("service", "api")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		target := New()
 		target.Add("environment", "prod")
 		target.Merge(source)
@@ -555,13 +555,13 @@ func BenchmarkMerge_Small(b *testing.B) {
 
 func BenchmarkMerge_Large(b *testing.B) {
 	source := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		source.Add("key", "value1", "value2", "value3")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		target := New()
-		for j := 0; j < 50; j++ {
+		for range 50 {
 			target.Add("key2", "value4", "value5")
 		}
 		target.Merge(source)
@@ -574,18 +574,18 @@ func BenchmarkMap_Small(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
 
 func BenchmarkMap_Large(b *testing.B) {
 	tags := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
@@ -597,18 +597,18 @@ func BenchmarkFromValues_Small(b *testing.B) {
 		"environment": "prod",
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FromValues(kv)
 	}
 }
 
 func BenchmarkFromValues_Large(b *testing.B) {
 	kv := make(map[string]string, 100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		kv["key"] = "value"
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FromValues(kv)
 	}
 }
@@ -620,18 +620,18 @@ func BenchmarkFromMultiValues_Small(b *testing.B) {
 		"environment": {"prod", "staging"},
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FromMultiValues(kv)
 	}
 }
 
 func BenchmarkFromMultiValues_Large(b *testing.B) {
 	kv := make(map[string][]string, 100)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		kv["key"] = []string{"value1", "value2", "value3", "value4", "value5"}
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = FromMultiValues(kv)
 	}
 }
@@ -645,7 +645,7 @@ func BenchmarkFormat(b *testing.B) {
 		"MixedCaseString",
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		for _, s := range testStrings {
 			_ = format(s)
 		}
@@ -692,7 +692,7 @@ func BenchmarkConcurrentAddAndGet(b *testing.B) {
 
 func BenchmarkConcurrentList(b *testing.B) {
 	tags := New()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		tags.Add("key", "value1", "value2", "value3")
 	}
 	b.RunParallel(func(pb *testing.PB) {
@@ -704,7 +704,7 @@ func BenchmarkConcurrentList(b *testing.B) {
 
 func BenchmarkConcurrentClone(b *testing.B) {
 	tags := New()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		tags.Add("key", "value1", "value2", "value3")
 	}
 	b.RunParallel(func(pb *testing.PB) {
@@ -722,7 +722,7 @@ func BenchmarkMap_Standard_Small(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
@@ -733,29 +733,29 @@ func BenchmarkMap_Cached_Small(b *testing.B) {
 	tags.Add("service", "api")
 	tags.Add("environment", "prod")
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
 
 func BenchmarkMap_Standard_Large(b *testing.B) {
 	tags := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
 
 func BenchmarkMap_Cached_Large(b *testing.B) {
 	tags := New()
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		tags.Add("key", "value1", "value2", "value3", "value4", "value5")
 	}
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		_ = tags.Map()
 	}
 }
@@ -766,7 +766,7 @@ func BenchmarkMap_Standard_ReadHeavy(b *testing.B) {
 	tags.Add("service", "api")
 	b.ResetTimer()
 	// Simulate read-heavy workload: 1 write per 1000 reads
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if i%1000 == 0 {
 			tags.Add("temp", "value")
 		}
@@ -780,7 +780,7 @@ func BenchmarkMap_Cached_ReadHeavy(b *testing.B) {
 	tags.Add("service", "api")
 	b.ResetTimer()
 	// Simulate read-heavy workload: 1 write per 1000 reads
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if i%1000 == 0 {
 			tags.Add("temp", "value")
 		}
@@ -793,7 +793,7 @@ func BenchmarkMap_Standard_WriteHeavy(b *testing.B) {
 	tags.Add("category", "test")
 	b.ResetTimer()
 	// Simulate write-heavy workload: 1 Map() per 10 writes
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if i%10 == 0 {
 			_ = tags.Map()
 		}
@@ -806,7 +806,7 @@ func BenchmarkMap_Cached_WriteHeavy(b *testing.B) {
 	tags.Add("category", "test")
 	b.ResetTimer()
 	// Simulate write-heavy workload: 1 Map() per 10 writes
-	for i := 0; i < b.N; i++ {
+	for i := range b.N {
 		if i%10 == 0 {
 			_ = tags.Map()
 		}
@@ -816,7 +816,7 @@ func BenchmarkMap_Cached_WriteHeavy(b *testing.B) {
 
 func BenchmarkConcurrentMap_Standard(b *testing.B) {
 	tags := New()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		tags.Add("key", "value1", "value2", "value3")
 	}
 	b.ResetTimer()
@@ -829,7 +829,7 @@ func BenchmarkConcurrentMap_Standard(b *testing.B) {
 
 func BenchmarkConcurrentMap_Cached(b *testing.B) {
 	tags := New()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		tags.Add("key", "value1", "value2", "value3")
 	}
 	b.ResetTimer()

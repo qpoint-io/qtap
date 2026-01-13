@@ -99,10 +99,10 @@ func TestParseFilter(t *testing.T) {
 
 func TestEventFilter_Matches(t *testing.T) {
 	tests := []struct {
-		name   string
-		expr   string
-		event  *Event
-		want   bool
+		name  string
+		expr  string
+		event *Event
+		want  bool
 	}{
 		{
 			name:  "nil filter matches everything",

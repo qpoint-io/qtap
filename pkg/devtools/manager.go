@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -32,16 +31,9 @@ type Manager struct {
 	clients            map[chan<- *Event]*ClientSubscription
 }
 
-// topicAliases maps topic aliases to their canonical names.
-// This allows users to use "http" as a topic which maps to "request" events.
-var topicAliases = map[string]string{
-	"http": "request",
-}
-
 // ClientSubscription holds subscription information for a connected client
 type ClientSubscription struct {
-	Topics map[string]struct{} // legacy topic filtering (for backward compat)
-	Filter *EventFilter        // structured filtering via query params
+	TopicFilters map[string]*EventFilter // topic -> compiled filter (nil = "*" = match all)
 }
 
 func NewManager(opts ...ManagerOpt) *Manager {
@@ -94,9 +86,8 @@ func (m *Manager) RegisterRoutes(mux *http.ServeMux, prefix string) error {
 }
 
 type APIEventsRequest struct {
-	FilterTopics        []string `json:"filter_topics,omitempty"`
-	Filter              string   `json:"filter,omitempty"` // rulekit expression
-	SkipProcessSnapshot bool     `json:"skip_process_snapshot,omitempty"`
+	Topics              map[string]string `json:"topics,omitempty"` // topic -> filter ("*" = all)
+	SkipProcessSnapshot bool              `json:"skip_process_snapshot,omitempty"`
 }
 
 func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
@@ -126,26 +117,28 @@ func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Parse topics: query params override body
-	topics := req.FilterTopics
-	if topicsParam := r.URL.Query().Get("topics"); topicsParam != "" {
-		topics = strings.Split(topicsParam, ",")
-		// Trim whitespace from each topic
-		for i, t := range topics {
-			topics[i] = strings.TrimSpace(t)
+	// Apply defaults if no topics specified
+	if len(req.Topics) == 0 {
+		req.Topics = map[string]string{
+			"process":    "*",
+			"connection": "*",
+			"http":       "*",
 		}
 	}
 
-	// Parse filter expression: query param overrides body
-	filterExpr := req.Filter
-	if queryFilter := r.URL.Query().Get("filter"); queryFilter != "" {
-		filterExpr = queryFilter
-	}
-
-	filter, err := ParseFilter(filterExpr)
-	if err != nil {
-		httpError(ll, w, fmt.Errorf("parsing filter expression: %w", err), http.StatusBadRequest)
-		return
+	// Parse filters for each topic
+	topicFilters := make(map[string]*EventFilter)
+	for topic, filterExpr := range req.Topics {
+		if filterExpr == "*" {
+			topicFilters[topic] = nil // nil means match all
+		} else {
+			filter, err := ParseFilter(filterExpr)
+			if err != nil {
+				httpError(ll, w, fmt.Errorf("parsing filter for topic %s: %w", topic, err), http.StatusBadRequest)
+				return
+			}
+			topicFilters[topic] = filter
+		}
 	}
 
 	// init SSE
@@ -154,15 +147,15 @@ func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
 	writeEvent(ll, w, NewEvent("system.connected", map[string]any{
-		"topics": topics,
+		"topics": req.Topics,
 	}))
 	ll.Debug("client connected",
-		zap.Any("topics", topics),
+		zap.Any("topics", req.Topics),
 		zap.Int("total_connected_clients", m.clientCount()+1),
 	)
 
 	// subscribe to events
-	events := m.SubscribeClient(r.Context(), topics, filter, !req.SkipProcessSnapshot)
+	events := m.SubscribeClient(r.Context(), topicFilters, !req.SkipProcessSnapshot)
 	for {
 		select {
 		case <-r.Context().Done():
@@ -253,17 +246,31 @@ func (m *Manager) broadcast(event *Event) {
 	}
 
 	topLevelTopic := event.TopLevelTopic()
+
+	// Map event topic to subscription topic ("request" -> "http")
+	subscriptionTopic := topLevelTopic
+	if topLevelTopic == "request" {
+		subscriptionTopic = "http"
+	}
+
 	for client, sub := range m.clients {
-		// skip if client is not subscribed to the topic (legacy topic filtering)
-		// `system` topic events will be broadcast to all clients regardless of filtering
-		if topLevelTopic != "" && topLevelTopic != "system" && len(sub.Topics) > 0 {
-			if _, ok := sub.Topics[topLevelTopic]; !ok {
-				continue
+		// System events always pass through
+		if topLevelTopic == "system" {
+			select {
+			case client <- event:
+			default:
 			}
+			continue
 		}
 
-		// Apply structured filter if present (with cache for cross-entity lookups)
-		if sub.Filter != nil && !sub.Filter.Matches(event, m.connectionCache) {
+		// Check if client is subscribed to this topic
+		filter, subscribed := sub.TopicFilters[subscriptionTopic]
+		if !subscribed {
+			continue
+		}
+
+		// Apply filter if present (nil = match all)
+		if filter != nil && !filter.Matches(event, m.connectionCache) {
 			continue
 		}
 
@@ -361,28 +368,20 @@ func (m *Manager) sendProcessSnapshot(ctx context.Context, ch chan<- *Event, fil
 	})
 }
 
-func (m *Manager) SubscribeClient(ctx context.Context, topics []string, filter *EventFilter, sendProcessSnapshot bool) <-chan *Event {
-	topicsMap := make(map[string]struct{}, len(topics))
-	for _, topic := range topics {
-		// Normalize topic aliases (e.g., "http" -> "request")
-		if canonical, ok := topicAliases[topic]; ok {
-			topic = canonical
-		}
-		topicsMap[topic] = struct{}{}
-	}
-
+func (m *Manager) SubscribeClient(ctx context.Context, topicFilters map[string]*EventFilter, sendProcessSnapshot bool) <-chan *Event {
 	ch := make(chan *Event, 100)
 
 	m.mu.Lock()
 	m.clients[ch] = &ClientSubscription{
-		Topics: topicsMap,
-		Filter: filter,
+		TopicFilters: topicFilters,
 	}
 	m.mu.Unlock()
 
-	// send a snapshot of the current processes if subscribed
-	if sendProcessSnapshot && (len(topics) == 0 || slices.Contains(topics, "process")) {
-		go m.sendProcessSnapshot(ctx, ch, filter)
+	// send a snapshot of the current processes if subscribed to process topic
+	if sendProcessSnapshot {
+		if filter, ok := topicFilters["process"]; ok {
+			go m.sendProcessSnapshot(ctx, ch, filter)
+		}
 	}
 
 	// unsubscribe on ctx done

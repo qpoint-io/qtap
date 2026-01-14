@@ -19,49 +19,49 @@ func TestParseFilter(t *testing.T) {
 			wantEmpty: true,
 		},
 		{
-			name: "simple equality",
-			expr: "process.pid == 1234",
+			name: "simple equality - process binary",
+			expr: "binary == 'nginx'",
 		},
 		{
-			name: "string equality",
-			expr: "http.method == 'GET'",
+			name: "string equality - http method",
+			expr: "req.method == 'GET'",
 		},
 		{
-			name: "numeric comparison",
-			expr: "http.status >= 400",
+			name: "numeric comparison - http status",
+			expr: "res.status >= 400",
 		},
 		{
 			name: "compound AND",
-			expr: "process.pid == 1234 AND http.status >= 400",
+			expr: "binary == 'curl' AND res.status >= 400",
 		},
 		{
 			name: "compound OR",
-			expr: "http.method == 'GET' OR http.method == 'POST'",
+			expr: "req.method == 'GET' OR req.method == 'POST'",
 		},
 		{
 			name: "negation",
-			expr: "NOT http.status == 404",
+			expr: "NOT res.status == 404",
 		},
 		{
 			name: "contains",
-			expr: "http.path contains '/api/'",
+			expr: "req.path contains '/api/'",
 		},
 		{
 			name: "regex match",
-			expr: "http.path matches /api\\/v[0-9]+/",
+			expr: "req.path matches /api\\/v[0-9]+/",
 		},
 		{
 			name: "function call",
-			expr: "in_zone(http.domain, 'example.com')",
+			expr: "in_zone(req.host, 'example.com')",
 		},
 		{
 			name:    "invalid syntax - incomplete",
-			expr:    "process.pid ==",
+			expr:    "binary ==",
 			wantErr: true,
 		},
 		{
 			name:    "invalid syntax - bad operator",
-			expr:    "process.pid === 1234",
+			expr:    "binary === 'nginx'",
 			wantErr: true,
 		},
 	}
@@ -112,121 +112,121 @@ func TestEventFilter_Matches(t *testing.T) {
 		},
 		{
 			name:  "system events always pass",
-			expr:  "http.method == 'POST'",
+			expr:  "req.method == 'POST'",
 			event: NewEvent("system.connected", map[string]any{"topics": []string{}}),
 			want:  true,
 		},
 		{
-			name:  "process pid equals - match",
-			expr:  "process.pid == 1234",
-			event: NewEvent("process.started", map[string]any{"pid": 1234}),
+			name:  "process binary equals - match",
+			expr:  "binary == 'nginx'",
+			event: NewEvent("process.started", map[string]any{"binary": "nginx"}),
 			want:  true,
 		},
 		{
-			name:  "process pid equals - no match",
-			expr:  "process.pid == 1234",
-			event: NewEvent("process.started", map[string]any{"pid": 5678}),
+			name:  "process binary equals - no match",
+			expr:  "binary == 'nginx'",
+			event: NewEvent("process.started", map[string]any{"binary": "curl"}),
 			want:  false,
 		},
 		{
 			name:  "http method equals - match",
-			expr:  "http.method == 'GET'",
+			expr:  "req.method == 'GET'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
 			want:  true,
 		},
 		{
 			name:  "http method equals - no match",
-			expr:  "http.method == 'POST'",
+			expr:  "req.method == 'POST'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
 			want:  false,
 		},
 		{
 			name:  "http status gte - match",
-			expr:  "http.status >= 400",
+			expr:  "res.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 500}}),
 			want:  true,
 		},
 		{
 			name:  "http status gte - no match",
-			expr:  "http.status >= 400",
+			expr:  "res.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 200}}),
 			want:  false,
 		},
 		{
 			name:  "http status gte - boundary match",
-			expr:  "http.status >= 400",
+			expr:  "res.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 400}}),
 			want:  true,
 		},
 		{
 			name:  "http path contains - match",
-			expr:  "http.path contains 'users'",
+			expr:  "req.path contains 'users'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users/123"}}),
 			want:  true,
 		},
 		{
 			name:  "http path contains - no match",
-			expr:  "http.path contains 'products'",
+			expr:  "req.path contains 'products'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users/123"}}),
 			want:  false,
 		},
 		{
 			name:  "compound AND - both match",
-			expr:  "http.method == 'POST' AND http.status >= 400",
+			expr:  "req.method == 'POST' AND res.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST", "status": 500}}),
 			want:  true,
 		},
 		{
 			name:  "compound AND - one fails",
-			expr:  "http.method == 'POST' AND http.status >= 400",
+			expr:  "req.method == 'POST' AND res.status >= 400",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST", "status": 200}}),
 			want:  false,
 		},
 		{
 			name:  "compound OR - first matches",
-			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			expr:  "req.method == 'GET' OR req.method == 'POST'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "GET"}}),
 			want:  true,
 		},
 		{
 			name:  "compound OR - second matches",
-			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			expr:  "req.method == 'GET' OR req.method == 'POST'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "POST"}}),
 			want:  true,
 		},
 		{
 			name:  "compound OR - neither matches",
-			expr:  "http.method == 'GET' OR http.method == 'POST'",
+			expr:  "req.method == 'GET' OR req.method == 'POST'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"method": "DELETE"}}),
 			want:  false,
 		},
 		{
 			name:  "NOT - negates match",
-			expr:  "http.status != 404",
+			expr:  "res.status != 404",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": float64(200)}}),
 			want:  true,
 		},
 		{
 			name:  "NOT - negates to false",
-			expr:  "http.status != 404",
+			expr:  "res.status != 404",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": float64(404)}}),
 			want:  false,
 		},
 		{
 			name:  "missing field - no match",
-			expr:  "http.method == 'GET'",
+			expr:  "req.method == 'GET'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"status": 200}}),
 			want:  false,
 		},
 		{
-			name:  "process container - match",
-			expr:  "process.container == 'nginx'",
+			name:  "process container name - match",
+			expr:  "container.name == 'nginx'",
 			event: NewEvent("process.started", map[string]any{"container": map[string]any{"name": "nginx", "id": "abc123"}}),
 			want:  true,
 		},
 		{
-			name:  "http domain from url - match",
-			expr:  "http.domain == 'api.example.com'",
+			name:  "http host from url - match",
+			expr:  "req.host == 'api.example.com'",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/v1/users"}}),
 			want:  true,
 		},
@@ -255,32 +255,32 @@ func TestCrossEntityFiltering(t *testing.T) {
 		want  bool
 	}{
 		{
-			name: "process filter on connection event - matching pid",
-			expr: "process.pid == 1234",
+			name: "process filter on connection event - matching binary",
+			expr: "process.binary == 'curl'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
-						"pid": float64(1234), // JSON numbers decode as float64
+						"exe": "/usr/bin/curl",
 					},
 				},
 			}),
 			want: true,
 		},
 		{
-			name: "process filter on connection event - non-matching pid",
-			expr: "process.pid == 1234",
+			name: "process filter on connection event - non-matching binary",
+			expr: "process.binary == 'curl'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
-						"pid": float64(5678),
+						"exe": "/usr/bin/wget",
 					},
 				},
 			}),
 			want: false,
 		},
 		{
-			name: "process filter on connection event - matching container",
-			expr: "process.container == 'nginx'",
+			name: "container filter on connection event - matching container name",
+			expr: "container.name == 'nginx'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"source": map[string]any{
@@ -292,21 +292,21 @@ func TestCrossEntityFiltering(t *testing.T) {
 		},
 		{
 			name:  "process filter on process event - direct match",
-			expr:  "process.pid == 1234",
-			event: NewEvent("process.started", map[string]any{"pid": 1234}),
+			expr:  "binary == 'nginx'",
+			event: NewEvent("process.started", map[string]any{"binary": "nginx"}),
 			want:  true,
 		},
 		{
 			name: "connection filter on connection event - direction match",
-			expr: "connection.direction == 'egress'",
+			expr: "direction == 'egress'",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{"direction": "egress"},
 			}),
 			want: true,
 		},
 		{
-			name: "connection filter on connection event - dstPort match",
-			expr: "connection.dstPort == 443",
+			name: "connection filter on connection event - dst.port match",
+			expr: "dst.port == 443",
 			event: NewEvent("connection.opened", map[string]any{
 				"data": map[string]any{
 					"destination": map[string]any{
@@ -341,8 +341,8 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		"direction":    "egress",
 		"l7Protocol":   "http2",
 		"source": map[string]any{
-			"pid":      float64(1234), // JSON numbers decode as float64
 			"hostname": "web-server",
+			"exe":      "/usr/bin/curl",
 			"container": map[string]any{
 				"name": "nginx",
 				"id":   "abc123",
@@ -351,7 +351,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		"destination": map[string]any{
 			"address": map[string]any{
 				"ip":   "10.0.0.1",
-				"port": float64(443), // JSON numbers decode as float64
+				"port": float64(443),
 			},
 		},
 	})
@@ -364,7 +364,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 	}{
 		{
 			name: "process filter on request - matching via cache lookup",
-			expr: "process.pid == 1234",
+			expr: "process.binary == 'curl'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -376,7 +376,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "process filter on request - non-matching via cache lookup",
-			expr: "process.pid == 9999",
+			expr: "process.binary == 'wget'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -387,8 +387,8 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "process container filter on request via cache",
-			expr: "process.container == 'nginx'",
+			name: "container filter on request via cache",
+			expr: "container.name == 'nginx'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -398,8 +398,8 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "connection filter on request - matching dstPort via cache",
-			expr: "connection.dstPort == 443",
+			name: "connection filter on request - matching dst.port via cache",
+			expr: "dst.port == 443",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -410,7 +410,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "connection filter on request - matching protocol via cache",
-			expr: "connection.protocol == 'http2'",
+			expr: "protocol == 'http2'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -421,18 +421,18 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "request with unknown connectionId - cache miss, filter fails",
-			expr: "process.pid == 1234",
+			expr: "process.binary == 'curl'",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "unknown-conn",
 					"method":       "GET",
 				},
 			}),
-			want: false, // Can't verify process.pid without connection data
+			want: false, // Can't verify process.binary without connection data
 		},
 		{
 			name: "combined cross-entity and direct filter - both match",
-			expr: "process.pid == 1234 AND http.status >= 400",
+			expr: "process.binary == 'curl' AND res.status >= 400",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -444,7 +444,7 @@ func TestCrossEntityFilteringWithCache(t *testing.T) {
 		},
 		{
 			name: "combined filter - process matches but http fails",
-			expr: "process.pid == 1234 AND http.status >= 400",
+			expr: "process.binary == 'curl' AND res.status >= 400",
 			event: NewEvent("request.created", map[string]any{
 				"data": map[string]any{
 					"connectionId": "conn-123",
@@ -542,7 +542,7 @@ func TestConnectionCache(t *testing.T) {
 }
 
 func TestBuildEventKV(t *testing.T) {
-	t.Run("process event", func(t *testing.T) {
+	t.Run("process event - native fields at root", func(t *testing.T) {
 		event := NewEvent("process.started", map[string]any{
 			"pid":      1234,
 			"binary":   "nginx",
@@ -562,81 +562,92 @@ func TestBuildEventKV(t *testing.T) {
 
 		kv := buildEventKV(event, nil)
 
-		assertKVValue(t, kv, "process.pid", 1234)
-		assertKVValue(t, kv, "process.binary", "nginx")
-		assertKVValue(t, kv, "process.path", "/usr/sbin/nginx")
-		assertKVValue(t, kv, "process.hostname", "web-server")
-		assertKVValue(t, kv, "process.user", "root")
-		assertKVValue(t, kv, "process.userId", 0)
-		assertKVValue(t, kv, "process.container", "my-container")
-		assertKVValue(t, kv, "process.containerId", "abc123")
-		assertKVValue(t, kv, "process.containerImage", "nginx:latest")
-		assertKVValue(t, kv, "process.pod", "web-pod")
-		assertKVValue(t, kv, "process.podNamespace", "default")
+		// Native process fields - no prefix
+		assertKVValue(t, kv, "binary", "nginx")
+		assertKVValue(t, kv, "path", "/usr/sbin/nginx")
+		assertKVValue(t, kv, "hostname", "web-server")
+
+		// User nested under user.*
+		assertNestedKVValue(t, kv, "user", "name", "root")
+		assertNestedKVValue(t, kv, "user", "id", 0)
+
+		// Container nested under container.*
+		assertNestedKVValue(t, kv, "container", "name", "my-container")
+		assertNestedKVValue(t, kv, "container", "id", "abc123")
+		assertNestedKVValue(t, kv, "container", "image", "nginx:latest")
+
+		// Pod nested under pod.*
+		assertNestedKVValue(t, kv, "pod", "name", "web-pod")
+		assertNestedKVValue(t, kv, "pod", "namespace", "default")
 	})
 
-	t.Run("connection event", func(t *testing.T) {
+	t.Run("connection event - native + relational process", func(t *testing.T) {
 		event := NewEvent("connection.opened", map[string]any{
 			"data": map[string]any{
 				"direction":      "egress",
 				"l7Protocol":     "http2",
 				"socketProtocol": "tcp",
 				"source": map[string]any{
-					"pid":      float64(1234),
 					"hostname": "web-server",
 					"exe":      "/usr/bin/curl",
 					"address":  map[string]any{"ip": "192.168.1.1", "port": float64(8080)},
+					"container": map[string]any{
+						"name": "my-container",
+						"id":   "abc123",
+					},
 				},
 				"destination": map[string]any{
 					"address": map[string]any{"ip": "10.0.0.1", "port": float64(443)},
+					"domain":  "api.example.com",
 				},
 			},
 		})
 
 		kv := buildEventKV(event, nil)
 
-		assertKVValue(t, kv, "connection.direction", "egress")
-		assertKVValue(t, kv, "connection.protocol", "http2")
-		assertKVValue(t, kv, "connection.socketProtocol", "tcp")
-		assertKVValue(t, kv, "connection.srcIp", "192.168.1.1")
-		assertKVValue(t, kv, "connection.srcPort", float64(8080))
-		assertKVValue(t, kv, "connection.dstIp", "10.0.0.1")
-		assertKVValue(t, kv, "connection.dstPort", float64(443))
-		assertKVValue(t, kv, "process.pid", float64(1234))
-		assertKVValue(t, kv, "process.hostname", "web-server")
-		assertKVValue(t, kv, "process.path", "/usr/bin/curl")
-		assertKVValue(t, kv, "process.binary", "curl")
+		// Native connection fields
+		assertKVValue(t, kv, "direction", "egress")
+		assertKVValue(t, kv, "protocol", "http2")
+		assertKVValue(t, kv, "type", "tcp")
+
+		// src.* nested
+		assertNestedKVValue(t, kv, "src", "ip", "192.168.1.1")
+		assertNestedKVValue(t, kv, "src", "port", float64(8080))
+
+		// dst.* nested
+		assertNestedKVValue(t, kv, "dst", "ip", "10.0.0.1")
+		assertNestedKVValue(t, kv, "dst", "port", float64(443))
+		assertNestedKVValue(t, kv, "dst", "domain", "api.example.com")
+
+		// Relational process.* from source
+		assertNestedKVValue(t, kv, "process", "hostname", "web-server")
+		assertNestedKVValue(t, kv, "process", "path", "/usr/bin/curl")
+		assertNestedKVValue(t, kv, "process", "binary", "curl")
+
+		// Container at root (native to connection via source)
+		assertNestedKVValue(t, kv, "container", "name", "my-container")
+		assertNestedKVValue(t, kv, "container", "id", "abc123")
 	})
 
-	t.Run("request event", func(t *testing.T) {
+	t.Run("request event - native http fields", func(t *testing.T) {
 		event := NewEvent("request.created", map[string]any{
 			"data": map[string]any{
-				"method":        "POST",
-				"status":        200,
-				"path":          "/api/users",
-				"url":           "https://api.example.com/api/users",
-				"direction":     "egress",
-				"duration":      150,
-				"bytesSent":     1024,
-				"bytesReceived": 2048,
-				"connectionId":  "conn-123",
-				"requestId":     "req-456",
+				"method":       "POST",
+				"status":       200,
+				"path":         "/api/users",
+				"url":          "https://api.example.com/api/users",
+				"connectionId": "conn-123",
 			},
 		})
 
 		kv := buildEventKV(event, nil)
 
-		assertKVValue(t, kv, "http.method", "POST")
-		assertKVValue(t, kv, "http.status", 200)
-		assertKVValue(t, kv, "http.path", "/api/users")
-		assertKVValue(t, kv, "http.url", "https://api.example.com/api/users")
-		assertKVValue(t, kv, "http.domain", "api.example.com")
-		assertKVValue(t, kv, "http.direction", "egress")
-		assertKVValue(t, kv, "http.duration", 150)
-		assertKVValue(t, kv, "http.bytesSent", 1024)
-		assertKVValue(t, kv, "http.bytesReceived", 2048)
-		assertKVValue(t, kv, "http.connectionId", "conn-123")
-		assertKVValue(t, kv, "http.requestId", "req-456")
+		// Native HTTP fields - req.* and res.*
+		assertNestedKVValue(t, kv, "req", "method", "POST")
+		assertNestedKVValue(t, kv, "req", "path", "/api/users")
+		assertNestedKVValue(t, kv, "req", "url", "https://api.example.com/api/users")
+		assertNestedKVValue(t, kv, "req", "host", "api.example.com")
+		assertNestedKVValue(t, kv, "res", "status", 200)
 	})
 
 	t.Run("http_transaction summary event", func(t *testing.T) {
@@ -645,33 +656,73 @@ func TestBuildEventKV(t *testing.T) {
 				"connectionId": "abc123",
 				"type":         "http_transaction",
 				"summary": map[string]any{
-					"request_host":     "api.slack.com",
-					"request_method":   "POST",
-					"response_status":  float64(200),
-					"request_path":     "/api/chat.postMessage",
-					"direction":        "egress-external",
-					"request_protocol": "http2",
-					"request_scheme":   "https",
-					"connection_id":    "abc123",
-					"container_name":   "myapp",
-					"container_image":  "myapp:latest",
-					"process_exe":      "/usr/bin/node",
+					"request_host":    "api.slack.com",
+					"request_method":  "POST",
+					"response_status": float64(200),
+					"request_path":    "/api/chat.postMessage",
 				},
 			},
 		})
 
 		kv := buildEventKV(event, nil)
 
-		assertKVValue(t, kv, "http.domain", "api.slack.com")
-		assertKVValue(t, kv, "http.method", "POST")
-		assertKVValue(t, kv, "http.status", float64(200))
-		assertKVValue(t, kv, "http.path", "/api/chat.postMessage")
-		assertKVValue(t, kv, "http.direction", "egress-external")
-		assertKVValue(t, kv, "http.protocol", "http2")
-		assertKVValue(t, kv, "http.scheme", "https")
-		assertKVValue(t, kv, "process.container", "myapp")
-		assertKVValue(t, kv, "process.containerImage", "myapp:latest")
-		assertKVValue(t, kv, "process.binary", "/usr/bin/node")
+		// HTTP fields from summary format
+		assertNestedKVValue(t, kv, "req", "host", "api.slack.com")
+		assertNestedKVValue(t, kv, "req", "method", "POST")
+		assertNestedKVValue(t, kv, "req", "path", "/api/chat.postMessage")
+		assertNestedKVValue(t, kv, "res", "status", float64(200))
+	})
+
+	t.Run("request event with cache - relational fields populated", func(t *testing.T) {
+		cache := NewConnectionCache(100)
+		cache.Set("conn-123", map[string]any{
+			"direction":  "egress",
+			"l7Protocol": "http2",
+			"source": map[string]any{
+				"hostname": "web-server",
+				"exe":      "/usr/bin/curl",
+				"container": map[string]any{
+					"name": "nginx",
+					"pod": map[string]any{
+						"name":      "web-pod",
+						"namespace": "production",
+					},
+				},
+			},
+			"destination": map[string]any{
+				"address": map[string]any{"ip": "10.0.0.1", "port": float64(443)},
+				"domain":  "api.example.com",
+			},
+		})
+
+		event := NewEvent("request.created", map[string]any{
+			"data": map[string]any{
+				"method":       "GET",
+				"status":       200,
+				"connectionId": "conn-123",
+			},
+		})
+
+		kv := buildEventKV(event, cache)
+
+		// Native HTTP fields
+		assertNestedKVValue(t, kv, "req", "method", "GET")
+		assertNestedKVValue(t, kv, "res", "status", 200)
+
+		// Relational connection fields from cache
+		assertKVValue(t, kv, "direction", "egress")
+		assertKVValue(t, kv, "protocol", "http2")
+		assertNestedKVValue(t, kv, "dst", "port", float64(443))
+		assertNestedKVValue(t, kv, "dst", "domain", "api.example.com")
+
+		// Relational process fields from cache
+		assertNestedKVValue(t, kv, "process", "hostname", "web-server")
+		assertNestedKVValue(t, kv, "process", "binary", "curl")
+
+		// Container and pod from cache
+		assertNestedKVValue(t, kv, "container", "name", "nginx")
+		assertNestedKVValue(t, kv, "pod", "name", "web-pod")
+		assertNestedKVValue(t, kv, "pod", "namespace", "production")
 	})
 }
 
@@ -684,19 +735,19 @@ func TestRegexMatching(t *testing.T) {
 	}{
 		{
 			name:  "path matches regex",
-			expr:  "http.path matches /api\\/v[0-9]+/",
+			expr:  "req.path matches /api\\/v[0-9]+/",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/v2/users"}}),
 			want:  true,
 		},
 		{
 			name:  "path does not match regex",
-			expr:  "http.path matches /api\\/v[0-9]+/",
+			expr:  "req.path matches /api\\/v[0-9]+/",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"path": "/api/users"}}),
 			want:  false,
 		},
 		{
-			name:  "domain matches regex",
-			expr:  "http.domain matches /\\.example\\.com$/",
+			name:  "host matches regex",
+			expr:  "req.host matches /\\.example\\.com$/",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/test"}}),
 			want:  true,
 		},
@@ -726,19 +777,19 @@ func TestCustomFunctions(t *testing.T) {
 	}{
 		{
 			name:  "in_zone - exact match",
-			expr:  "in_zone(http.domain, 'example.com')",
+			expr:  "in_zone(req.host, 'example.com')",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://example.com/test"}}),
 			want:  true,
 		},
 		{
 			name:  "in_zone - subdomain match",
-			expr:  "in_zone(http.domain, 'example.com')",
+			expr:  "in_zone(req.host, 'example.com')",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://api.example.com/test"}}),
 			want:  true,
 		},
 		{
 			name:  "in_zone - no match",
-			expr:  "in_zone(http.domain, 'example.com')",
+			expr:  "in_zone(req.host, 'example.com')",
 			event: NewEvent("request.created", map[string]any{"data": map[string]any{"url": "https://other.com/test"}}),
 			want:  false,
 		},
@@ -759,7 +810,7 @@ func TestCustomFunctions(t *testing.T) {
 	}
 }
 
-// Helper function to assert KV values
+// Helper function to assert KV values at root level
 func assertKVValue(t *testing.T, kv rulekit.KV, key string, want any) {
 	t.Helper()
 	got, ok := kv[key]
@@ -769,5 +820,28 @@ func assertKVValue(t *testing.T, kv rulekit.KV, key string, want any) {
 	}
 	if got != want {
 		t.Errorf("KV[%q] = %v (%T), want %v (%T)", key, got, got, want, want)
+	}
+}
+
+// Helper function to assert nested KV values (e.g., req.method, container.name)
+func assertNestedKVValue(t *testing.T, kv rulekit.KV, parent, key string, want any) {
+	t.Helper()
+	parentVal, ok := kv[parent]
+	if !ok {
+		t.Errorf("parent key %q not found in KV", parent)
+		return
+	}
+	parentMap, ok := parentVal.(map[string]any)
+	if !ok {
+		t.Errorf("KV[%q] is not a map, got %T", parent, parentVal)
+		return
+	}
+	got, ok := parentMap[key]
+	if !ok {
+		t.Errorf("key %q not found in KV[%q]", key, parent)
+		return
+	}
+	if got != want {
+		t.Errorf("KV[%q][%q] = %v (%T), want %v (%T)", parent, key, got, got, want, want)
 	}
 }

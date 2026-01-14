@@ -9,6 +9,93 @@ import (
 	"github.com/qpoint-io/rulekit"
 )
 
+/*
+Filter Fields Per Topic
+
+This package supports filtering events using rulekit expressions. Each topic has
+its own set of available fields. Native properties (belonging to the event type)
+have no prefix. Relational properties (from associated entities) are prefixed.
+
+Process Topic:
+  Native properties - no prefix needed.
+    binary              Process executable name
+    path                Full executable path
+    hostname            Process hostname
+    user.name           Username
+    user.id             User ID
+    container.name      Container name
+    container.id        Container ID
+    container.image     Container image
+    container.labels.*  Container labels (e.g., container.labels.app)
+    pod.name            Pod name
+    pod.namespace       Pod namespace
+    pod.labels.*        Pod labels (e.g., pod.labels.app)
+
+Connection Topic:
+  Native connection properties + relational process, container, and pod fields.
+    direction           Connection direction (egress, ingress)
+    protocol            L7 protocol (http, http2, etc.)
+    type                Socket type (tcp, udp)
+    src.ip              Source IP address
+    src.port            Source port
+    dst.ip              Destination IP address
+    dst.port            Destination port
+    dst.domain          Destination domain
+    tls.enabled         TLS enabled
+    tls.version         TLS version
+    tls.sni             TLS SNI
+    process.binary      Process executable name
+    process.path        Full executable path
+    process.hostname    Process hostname
+    process.user.name   Username
+    process.user.id     User ID
+    container.name      Container name
+    container.id        Container ID
+    container.image     Container image
+    container.labels.*  Container labels
+    pod.name            Pod name
+    pod.namespace       Pod namespace
+    pod.labels.*        Pod labels
+
+HTTP Topic:
+  Native HTTP properties (req and res) + relational connection/process fields.
+    req.method          HTTP method (GET, POST, etc.)
+    req.path            Request path
+    req.host            Request host
+    req.url             Full URL
+    res.status          Response status code
+    direction           Connection direction
+    protocol            L7 protocol
+    src.ip              Source IP address
+    src.port            Source port
+    dst.ip              Destination IP address
+    dst.port            Destination port
+    dst.domain          Destination domain
+    tls.enabled         TLS enabled
+    tls.version         TLS version
+    tls.sni             TLS SNI
+    process.binary      Process executable name
+    process.path        Full executable path
+    process.hostname    Process hostname
+    process.user.name   Username
+    process.user.id     User ID
+    container.name      Container name
+    container.id        Container ID
+    container.image     Container image
+    container.labels.*  Container labels
+    pod.name            Pod name
+    pod.namespace       Pod namespace
+    pod.labels.*        Pod labels
+
+Example Filters:
+  Process:    binary == 'nginx'
+  Process:    container.name == 'web' AND pod.namespace == 'production'
+  Connection: dst.port == 443 AND process.binary == 'curl'
+  Connection: direction == 'egress' AND dst.domain contains 'example.com'
+  HTTP:       res.status >= 400 AND req.method == 'POST'
+  HTTP:       in_zone(req.host, 'example.com') AND container.name == 'api'
+*/
+
 // EventFilter holds a compiled rulekit expression for filtering events
 type EventFilter struct {
 	expr string       // original expression string
@@ -77,7 +164,8 @@ func (f *EventFilter) Matches(event *Event, cache *ConnectionCache) bool {
 	return res.Pass()
 }
 
-// buildEventKV creates a flattened key-value map from event data for rulekit evaluation
+// buildEventKV creates a nested key-value map from event data for rulekit evaluation.
+// The structure follows the principle: native properties have no prefix, relational properties are prefixed.
 func buildEventKV(event *Event, cache *ConnectionCache) rulekit.KV {
 	kv := make(rulekit.KV)
 
@@ -86,253 +174,209 @@ func buildEventKV(event *Event, cache *ConnectionCache) rulekit.KV {
 		return kv
 	}
 
-	eventEntity := event.TopLevelTopic()
-
-	switch eventEntity {
+	switch event.TopLevelTopic() {
 	case "process":
-		addProcessKV(kv, data)
+		// Native properties - no prefix
+		addProcessFieldsNative(kv, data)
+		addContainerFieldsNative(kv, data)
+		addPodFieldsNative(kv, data)
 
 	case "connection":
-		addConnectionKV(kv, data)
-		// Connection events include process data from source endpoint
-		addProcessFromConnectionKV(kv, data)
+		connData := toMapAny(data["data"])
+		if connData == nil {
+			connData = data
+		}
+		// Native connection properties - no prefix
+		addConnectionFieldsNative(kv, connData)
+		// Relational properties - prefixed
+		addProcessFieldsRelational(kv, connData)
+		// Container/pod stay unprefixed
+		addContainerFieldsFromConnection(kv, connData)
+		addPodFieldsFromConnection(kv, connData)
 
 	case "request":
-		addHttpKV(kv, data)
-		// Request events need cache lookups for connection/process data
-		addConnectionFromCacheKV(kv, data, cache)
-		addProcessFromCacheKV(kv, data, cache)
+		// Native HTTP properties - req.*/res.* (no http. prefix)
+		addHttpFieldsNative(kv, data)
+		// Lookup connection data from cache for relational fields
+		if connData := lookupConnection(data, cache); connData != nil {
+			addConnectionFieldsNative(kv, connData)
+			addProcessFieldsRelational(kv, connData)
+			addContainerFieldsFromConnection(kv, connData)
+			addPodFieldsFromConnection(kv, connData)
+		}
 	}
 
 	return kv
 }
 
-// addProcessKV adds process.* keys to the KV map from process event data
-func addProcessKV(kv rulekit.KV, data map[string]any) {
-	setIfNotNil(kv, "process.pid", data["pid"])
-	setIfNotNil(kv, "process.binary", data["binary"])
-	setIfNotNil(kv, "process.path", data["path"])
-	setIfNotNil(kv, "process.hostname", data["hostname"])
-
-	if user, ok := data["user"].(map[string]any); ok {
-		setIfNotNil(kv, "process.user", user["name"])
-		setIfNotNil(kv, "process.userId", user["id"])
-	}
-
-	if container, ok := data["container"].(map[string]any); ok {
-		setIfNotNil(kv, "process.container", container["name"])
-		setIfNotNil(kv, "process.containerId", container["id"])
-		setIfNotNil(kv, "process.containerImage", container["image"])
-	}
-
-	if pod, ok := data["pod"].(map[string]any); ok {
-		setIfNotNil(kv, "process.pod", pod["name"])
-		setIfNotNil(kv, "process.podNamespace", pod["namespace"])
+// addProcessFieldsNative adds process fields at root level (no prefix) for process topic
+func addProcessFieldsNative(kv rulekit.KV, data map[string]any) {
+	setIfNotNil(kv, "binary", data["binary"])
+	setIfNotNil(kv, "path", data["path"])
+	setIfNotNil(kv, "hostname", data["hostname"])
+	if user := toMapAny(data["user"]); user != nil {
+		kv["user"] = user
 	}
 }
 
-// addConnectionKV adds connection.* keys to the KV map from connection event data
-func addConnectionKV(kv rulekit.KV, data map[string]any) {
-	// Connection data is nested under "data" key
-	connData := toMapAny(data["data"])
-	if connData == nil {
-		connData = data
-	}
-
-	setIfNotNil(kv, "connection.direction", connData["direction"])
-	setIfNotNil(kv, "connection.protocol", connData["l7Protocol"])
-	setIfNotNil(kv, "connection.socketProtocol", connData["socketProtocol"])
-	setIfNotNil(kv, "connection.vendorId", connData["vendorId"])
-	setIfNotNil(kv, "connection.tlsVersion", connData["tlsVersion"])
-
-	// Source endpoint
-	if src := toMapAny(connData["source"]); src != nil {
-		if addr := toMapAny(src["address"]); addr != nil {
-			setIfNotNil(kv, "connection.srcIp", addr["ip"])
-			setIfNotNil(kv, "connection.srcPort", addr["port"])
-		}
-	}
-
-	// Destination endpoint
-	if dst := toMapAny(connData["destination"]); dst != nil {
-		if addr := toMapAny(dst["address"]); addr != nil {
-			setIfNotNil(kv, "connection.dstIp", addr["ip"])
-			setIfNotNil(kv, "connection.dstPort", addr["port"])
-		}
-	}
-}
-
-// addProcessFromConnectionKV extracts process.* keys from a connection's source endpoint
-func addProcessFromConnectionKV(kv rulekit.KV, data map[string]any) {
-	// Connection data is nested under "data" key
-	connData := toMapAny(data["data"])
-	if connData == nil {
-		connData = data
-	}
-
-	// Get source endpoint (local process info)
+// addProcessFieldsRelational adds process fields with process.* prefix for connection/http topics
+func addProcessFieldsRelational(kv rulekit.KV, connData map[string]any) {
 	source := toMapAny(connData["source"])
 	if source == nil {
 		return
 	}
 
-	setIfNotNil(kv, "process.pid", source["pid"])
-	setIfNotNil(kv, "process.hostname", source["hostname"])
-	setIfNotNil(kv, "process.user", source["user"])
-	setIfNotNil(kv, "process.userId", source["userId"])
-	setIfNotNil(kv, "process.path", source["exe"])
-
-	// Extract binary name from exe path
+	process := make(map[string]any)
+	setIfNotNil(process, "hostname", source["hostname"])
 	if exe, ok := source["exe"].(string); ok {
+		process["path"] = exe
 		parts := strings.Split(exe, "/")
-		if len(parts) > 0 {
-			kv["process.binary"] = parts[len(parts)-1]
+		process["binary"] = parts[len(parts)-1]
+	}
+	if user := toMapAny(source["user"]); user != nil {
+		process["user"] = user
+	} else {
+		// Handle flat user fields
+		user := make(map[string]any)
+		setIfNotNil(user, "name", source["user"])
+		setIfNotNil(user, "id", source["userId"])
+		if len(user) > 0 {
+			process["user"] = user
 		}
 	}
+	if len(process) > 0 {
+		kv["process"] = process
+	}
+}
 
+// addContainerFieldsNative adds container fields at root level for process topic
+func addContainerFieldsNative(kv rulekit.KV, data map[string]any) {
+	if container := toMapAny(data["container"]); container != nil {
+		kv["container"] = container
+	}
+}
+
+// addContainerFieldsFromConnection adds container fields at root level from connection source
+func addContainerFieldsFromConnection(kv rulekit.KV, connData map[string]any) {
+	source := toMapAny(connData["source"])
+	if source == nil {
+		return
+	}
 	if container := toMapAny(source["container"]); container != nil {
-		setIfNotNil(kv, "process.container", container["name"])
-		setIfNotNil(kv, "process.containerId", container["id"])
-		setIfNotNil(kv, "process.containerImage", container["image"])
+		kv["container"] = container
+	}
+}
 
+// addPodFieldsNative adds pod fields at root level for process topic
+func addPodFieldsNative(kv rulekit.KV, data map[string]any) {
+	if pod := toMapAny(data["pod"]); pod != nil {
+		kv["pod"] = pod
+	}
+}
+
+// addPodFieldsFromConnection adds pod fields at root level from connection source
+func addPodFieldsFromConnection(kv rulekit.KV, connData map[string]any) {
+	source := toMapAny(connData["source"])
+	if source == nil {
+		return
+	}
+	// Pod may be nested under container
+	if container := toMapAny(source["container"]); container != nil {
 		if pod := toMapAny(container["pod"]); pod != nil {
-			setIfNotNil(kv, "process.pod", pod["name"])
-			setIfNotNil(kv, "process.podNamespace", pod["namespace"])
+			kv["pod"] = pod
 		}
 	}
 }
 
-// addHttpKV adds http.* keys to the KV map from request event data
-func addHttpKV(kv rulekit.KV, data map[string]any) {
+// addConnectionFieldsNative adds connection fields (direction, protocol, src.*, dst.*, tls.*)
+func addConnectionFieldsNative(kv rulekit.KV, connData map[string]any) {
+	setIfNotNil(kv, "direction", connData["direction"])
+	setIfNotNil(kv, "protocol", connData["l7Protocol"])
+	setIfNotNil(kv, "type", connData["socketProtocol"])
+
+	// src (network address only - process info goes in process.*)
+	if source := toMapAny(connData["source"]); source != nil {
+		src := make(map[string]any)
+		if addr := toMapAny(source["address"]); addr != nil {
+			setIfNotNil(src, "ip", addr["ip"])
+			setIfNotNil(src, "port", addr["port"])
+		}
+		if len(src) > 0 {
+			kv["src"] = src
+		}
+	}
+
+	// dst (network address + domain)
+	if dest := toMapAny(connData["destination"]); dest != nil {
+		dst := make(map[string]any)
+		if addr := toMapAny(dest["address"]); addr != nil {
+			setIfNotNil(dst, "ip", addr["ip"])
+			setIfNotNil(dst, "port", addr["port"])
+		}
+		setIfNotNil(dst, "domain", dest["domain"])
+		if len(dst) > 0 {
+			kv["dst"] = dst
+		}
+	}
+
+	// tls
+	if tls := toMapAny(connData["tls"]); tls != nil {
+		kv["tls"] = tls
+	}
+}
+
+// addHttpFieldsNative adds HTTP fields (req.*, res.* at root - no http. prefix)
+func addHttpFieldsNative(kv rulekit.KV, data map[string]any) {
 	httpData := toMapAny(data["data"])
 	if httpData == nil {
-		httpData = data
+		return
 	}
 
-	// Check for http_transaction summary format
+	req := make(map[string]any)
+	res := make(map[string]any)
+
+	// Check for summary format (http_transaction)
 	if summary := toMapAny(httpData["summary"]); summary != nil {
-		addHttpFromSummaryKV(kv, summary)
-		return
-	}
-
-	// Standard request.created format
-	setIfNotNil(kv, "http.method", httpData["method"])
-	setIfNotNil(kv, "http.status", httpData["status"])
-	setIfNotNil(kv, "http.path", httpData["path"])
-	setIfNotNil(kv, "http.url", httpData["url"])
-	setIfNotNil(kv, "http.direction", httpData["direction"])
-	setIfNotNil(kv, "http.category", httpData["category"])
-	setIfNotNil(kv, "http.contentType", httpData["contentType"])
-	setIfNotNil(kv, "http.agent", httpData["agent"])
-	setIfNotNil(kv, "http.duration", httpData["duration"])
-	setIfNotNil(kv, "http.bytesSent", httpData["bytesSent"])
-	setIfNotNil(kv, "http.bytesReceived", httpData["bytesReceived"])
-	setIfNotNil(kv, "http.connectionId", httpData["connectionId"])
-	setIfNotNil(kv, "http.requestId", httpData["requestId"])
-
-	// Extract domain from URL
-	if urlStr, ok := httpData["url"].(string); ok {
-		if parsed, err := url.Parse(urlStr); err == nil {
-			kv["http.domain"] = parsed.Hostname()
+		setIfNotNil(req, "method", summary["request_method"])
+		setIfNotNil(req, "path", summary["request_path"])
+		setIfNotNil(req, "host", summary["request_host"])
+		setIfNotNil(res, "status", summary["response_status"])
+	} else {
+		// Standard request format
+		setIfNotNil(req, "method", httpData["method"])
+		setIfNotNil(req, "path", httpData["path"])
+		setIfNotNil(req, "url", httpData["url"])
+		// Extract host from URL
+		if urlStr, ok := httpData["url"].(string); ok {
+			if parsed, err := url.Parse(urlStr); err == nil {
+				req["host"] = parsed.Hostname()
+			}
 		}
+		setIfNotNil(res, "status", httpData["status"])
+	}
+
+	if len(req) > 0 {
+		kv["req"] = req
+	}
+	if len(res) > 0 {
+		kv["res"] = res
 	}
 }
 
-// addHttpFromSummaryKV extracts http.* keys from http_transaction summary data
-func addHttpFromSummaryKV(kv rulekit.KV, summary map[string]any) {
-	setIfNotNil(kv, "http.method", summary["request_method"])
-	setIfNotNil(kv, "http.status", summary["response_status"])
-	setIfNotNil(kv, "http.path", summary["request_path"])
-	setIfNotNil(kv, "http.domain", summary["request_host"])
-	setIfNotNil(kv, "http.direction", summary["direction"])
-	setIfNotNil(kv, "http.protocol", summary["request_protocol"])
-	setIfNotNil(kv, "http.scheme", summary["request_scheme"])
-	setIfNotNil(kv, "http.requestContentType", summary["request_content_type"])
-	setIfNotNil(kv, "http.responseContentType", summary["response_content_type"])
-	setIfNotNil(kv, "http.duration", summary["duration_ms"])
-	setIfNotNil(kv, "http.connectionId", summary["connection_id"])
-	setIfNotNil(kv, "http.requestId", summary["request_id"])
-
-	// Also add process info from summary if available
-	setIfNotNil(kv, "process.container", summary["container_name"])
-	setIfNotNil(kv, "process.containerImage", summary["container_image"])
-	setIfNotNil(kv, "process.pod", summary["pod_name"])
-	setIfNotNil(kv, "process.podNamespace", summary["pod_namespace"])
-	setIfNotNil(kv, "process.binary", summary["process_exe"])
-}
-
-// addConnectionFromCacheKV looks up connection data from cache and adds connection.* keys
-func addConnectionFromCacheKV(kv rulekit.KV, data map[string]any, cache *ConnectionCache) {
+// lookupConnection retrieves connection data from cache by connectionId
+func lookupConnection(data map[string]any, cache *ConnectionCache) map[string]any {
 	if cache == nil {
-		return
+		return nil
 	}
-
-	// Request data is nested under "data" key
 	reqData := toMapAny(data["data"])
 	if reqData == nil {
-		reqData = data
+		return nil
 	}
-
-	// Get connectionId from request
 	connId, ok := reqData["connectionId"].(string)
 	if !ok {
-		return
+		return nil
 	}
-
-	// Lookup connection from cache
-	connData := cache.Get(connId)
-	if connData == nil {
-		return
-	}
-
-	// Add connection attributes
-	setIfNotNil(kv, "connection.direction", connData["direction"])
-	setIfNotNil(kv, "connection.protocol", connData["l7Protocol"])
-	setIfNotNil(kv, "connection.socketProtocol", connData["socketProtocol"])
-	setIfNotNil(kv, "connection.vendorId", connData["vendorId"])
-	setIfNotNil(kv, "connection.tlsVersion", connData["tlsVersion"])
-
-	if src := toMapAny(connData["source"]); src != nil {
-		if addr := toMapAny(src["address"]); addr != nil {
-			setIfNotNil(kv, "connection.srcIp", addr["ip"])
-			setIfNotNil(kv, "connection.srcPort", addr["port"])
-		}
-	}
-
-	if dst := toMapAny(connData["destination"]); dst != nil {
-		if addr := toMapAny(dst["address"]); addr != nil {
-			setIfNotNil(kv, "connection.dstIp", addr["ip"])
-			setIfNotNil(kv, "connection.dstPort", addr["port"])
-		}
-	}
-}
-
-// addProcessFromCacheKV looks up connection data from cache and adds process.* keys
-func addProcessFromCacheKV(kv rulekit.KV, data map[string]any, cache *ConnectionCache) {
-	if cache == nil {
-		return
-	}
-
-	// Request data is nested under "data" key
-	reqData := toMapAny(data["data"])
-	if reqData == nil {
-		reqData = data
-	}
-
-	// Get connectionId from request
-	connId, ok := reqData["connectionId"].(string)
-	if !ok {
-		return
-	}
-
-	// Lookup connection from cache
-	connData := cache.Get(connId)
-	if connData == nil {
-		return
-	}
-
-	// Extract process data from connection's source
-	addProcessFromConnectionKV(kv, map[string]any{"data": connData})
+	return cache.Get(connId)
 }
 
 // setIfNotNil sets a key in the KV map only if the value is not nil

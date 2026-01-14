@@ -230,8 +230,7 @@ func addProcessFieldsRelational(kv rulekit.KV, connData map[string]any) {
 	setIfNotNil(process, "hostname", source["hostname"])
 	if exe, ok := source["exe"].(string); ok {
 		process["path"] = exe
-		parts := strings.Split(exe, "/")
-		process["binary"] = parts[len(parts)-1]
+		process["binary"] = filepath.Base(exe)
 	}
 	if user := toMapAny(source["user"]); user != nil {
 		process["user"] = user

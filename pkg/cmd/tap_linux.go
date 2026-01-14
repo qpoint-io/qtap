@@ -345,7 +345,7 @@ func runTapCmd(logger *zap.Logger) {
 					Config: &reporter.Config{
 						EventStoreID:        "devtools",
 						FirstReportDeadline: 100 * time.Millisecond,
-						ReportInterval:      500 * time.Millisecond,
+						ReportInterval:      1 * time.Second,
 					},
 				}
 			},

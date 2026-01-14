@@ -10,23 +10,32 @@ import (
 //go:embed default.yaml
 var defaultConfigBytes []byte
 
+//go:embed default_devtools.yaml
+var defaultDevtoolsConfigBytes []byte
+
 // DefaultConfigProvider loads configuration from a local file and reloads on SIGHUP
 type DefaultConfigProvider struct {
-	logger   *zap.Logger
-	cfg      *Config
-	callback func(*Config) (func(), error)
+	logger         *zap.Logger
+	cfg            *Config
+	callback       func(*Config) (func(), error)
+	useDevtoolsCfg bool
 }
 
 // NewDefaultConfigProvider creates a new provider for default config
-func NewDefaultConfigProvider(logger *zap.Logger) *DefaultConfigProvider {
+func NewDefaultConfigProvider(logger *zap.Logger, useDevtoolsCfg bool) *DefaultConfigProvider {
 	return &DefaultConfigProvider{
-		logger: logger,
+		logger:         logger,
+		useDevtoolsCfg: useDevtoolsCfg,
 	}
 }
 
 // Start watching for config changes via SIGHUP
 func (p *DefaultConfigProvider) Start() error {
-	cfg, err := UnmarshalConfig(defaultConfigBytes)
+	c := defaultConfigBytes
+	if p.useDevtoolsCfg {
+		c = defaultDevtoolsConfigBytes
+	}
+	cfg, err := UnmarshalConfig(c)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal default config: %w", err)
 	}

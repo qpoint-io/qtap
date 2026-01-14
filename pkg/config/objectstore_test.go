@@ -67,6 +67,25 @@ func TestObjectStoreUnmarshal(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:     "s3 objectstore with IAM",
+			filename: "testdata/objectstore_s3_iam.yaml",
+			want: ServiceObjectStore{
+				Type: ObjectStoreType_S3,
+				ID:   "s3-iam-store",
+				ObjectStoreConfig: ObjectStoreConfig{
+					ObjectStoreS3Config: ObjectStoreS3Config{
+						Endpoint: "s3.amazonaws.com",
+						Bucket:   "my-iam-bucket",
+						Region:   "us-west-2",
+						// AccessKey and SecretKey should be zero values (empty)
+						AccessKey: ValueSource{},
+						SecretKey: ValueSource{},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:     "disabled objectstore",
 			filename: "testdata/objectstore_disabled.yaml",
 			want: ServiceObjectStore{

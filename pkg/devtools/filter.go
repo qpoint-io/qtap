@@ -3,7 +3,7 @@ package devtools
 import (
 	"encoding/json"
 	"net/url"
-	"strings"
+	"path/filepath"
 
 	"github.com/qpoint-io/qtap/pkg/rulekitext"
 	"github.com/qpoint-io/rulekit"
@@ -153,13 +153,6 @@ func (f *EventFilter) Matches(event *Event, cache *ConnectionCache) bool {
 		Functions: rulekitext.Functions,
 		KV:        kv,
 	})
-
-	// Missing fields are not errors - they just don't match
-	if !res.Ok() {
-		// Critical errors (invalid syntax, etc.) should not match
-		// Missing fields also don't match
-		return false
-	}
 
 	return res.Pass()
 }

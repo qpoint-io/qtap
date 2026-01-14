@@ -204,7 +204,7 @@ func runTapCmd(logger *zap.Logger) {
 		provider = config.NewLocalConfigProvider(logger, qpointConfig)
 	} else {
 		logger.Warn("no config file provided, using default config")
-		provider = config.NewDefaultConfigProvider(logger)
+		provider = config.NewDefaultConfigProvider(logger, enableDevTools)
 	}
 
 	// Create and start config manager

@@ -372,6 +372,8 @@ func (t *HTTPStream) handleDataFrame(session *Session, frame *http2.DataFrame) e
 		if frame.StreamEnded() {
 			// response is done reading body
 			session.SetState(StreamStateResponseDone)
+			// cleanup the session
+			delete(t.sessions, session.ID)
 		} else {
 			// response is reading body
 			session.SetState(StreamStateResponseBody)

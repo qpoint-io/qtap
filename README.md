@@ -72,7 +72,7 @@ $ sudo qtap
 
 Qtap includes a built-in DevTools interface (located in `pkg/devtools/app`) that provides a Chrome DevTools-like network tab for monitoring processes and traffic on a single Linux node. The interface offers real-time monitoring of HTTP transactions, network connections, and processes with filtering, search, and detailed inspection capabilities. See the [DevTools README](pkg/devtools/app/README.md) for more details.
 
-<video src="./.github/assets/dev-tools.webm" controls autoplay loop muted width="100%"></video>
+![DevTools Demo](./.github/assets/dev-tools.gif)
 
 ## Community
 

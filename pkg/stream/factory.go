@@ -7,6 +7,7 @@ import (
 	dnsStream "github.com/qpoint-io/qtap/pkg/stream/protocols/dns"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http1"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http2"
+	redisStream "github.com/qpoint-io/qtap/pkg/stream/protocols/redis"
 	"go.uber.org/zap"
 )
 
@@ -59,6 +60,11 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 	if conn.Protocol == connection.Protocol_MONGODB {
 		logger.Debug("MongoDB connection detected - protocol parsing not implemented")
 		return nil
+	}
+
+	// parse redis streams
+	if conn.Protocol == connection.Protocol_REDIS {
+		return redisStream.NewStream(conn.Context(), logger, conn)
 	}
 
 	// parse http streams

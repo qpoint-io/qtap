@@ -103,6 +103,7 @@ const (
 	Protocol_HTTP2   Protocol = "http2"
 	Protocol_DNS     Protocol = "dns"
 	Protocol_MONGODB Protocol = "mongodb"
+	Protocol_REDIS   Protocol = "redis"
 	Protocol_GRPC    Protocol = "grpc"
 )
 

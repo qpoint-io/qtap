@@ -247,6 +247,28 @@ static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, s
 	return false;
 }
 
+// Redis RESP protocol detection
+// Redis commands are sent as RESP arrays: *<count>\r\n$<len>\r\n<cmd>...
+static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	if (count < 4 || !buf_info->buf) {
+		return false;
+	}
+
+	char header[4] = {0};
+	if (buf_read(header, sizeof(header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// Check for RESP array command pattern: *<digit>
+	// This is highly specific to Redis client connections
+	if (header[0] == '*' && header[1] >= '1' && header[1] <= '9') {
+		conn_info->protocol = P_REDIS;
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// set the default protocol to unknown
 	conn_info->protocol = P_UNKNOWN;
@@ -261,6 +283,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect mongodb - check before HTTP as MongoDB binary data might be misdetected as HTTP
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_mongodb(conn_info, buf_info, count);
+
+	// detect redis - check before HTTP as Redis RESP commands start with *
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_redis(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

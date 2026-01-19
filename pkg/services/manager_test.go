@@ -89,17 +89,11 @@ func newMockFactoryFn(factoryType, serviceType string) FactoryFn {
 func TestFactoryManager_getServiceConfigs(t *testing.T) {
 	// noopEventStoreFactoryFn := newMockFactoryFn("eventstore.noop", "eventstore")
 	noopObjectStoreFactoryFn := newMockFactoryFn("objectstore.noop", "objectstore")
-	noopQscanFactoryFn := newMockFactoryFn("qscan.noop", "qscan")
 
 	noopDefaultObjectStoreConfig := &serviceConfig{
 		isDefault: true,
 		factory:   noopObjectStoreFactoryFn(),
 		config:    config.ServiceObjectStore{Type: "disabled"},
-	}
-	noopDefaultQscanConfig := &serviceConfig{
-		isDefault: true,
-		factory:   noopQscanFactoryFn(),
-		config:    &config.ServiceQscan{Type: "disabled"},
 	}
 
 	tests := []struct {
@@ -117,7 +111,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 				m := NewFactoryManager(t.Context(), zaptest.NewLogger(t), NewFactoryRegistry())
 				m.RegisterFactory(
 					newMockFactoryFn("eventstore.console", "eventstore"),
-					noopObjectStoreFactoryFn, noopQscanFactoryFn,
+					noopObjectStoreFactoryFn,
 				)
 				return m
 			},
@@ -141,7 +135,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						factory:   newMockFactory("eventstore.console", "eventstore"),
 						config:    configs[0].config,
 					},
-					noopDefaultObjectStoreConfig, noopDefaultQscanConfig,
+					noopDefaultObjectStoreConfig,
 				}, configs)
 			},
 		},
@@ -151,7 +145,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 				m := NewFactoryManager(t.Context(), zaptest.NewLogger(t), NewFactoryRegistry())
 				m.RegisterFactory(
 					newMockFactoryFn("eventstore.console", "eventstore"),
-					noopObjectStoreFactoryFn, noopQscanFactoryFn,
+					noopObjectStoreFactoryFn,
 				)
 				return m
 			},
@@ -186,7 +180,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						factory: newMockFactory("eventstore.console", "eventstore"),
 						config:  configs[1].config,
 					},
-					noopDefaultObjectStoreConfig, noopDefaultQscanConfig,
+					noopDefaultObjectStoreConfig,
 				}, configs)
 			},
 		},
@@ -196,7 +190,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 				m := NewFactoryManager(t.Context(), zaptest.NewLogger(t), NewFactoryRegistry())
 				m.RegisterFactory(
 					newMockFactoryFn("eventstore.console", "eventstore"),
-					noopObjectStoreFactoryFn, noopQscanFactoryFn,
+					noopObjectStoreFactoryFn,
 				)
 				return m
 			},
@@ -229,7 +223,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						factory: newMockFactory("eventstore.console", "eventstore"),
 						config:  configs[1].config,
 					},
-					noopDefaultObjectStoreConfig, noopDefaultQscanConfig,
+					noopDefaultObjectStoreConfig,
 				}, configs)
 			},
 		},
@@ -240,7 +234,6 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 				m.RegisterFactory(
 					newMockFactoryFn("eventstore.console", "eventstore"),
 					newMockFactoryFn("objectstore.s3", "objectstore"),
-					noopQscanFactoryFn,
 				)
 				return m
 			},
@@ -270,7 +263,6 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						factory:   newMockFactory("objectstore.s3", "objectstore"),
 						config:    configs[1].config,
 					},
-					noopDefaultQscanConfig,
 				}, configs)
 			},
 		},
@@ -280,7 +272,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 				m := NewFactoryManager(t.Context(), zaptest.NewLogger(t), NewFactoryRegistry())
 				m.RegisterFactory(
 					newMockFactoryFn("eventstore.console", "eventstore"),
-					noopObjectStoreFactoryFn, noopQscanFactoryFn,
+					noopObjectStoreFactoryFn,
 					newMockFactoryFn("new.type", "new"),
 				)
 				return m
@@ -322,9 +314,9 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						factory:   newMockFactory("eventstore.console", "eventstore"),
 						config:    configs[0].config,
 					},
-					noopDefaultObjectStoreConfig, noopDefaultQscanConfig,
+					noopDefaultObjectStoreConfig,
 					{
-						id:      "service-3",
+						id:      "service-2",
 						factory: newMockFactory("eventstore.console", "eventstore"),
 					},
 					{
@@ -333,7 +325,7 @@ func TestFactoryManager_getServiceConfigs(t *testing.T) {
 						config:    net.IP{},
 					},
 					{
-						id:      "service-5",
+						id:      "service-4",
 						factory: newMockFactory("new.type", "new"),
 					},
 				}, configs)
@@ -465,7 +457,6 @@ func TestManager_SetConfig(t *testing.T) {
 	m.RegisterFactory(
 		eventStoreFactoryFn,
 		newMockFactoryFn("objectstore.console", "objectstore"),
-		newMockFactoryFn("qscan.noop", "qscan"),
 	)
 
 	cfg := &config.Config{
@@ -518,6 +509,11 @@ func TestManager_SetConfig(t *testing.T) {
 	require.Equal(t, 1, eventStoreFactory.nextCalled)
 
 	// push a bad config with an unknown service type. our existing factories should not be replaced.
+	m.AddExtraServices(func(cfg *config.Config) *config.ServiceConfig {
+		return &config.ServiceConfig{
+			Type: "unknown.factory.type", // unknown factory type
+		}
+	})
 	cfg = &config.Config{
 		Services: config.Services{
 			EventStores: []config.ServiceEventStore{
@@ -526,7 +522,6 @@ func TestManager_SetConfig(t *testing.T) {
 			ObjectStores: []config.ServiceObjectStore{
 				{Type: "s3", ObjectStoreConfig: objectStoreConfig},
 			},
-			QscanClient: &config.ServiceQscan{Type: "unknown-type"},
 		},
 	}
 	_ = logs.TakeAll() // clear logs
@@ -561,8 +556,14 @@ func TestManager_SetConfig(t *testing.T) {
 	m.SetConfig(cfg)
 
 	errorLogs = logs.FilterLevelExact(zapcore.ErrorLevel)
-	require.Equal(t, 1, errorLogs.Len(), "expected one error log")
-	assert.Equal(t, "failed to initialize service", errorLogs.All()[0].Message)
+	require.Equal(t, 2, errorLogs.Len(), "expected two error logs (unknown factory type and init error)")
+	// Check that we have both error types
+	messages := make([]string, errorLogs.Len())
+	for i, entry := range errorLogs.All() {
+		messages[i] = entry.Message
+	}
+	assert.Contains(t, messages, "no factory registered for service type")
+	assert.Contains(t, messages, "failed to initialize service")
 	// assert.Equal(t, "failed to initialize service, keeping existing config", errorLogs.All()[0].Message)
 	// test that the factories were not replaced
 	require.Equal(t, 3, objectStoreFactory.initCalled)

@@ -28,7 +28,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/connmeta"
-	qscannoop "github.com/qpoint-io/qtap/pkg/services/qscan/noop"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
 	"github.com/qpoint-io/qtap/pkg/stream"
@@ -147,7 +146,6 @@ func mainSetup() error {
 		func() services.Factory { return &rulekitsvc.Factory{} },
 		func() services.Factory { return &connmeta.Factory{} },
 		func() services.Factory { return &reporter.Factory{} },
-		func() services.Factory { return &qscannoop.Factory{} },
 
 		// Eventstore services
 		func() services.Factory { return devtoolsEventStoreFactory },

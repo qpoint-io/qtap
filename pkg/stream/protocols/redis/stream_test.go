@@ -1,7 +1,6 @@
 package redis
 
 import (
-	"context"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -22,7 +21,7 @@ func createTestStreamWithSource(t *testing.T, source connection.Source) (*Stream
 		},
 	}
 
-	stream := NewStream(context.Background(), logger, conn)
+	stream := NewStream(t.Context(), logger, conn)
 	return stream, logs
 }
 
@@ -98,11 +97,11 @@ func TestCorrelation_SimpleRequestResponse(t *testing.T) {
 		Data:      []byte("*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"),
 	}
 	err := stream.Process(cmdEvent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Command should be queued, only debug log
 	infos := logs.FilterMessage("redis request/response").All()
-	assert.Len(t, infos, 0)
+	assert.Empty(t, infos)
 
 	// Send response (Client+Ingress = response)
 	respEvent := &connection.DataEvent{
@@ -110,7 +109,7 @@ func TestCorrelation_SimpleRequestResponse(t *testing.T) {
 		Data:      []byte("$3\r\nbar\r\n"),
 	}
 	err = stream.Process(respEvent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Now should have correlated log
 	infos = logs.FilterMessage("redis request/response").All()
@@ -132,20 +131,20 @@ func TestCorrelation_Pipeline(t *testing.T) {
 		"*2\r\n$3\r\nGET\r\n$1\r\na\r\n" +
 		"*2\r\n$3\r\nGET\r\n$1\r\nb\r\n"
 
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Egress,
 		Data:      []byte(pipeline),
-	})
+	}))
 
 	// No correlated logs yet
-	assert.Len(t, logs.FilterMessage("redis request/response").All(), 0)
+	assert.Empty(t, logs.FilterMessage("redis request/response").All())
 
 	// Send 3 responses
 	responses := "+PONG\r\n$6\r\nvalueA\r\n$6\r\nvalueB\r\n"
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte(responses),
-	})
+	}))
 
 	// Should have 3 correlated entries
 	infos := logs.FilterMessage("redis request/response").All()
@@ -166,16 +165,16 @@ func TestCorrelation_ErrorResponse(t *testing.T) {
 	stream, logs := createTestStream(t)
 
 	// Send command
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Egress,
 		Data:      []byte("*2\r\n$4\r\nINCR\r\n$3\r\nfoo\r\n"),
-	})
+	}))
 
 	// Send error response
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte("-ERR value is not an integer\r\n"),
-	})
+	}))
 
 	// Should have warning-level log with error=true
 	infos := logs.FilterMessage("redis request/response").All()
@@ -188,10 +187,10 @@ func TestCorrelation_ResponseWithoutCommand(t *testing.T) {
 	stream, logs := createTestStream(t)
 
 	// Send response without command
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte("+OK\r\n"),
-	})
+	}))
 
 	// Should log warning about uncorrelated response
 	warns := logs.FilterMessage("redis response without pending command").All()
@@ -206,10 +205,10 @@ func TestCorrelation_CloseWithPending(t *testing.T) {
 	stream, logs := createTestStream(t)
 
 	// Send commands without responses
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Egress,
 		Data:      []byte("*1\r\n$4\r\nPING\r\n*1\r\n$4\r\nPING\r\n"),
-	})
+	}))
 
 	// Close stream
 	stream.Close()
@@ -231,7 +230,7 @@ func TestCorrelation_ServerPerspective(t *testing.T) {
 		Data:      []byte("*2\r\n$3\r\nGET\r\n$3\r\nfoo\r\n"),
 	}
 	err := stream.Process(cmdEvent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Response via Egress (Server sending to client)
 	respEvent := &connection.DataEvent{
@@ -239,7 +238,7 @@ func TestCorrelation_ServerPerspective(t *testing.T) {
 		Data:      []byte("$3\r\nbar\r\n"),
 	}
 	err = stream.Process(respEvent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Should have correlated log
 	infos := logs.FilterMessage("redis request/response").All()
@@ -251,16 +250,16 @@ func TestCorrelation_ServerPipeline(t *testing.T) {
 	stream, logs := createTestStreamWithSource(t, connection.Server)
 
 	// Multiple commands via Ingress
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte("*1\r\n$4\r\nPING\r\n*2\r\n$3\r\nSET\r\n$1\r\na\r\n"),
-	})
+	}))
 
 	// Responses via Egress
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Egress,
 		Data:      []byte("+PONG\r\n+OK\r\n"),
-	})
+	}))
 
 	infos := logs.FilterMessage("redis request/response").All()
 	require.Len(t, infos, 2)
@@ -279,7 +278,7 @@ func TestProcessChunkedData(t *testing.T) {
 		Data:      []byte("*3\r\n$3\r\nSET"),
 	}
 	err := stream.Process(event1)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Second chunk - still incomplete
 	event2 := &connection.DataEvent{
@@ -287,7 +286,7 @@ func TestProcessChunkedData(t *testing.T) {
 		Data:      []byte("\r\n$3\r\nfoo\r\n$3"),
 	}
 	err = stream.Process(event2)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Third chunk - completes the command
 	event3 := &connection.DataEvent{
@@ -295,7 +294,7 @@ func TestProcessChunkedData(t *testing.T) {
 		Data:      []byte("\r\nbar\r\n"),
 	}
 	err = stream.Process(event3)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Command should be queued now (debug log)
 	queued := logs.FilterMessage("redis command queued").All()
@@ -303,10 +302,10 @@ func TestProcessChunkedData(t *testing.T) {
 	assert.Equal(t, "SET", queued[0].ContextMap()["command"])
 
 	// Send response to complete correlation
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte("+OK\r\n"),
-	})
+	}))
 
 	// Should have correlated log
 	infos := logs.FilterMessage("redis request/response").All()
@@ -320,16 +319,16 @@ func TestSanitizeAuthCommand(t *testing.T) {
 	stream, logs := createTestStream(t)
 
 	// AUTH command
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Egress,
 		Data:      []byte("*2\r\n$4\r\nAUTH\r\n$8\r\npassword\r\n"),
-	})
+	}))
 
 	// Send response
-	stream.Process(&connection.DataEvent{
+	require.NoError(t, stream.Process(&connection.DataEvent{
 		Direction: connection.Ingress,
 		Data:      []byte("+OK\r\n"),
-	})
+	}))
 
 	infos := logs.FilterMessage("redis request/response").All()
 	require.Len(t, infos, 1)
@@ -354,11 +353,11 @@ func TestProcessAfterClose(t *testing.T) {
 	}
 
 	err := stream.Process(event)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Should not log any command processing after close
 	queued := logs.FilterMessage("redis command queued").All()
-	assert.Len(t, queued, 0)
+	assert.Empty(t, queued)
 }
 
 func TestCloseStream(t *testing.T) {
@@ -398,16 +397,16 @@ func TestProcessRESP3TypesCorrelated(t *testing.T) {
 			stream, logs := createTestStream(t)
 
 			// Send a command first
-			stream.Process(&connection.DataEvent{
+			require.NoError(t, stream.Process(&connection.DataEvent{
 				Direction: connection.Egress,
 				Data:      []byte("*1\r\n$4\r\nPING\r\n"),
-			})
+			}))
 
 			// Send the RESP3 response
-			stream.Process(&connection.DataEvent{
+			require.NoError(t, stream.Process(&connection.DataEvent{
 				Direction: connection.Ingress,
 				Data:      []byte(tt.responseData),
-			})
+			}))
 
 			// Should have correlated log with correct response type
 			infos := logs.FilterMessage("redis request/response").All()
@@ -426,8 +425,8 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Concurrent request processing
 	go func() {
-		for i := 0; i < 100; i++ {
-			stream.Process(&connection.DataEvent{
+		for range 100 {
+			_ = stream.Process(&connection.DataEvent{
 				Direction: connection.Egress,
 				Data:      []byte("*1\r\n$4\r\nPING\r\n"),
 			})
@@ -437,8 +436,8 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Concurrent response processing
 	go func() {
-		for i := 0; i < 100; i++ {
-			stream.Process(&connection.DataEvent{
+		for range 100 {
+			_ = stream.Process(&connection.DataEvent{
 				Direction: connection.Ingress,
 				Data:      []byte("+PONG\r\n"),
 			})
@@ -448,7 +447,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Concurrent Closed checks
 	go func() {
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			_ = stream.Closed()
 		}
 		done <- true

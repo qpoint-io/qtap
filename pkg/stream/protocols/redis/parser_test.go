@@ -154,11 +154,11 @@ func TestParseInteger(t *testing.T) {
 
 func TestParseBulkString(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		want       string
-		wantNull   bool
-		wantErr    error
+		name     string
+		input    string
+		want     string
+		wantNull bool
+		wantErr  error
 	}{
 		{
 			name:  "simple string",
@@ -500,10 +500,10 @@ func TestChunkedInput(t *testing.T) {
 	}
 
 	// First chunks should return incomplete
-	for i := 0; i < len(chunks)-1; i++ {
+	for i := range len(chunks) - 1 {
 		p.Append([]byte(chunks[i]))
 		_, err := p.Parse()
-		assert.ErrorIs(t, err, ErrIncomplete, "chunk %d should be incomplete", i)
+		require.ErrorIs(t, err, ErrIncomplete, "chunk %d should be incomplete", i)
 	}
 
 	// Last chunk should complete the message

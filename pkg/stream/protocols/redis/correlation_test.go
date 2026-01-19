@@ -45,7 +45,7 @@ func TestCommandQueue_FIFO(t *testing.T) {
 	q := NewCommandQueue()
 
 	// Enqueue 100 commands
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		q.Enqueue(&PendingCommand{
 			Command:   &Command{Name: fmt.Sprintf("CMD%d", i)},
 			Timestamp: time.Now(),
@@ -55,7 +55,7 @@ func TestCommandQueue_FIFO(t *testing.T) {
 	assert.Equal(t, 100, q.Len())
 
 	// Dequeue and verify FIFO order
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		cmd := q.Dequeue()
 		require.NotNil(t, cmd)
 		assert.Equal(t, fmt.Sprintf("CMD%d", i), cmd.Command.Name)
@@ -96,7 +96,7 @@ func TestCommandQueue_ClearEmpty(t *testing.T) {
 	q := NewCommandQueue()
 
 	remaining := q.Clear()
-	assert.Len(t, remaining, 0)
+	assert.Empty(t, remaining)
 	assert.Equal(t, 0, q.Len())
 }
 
@@ -116,7 +116,6 @@ func TestCommandQueue_DequeueEmpty(t *testing.T) {
 func TestPendingCommand_Timestamp(t *testing.T) {
 	before := time.Now()
 	cmd := &PendingCommand{
-		Command:   &Command{Name: "PING"},
 		Timestamp: time.Now(),
 	}
 	after := time.Now()

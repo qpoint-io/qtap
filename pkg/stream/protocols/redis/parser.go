@@ -201,7 +201,7 @@ func (p *Parser) parseArray(data []byte) (*Value, int, error) {
 	pos := idx + 2
 	elements := make([]Value, 0, count)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		if pos >= len(data) {
 			return nil, 0, ErrIncomplete
 		}
@@ -372,7 +372,7 @@ func (p *Parser) parseMap(data []byte) (*Value, int, error) {
 	pos := idx + 2
 	m := make(map[string]Value, count)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		// Parse key
 		if pos >= len(data) {
 			return nil, 0, ErrIncomplete
@@ -418,7 +418,7 @@ func (p *Parser) parseSet(data []byte) (*Value, int, error) {
 	pos := idx + 2
 	elements := make([]Value, 0, count)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		if pos >= len(data) {
 			return nil, 0, ErrIncomplete
 		}
@@ -453,7 +453,7 @@ func (p *Parser) parsePush(data []byte) (*Value, int, error) {
 	pos := idx + 2
 	elements := make([]Value, 0, count)
 
-	for i := 0; i < count; i++ {
+	for range count {
 		if pos >= len(data) {
 			return nil, 0, ErrIncomplete
 		}

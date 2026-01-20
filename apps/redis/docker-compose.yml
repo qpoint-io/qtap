@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # Shared Redis server
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Ruby client
+  ruby-client:
+    build: ./ruby
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Go client
+  go-client:
+    build: ./go
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Java client
+  java-client:
+    build: ./java
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Node.js client
+  node-client:
+    build: ./node
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}

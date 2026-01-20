@@ -1,5 +1,7 @@
 require 'redis'
 
+$stdout.sync = true
+
 host = ENV.fetch('REDIS_HOST', 'localhost')
 port = ENV.fetch('REDIS_PORT', 6379).to_i
 max_iterations = ENV.fetch('MAX_ITERATIONS', 0).to_i

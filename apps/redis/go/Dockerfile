@@ -2,11 +2,8 @@ FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod ./
-RUN go mod download
-
-COPY main.go ./
-RUN go build -o redis-client .
+COPY go.mod main.go ./
+RUN go mod tidy && go build -o redis-client .
 
 FROM alpine:latest
 

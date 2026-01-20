@@ -4,10 +4,22 @@ $stdout.sync = true
 
 host = ENV.fetch('REDIS_HOST', 'localhost')
 port = ENV.fetch('REDIS_PORT', 6379).to_i
+tls_enabled = ENV.fetch('REDIS_TLS_ENABLED', 'false') == 'true'
+ca_cert_path = ENV.fetch('REDIS_CA_CERT', nil)
 max_iterations = ENV.fetch('MAX_ITERATIONS', 0).to_i
 sleep_duration = ENV.fetch('SLEEP_DURATION', 1).to_f
 
-redis = Redis.new(host: host, port: port)
+redis_options = { host: host, port: port }
+
+if tls_enabled
+  puts "[Ruby] TLS enabled"
+  redis_options[:ssl] = true
+  if ca_cert_path && File.exist?(ca_cert_path)
+    redis_options[:ssl_params] = { ca_file: ca_cert_path }
+  end
+end
+
+redis = Redis.new(**redis_options)
 iteration = 0
 
 loop do

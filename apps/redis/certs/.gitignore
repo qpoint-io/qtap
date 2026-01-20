@@ -1,0 +1,6 @@
+# Ignore generated certificates - regenerate with: make certs
+*.crt
+*.key
+*.pem
+*.csr
+*.srl

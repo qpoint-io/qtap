@@ -1,11 +1,24 @@
 const Redis = require('ioredis');
+const fs = require('fs');
 
 const host = process.env.REDIS_HOST || 'localhost';
 const port = parseInt(process.env.REDIS_PORT || '6379', 10);
+const tlsEnabled = process.env.REDIS_TLS_ENABLED === 'true';
+const caCertPath = process.env.REDIS_CA_CERT || '';
 const maxIterations = parseInt(process.env.MAX_ITERATIONS || '0', 10);
 const sleepDuration = parseFloat(process.env.SLEEP_DURATION || '1') * 1000;
 
-const redis = new Redis({ host, port });
+const redisOptions = { host, port };
+
+if (tlsEnabled) {
+    console.log('[Node] TLS enabled');
+    redisOptions.tls = {};
+    if (caCertPath && fs.existsSync(caCertPath)) {
+        redisOptions.tls.ca = fs.readFileSync(caCertPath);
+    }
+}
+
+const redis = new Redis(redisOptions);
 
 async function run() {
     let iteration = 0;

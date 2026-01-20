@@ -1,11 +1,23 @@
-.PHONY: all up down logs ruby go java node test clean
+.PHONY: all up down logs ruby go java node test clean certs certs-clean up-tls test-tls
 
-# Default: start all services
+# Default: start all services (non-TLS)
 all: up
 
-# Start all services
+# Generate TLS certificates
+certs:
+	@./scripts/generate-certs.sh
+
+# Clean certificates
+certs-clean:
+	@rm -f certs/*.crt certs/*.key certs/*.pem
+
+# Start all services (non-TLS)
 up:
 	docker-compose up --build -d
+
+# Start all services with TLS
+up-tls: certs
+	REDIS_TLS_ENABLED=true docker-compose up --build -d
 
 # Stop all services
 down:
@@ -31,10 +43,14 @@ java:
 node:
 	docker-compose up --build -d redis node-client
 
-# Run finite iterations (useful for CI)
+# Run finite iterations (useful for CI) - non-TLS
 test:
 	MAX_ITERATIONS=10 docker-compose up --build --abort-on-container-exit
 
+# Run finite iterations with TLS
+test-tls: certs
+	REDIS_TLS_ENABLED=true MAX_ITERATIONS=10 docker-compose up --build --abort-on-container-exit
+
 # Clean up
-clean:
+clean: certs-clean
 	docker-compose down -v --rmi local

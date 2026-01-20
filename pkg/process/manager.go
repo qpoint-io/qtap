@@ -359,18 +359,11 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 		})
 	}
 
-	if m.broker != nil {
-		wg.Go(func() {
-			if replace {
-				return
-			}
-
-			ev := &core.ProcessStarted{
-				PID:         p.Pid,
-				Exe:         p.Exe,
-				ContainerID: p.ContainerID,
-			}
-			m.broker.Broadcast(ev.Topic(), ev)
+	if m.broker != nil && !replace {
+		m.broker.Broadcast(&core.ProcessStarted{
+			PID:         p.Pid,
+			Exe:         p.Exe,
+			ContainerID: p.LongContainerID,
 		})
 	}
 
@@ -402,10 +395,7 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 	}
 
 	if m.broker != nil {
-		go func() {
-			ev := &core.ProcessStopped{PID: p.Pid}
-			m.broker.Broadcast(ev.Topic(), ev)
-		}()
+		m.broker.Broadcast(&core.ProcessStopped{PID: p.Pid})
 	}
 
 	// inform the observers

@@ -30,13 +30,14 @@ var (
 )
 
 type Process struct {
-	Pid         int
-	PidExe      string // PidExe is the path to the /proc process symlink
-	PodID       string // TODO: remove
-	Cgroup      string
-	ContainerID string
-	RootID      uint64
-	Binary      string
+	Pid             int
+	PidExe          string // PidExe is the path to the /proc process symlink
+	PodID           string // TODO: remove
+	Cgroup          string
+	ContainerID     string
+	LongContainerID string
+	RootID          uint64
+	Binary          string
 	// Exe is the absolute path to the executable of the process.
 	// If the process is running in a container, this path will be relative to the container's root filesystem.
 	Exe            string
@@ -182,7 +183,8 @@ func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq
 			// check for container ID
 			if p.ContainerID == "" {
 				if match := containerRe.FindStringSubmatch(namespace); match != nil {
-					p.ContainerID = match[1][:12]
+					p.LongContainerID = match[1]
+					p.ContainerID = p.LongContainerID[:12]
 				}
 			}
 
@@ -197,6 +199,7 @@ func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq
 		// set the default container ID
 		if p.ContainerID == "" {
 			p.ContainerID = "root"
+			p.LongContainerID = "root"
 		}
 	}
 

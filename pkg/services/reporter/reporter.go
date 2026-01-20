@@ -236,8 +236,14 @@ func toEventStoreContainer(container *process.Container, pod *process.Pod) *even
 	if container == nil {
 		return nil
 	}
+
+	id := container.ID
+	if len(id) > 12 {
+		id = id[:12]
+	}
+
 	c := &eventstore.Container{
-		ID:    container.ID,
+		ID:    id,
 		Name:  container.Name,
 		Image: container.Image,
 	}

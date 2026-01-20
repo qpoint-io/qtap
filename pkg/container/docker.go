@@ -140,10 +140,11 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 		cr.SetStartTime(time.Now())
 		reportContainerStarted(cr, "docker")
 		if d.broker != nil {
-			go func() {
-				ev := &core.ContainerStarted{ID: cr.ID, Name: cr.Name, Image: cr.Image}
-				d.broker.Broadcast(ev.Topic(), ev)
-			}()
+			d.broker.Broadcast(&core.ContainerStarted{
+				ID:    cr.ID,
+				Name:  cr.Name,
+				Image: cr.Image,
+			})
 		}
 	}
 
@@ -155,10 +156,7 @@ func (d *docker) handleContainerStop(_ context.Context, containerID string) {
 	defer d.mu.Unlock()
 
 	if d.broker != nil {
-		go func() {
-			ev := &core.ContainerStopped{ID: containerID}
-			d.broker.Broadcast(ev.Topic(), ev)
-		}()
+		d.broker.Broadcast(&core.ContainerStopped{ID: containerID})
 	}
 
 	humanID := humanContainerID(containerID)
@@ -269,7 +267,8 @@ func (d *docker) watchContainerEvents(ctx context.Context) bool {
 		case ActionRestart:
 			d.handleContainerRestart(ctx, msg.Actor.ID)
 			d.handleContainerEvent(ctx, msg.Actor.ID)
-		case ActionStop, ActionDie, ActionDestroy:
+		case ActionDie:
+			// case ActionStop, ActionDie, ActionDestroy:
 			d.handleContainerStop(ctx, msg.Actor.ID)
 		}
 

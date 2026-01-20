@@ -62,12 +62,12 @@ func (f *EventStoreFactory) save(item any) {
 				ev.DestinationIP = dstAddr.IP.String()
 				ev.DestinationPort = int(dstAddr.Port)
 
-				f.broker.Broadcast(ev.Topic(), ev)
+				f.broker.Broadcast(ev)
 			} else if topic == "connection.closed" {
 				ev := &core.ConnectionClosed{
 					ID: i.ConnectionID,
 				}
-				f.broker.Broadcast(ev.Topic(), ev)
+				f.broker.Broadcast(ev)
 			}
 		}
 

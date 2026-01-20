@@ -2,11 +2,11 @@ package coordinator
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/qpoint-io/qtap/pkg/broker"
 	"github.com/qpoint-io/qtap/pkg/coordinator/core"
 	"github.com/qpoint-io/qtap/pkg/coordinator/plugins"
+	"github.com/qpoint-io/qtap/pkg/log"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"go.uber.org/zap"
 )
@@ -78,74 +78,55 @@ func (c *Coordinator) Stop() error {
 	return nil
 }
 
-func (c *Coordinator) handleEvent(event *broker.Event) error {
-	switch event.Topic {
-	case core.ProcessStarted{}.Topic():
-		return handleEvent(event, c.handleProcessStarted)
-	case core.ProcessStopped{}.Topic():
-		return handleEvent(event, c.handleProcessStopped)
-	case core.ContainerStarted{}.Topic():
-		return handleEvent(event, c.handleContainerStarted)
-	case core.ContainerStopped{}.Topic():
-		return handleEvent(event, c.handleContainerStopped)
-	case core.ConnectionOpened{}.Topic():
-		return handleEvent(event, c.handleConnectionOpened)
-	case core.ConnectionClosed{}.Topic():
-		return handleEvent(event, c.handleConnectionClosed)
+func (c *Coordinator) handleEvent(msg *broker.EventMessage) error {
+	switch ev := msg.Data.(type) {
+	case *core.ProcessStarted:
+		return c.handleProcessStarted(ev)
+	case *core.ProcessStopped:
+		return c.handleProcessStopped(ev)
+	case *core.ContainerStarted:
+		return c.handleContainerStarted(ev)
+	case *core.ContainerStopped:
+		return c.handleContainerStopped(ev)
+	case *core.ConnectionOpened:
+		return c.handleConnectionOpened(ev)
+	case *core.ConnectionClosed:
+		return c.handleConnectionClosed(ev)
 	}
 
-	c.logger.Warn("dropped event with no handler", zap.String("topic", event.Topic))
+	c.logger.Warn("dropped event with no handler", zap.String("topic", msg.Topic))
 	return nil
 }
 
 func (c *Coordinator) handleProcessStarted(event *core.ProcessStarted) error {
-	c.logger.Info("process started", zap.Int("pid", event.PID))
+	c.logger.Log(log.QpointLevel, "process started",
+		zap.Int("pid", event.PID),
+		zap.String("exe", event.Exe),
+		zap.String("container_id", event.ContainerID),
+	)
 
 	process := &Process{
-		PID: event.PID,
-		Exe: event.Exe,
-	}
-	if event.ContainerID != "" && event.ContainerID != "root" {
-		if container, ok := c.containers.Load(event.ContainerID); ok {
-			process.Container = container
-		} else {
-			// we will backfill the container info once we get the container started event
-			// TODO: resolvable
-			process.Container = &Container{
-				ID: event.ContainerID,
-			}
-		}
+		PID:         event.PID,
+		Exe:         event.Exe,
+		ContainerID: event.ContainerID,
 	}
 	c.processes.Store(event.PID, process)
 
-	pluginsEv := &plugins.ProcessStarted{
-		Process: &plugins.Process{
-			PID: event.PID,
-			Exe: event.Exe,
-		},
-	}
-	if process.Container != nil {
-		pluginsEv.Process.Container = &plugins.Container{
-			ID:    process.Container.ID,
-			Name:  process.Container.Name,
-			Image: process.Container.Image,
-		}
-	}
-	c.Plugins.Broadcast(pluginsEv.Topic(), pluginsEv)
 	return nil
 }
 
 func (c *Coordinator) handleProcessStopped(event *core.ProcessStopped) error {
-	c.logger.Info("process stopped", zap.Int("pid", event.PID))
+	c.logger.Log(log.QpointLevel, "process stopped", zap.Int("pid", event.PID))
 	return nil
 }
 
 func (c *Coordinator) handleContainerStarted(event *core.ContainerStarted) error {
-	c.logger.Info("container started",
+	c.logger.Log(log.QpointLevel, "container started",
 		zap.String("id", event.ID),
 		zap.String("name", event.Name),
 		zap.String("image", event.Image),
 	)
+
 	c.containers.Store(event.ID, &Container{
 		ID:    event.ID,
 		Name:  event.Name,
@@ -155,13 +136,14 @@ func (c *Coordinator) handleContainerStarted(event *core.ContainerStarted) error
 }
 
 func (c *Coordinator) handleContainerStopped(event *core.ContainerStopped) error {
-	c.logger.Info("container stopped", zap.String("id", event.ID))
+	c.logger.Log(log.QpointLevel, "container stopped", zap.String("id", event.ID))
+
 	c.containers.Delete(event.ID)
 	return nil
 }
 
 func (c *Coordinator) handleConnectionOpened(event *core.ConnectionOpened) error {
-	c.logger.Info("connection opened", zap.String("id", event.ID))
+	c.logger.Log(log.QpointLevel, "connection opened", zap.String("id", event.ID))
 
 	ev := &plugins.ConnectionOpened{
 		ID:              event.ID,
@@ -176,9 +158,9 @@ func (c *Coordinator) handleConnectionOpened(event *core.ConnectionOpened) error
 			Exe: process.Exe,
 		}
 
-		if process.Container != nil {
-			if container, ok := c.containers.Load(process.Container.ID); ok {
-				ev.Process.Container = &plugins.Container{
+		if process.ContainerID != "" {
+			if container, ok := c.containers.Load(process.ContainerID); ok {
+				ev.Container = &plugins.Container{
 					ID:    container.ID,
 					Name:  container.Name,
 					Image: container.Image,
@@ -186,26 +168,19 @@ func (c *Coordinator) handleConnectionOpened(event *core.ConnectionOpened) error
 			}
 		}
 	}
-	c.Plugins.Broadcast(ev.Topic(), ev)
+	c.Plugins.Broadcast(ev)
 	return nil
 }
 
 func (c *Coordinator) handleConnectionClosed(event *core.ConnectionClosed) error {
-	c.logger.Info("connection closed", zap.String("id", event.ID))
+	c.logger.Log(log.QpointLevel, "connection closed", zap.String("id", event.ID))
 
+	// TODO: opened closed updated should all share the same structure
 	ev := &plugins.ConnectionClosed{
 		ID: event.ID,
 	}
-	c.Plugins.Broadcast(ev.Topic(), ev)
+	c.Plugins.Broadcast(ev)
 	return nil
-}
-
-func handleEvent[T any](event *broker.Event, fn func(event *T) error) error {
-	ev, ok := event.Data.(*T)
-	if !ok {
-		return fmt.Errorf("invalid event data type: %T, expected %T", event.Data, new(*T))
-	}
-	return fn(ev)
 }
 
 type Container struct {
@@ -215,10 +190,9 @@ type Container struct {
 }
 
 type Process struct {
-	PID       int
-	Exe       string
-	Container *Container // TODO: convert to resolvable.V[*Container]
-	// actually keep separate, replace with just ContainerID here
+	PID         int
+	Exe         string
+	ContainerID string
 }
 
 // type atomic[T any] struct {

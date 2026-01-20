@@ -1,22 +1,11 @@
 package plugins
 
 type Process struct {
-	PID       int
-	Exe       string
-	Container *Container
-}
-
-func (ProcessStarted) Topic() string { return "process.started" }
-
-type ProcessStarted struct {
-	Process *Process
-}
-
-func (ProcessStopped) Topic() string { return "process.stopped" }
-
-type ProcessStopped struct {
 	PID int
+	Exe string
 }
+
+// Add process started exited events for devtools
 
 type Container struct {
 	ID    string
@@ -31,7 +20,8 @@ type ConnectionOpened struct {
 	DestinationIP   string
 	DestinationPort int
 
-	Process *Process
+	Process   *Process
+	Container *Container
 }
 
 func (ConnectionOpened) Topic() string { return "connection.opened" }

@@ -764,6 +764,10 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	if ((conn_info->protocol == P_HTTP1 || conn_info->protocol == P_HTTP2) && get_stream_http_setting())
 		stream = true;
 
+	// Redis: always stream (interim - configurable stack integration later)
+	if (conn_info->protocol == P_REDIS)
+		stream = true;
+
 	// return if we're not streaming, set to ignore and return
 	if (!stream) {
 		TRACE_IF_ENABLED(ctx->trace_mod, ctx->id->pid, "process_data (settings = IGNORE, ignore = true)", TRACE_STRING("caller", ctx->trace_id),

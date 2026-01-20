@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/qpoint-io/qtap/pkg/broker"
+	"github.com/qpoint-io/qtap/pkg/coordinator/core"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
@@ -18,6 +20,7 @@ type EventStoreFactory struct {
 
 	logger    *zap.Logger
 	broadcast func(*Event)
+	broker    *broker.Broker
 }
 
 func (f *EventStoreFactory) Init(ctx context.Context, cfg any) error {
@@ -45,6 +48,29 @@ func (f *EventStoreFactory) save(item any) {
 		} else if i.Part > 0 {
 			topic = "connection.updated"
 		}
+
+		if f.broker != nil {
+			if topic == "connection.opened" {
+				ev := &core.ConnectionOpened{
+					ID:  i.ConnectionID,
+					PID: i.PID,
+				}
+				srcAddr := i.Source.GetAddress()
+				ev.SourceIP = srcAddr.IP.String()
+				ev.SourcePort = int(srcAddr.Port)
+				dstAddr := i.Destination.GetAddress()
+				ev.DestinationIP = dstAddr.IP.String()
+				ev.DestinationPort = int(dstAddr.Port)
+
+				f.broker.Broadcast(ev.Topic(), ev)
+			} else if topic == "connection.closed" {
+				ev := &core.ConnectionClosed{
+					ID: i.ConnectionID,
+				}
+				f.broker.Broadcast(ev.Topic(), ev)
+			}
+		}
+
 	default:
 		f.logger.Error("unknown event type", zap.String("type", fmt.Sprintf("%T", item)))
 		return

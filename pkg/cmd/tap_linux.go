@@ -20,6 +20,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/container"
+	"github.com/qpoint-io/qtap/pkg/coordinator"
 	"github.com/qpoint-io/qtap/pkg/devtools"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
@@ -486,6 +487,43 @@ func runTapCmd(logger *zap.Logger) {
 	}
 
 	logger.Info("eBPF program loaded and listening")
+
+	coordinator := coordinator.NewCoordinator(ctx, coordinator.WithLogger(logger))
+	if err := coordinator.Start(); err != nil {
+		logger.Fatal("failed to start coordinator", zap.Error(err))
+	}
+	defer func() {
+		if err := coordinator.Stop(); err != nil {
+			logger.Error("unable to cleanup coordinator")
+		}
+	}()
+
+	// process events
+	pm.SetBroker(coordinator.Core)
+	// container events
+	containerManager.SetBroker(coordinator.Core)
+	if devtoolsManager != nil {
+		devtoolsManager.SetBroker(coordinator.Core)
+	}
+
+	/* example plugin listening to process events */
+	events, err := coordinator.Plugins.Subscribe(ctx, "test", []string{"process.started"})
+	if err != nil {
+		logger.Fatal("failed to subscribe to plugin events", zap.Error(err))
+	}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event := <-events:
+				logger.Info("🤤 plugins event",
+					zap.String("topic", event.Topic),
+					zap.Any("data", event.Data),
+				)
+			}
+		}
+	}()
 
 	// trap int/term signals
 	<-ctx.Done()

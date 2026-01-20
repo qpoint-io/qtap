@@ -15,6 +15,8 @@ import (
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
+	"github.com/qpoint-io/qtap/pkg/broker"
+	"github.com/qpoint-io/qtap/pkg/coordinator/core"
 )
 
 const (
@@ -41,6 +43,7 @@ type docker struct {
 	mu     sync.RWMutex
 	client *client.Client
 	cache  map[string]*Container // TODO: convert to our own map
+	broker *broker.Broker
 }
 
 func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
@@ -136,6 +139,12 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 	if existing == nil {
 		cr.SetStartTime(time.Now())
 		reportContainerStarted(cr, "docker")
+		if d.broker != nil {
+			go func() {
+				ev := core.ContainerStarted{ID: cr.ID, Name: cr.Name, Image: cr.Image}
+				d.broker.Broadcast(ev.Topic(), ev)
+			}()
+		}
 	}
 
 	d.cache[humanID] = cr
@@ -144,6 +153,13 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 func (d *docker) handleContainerStop(_ context.Context, containerID string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	if d.broker != nil {
+		go func() {
+			ev := core.ContainerStopped{ID: containerID}
+			d.broker.Broadcast(ev.Topic(), ev)
+		}()
+	}
 
 	humanID := humanContainerID(containerID)
 	if cr := d.cache[humanID]; cr != nil {

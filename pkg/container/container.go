@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/broker"
 	"go.uber.org/zap"
 )
 
@@ -59,6 +60,14 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 	}
 
 	return ca
+}
+
+func (a *Manager) SetBroker(broker *broker.Broker) {
+	for _, e := range a.accessors {
+		if d, ok := e.(*docker); ok {
+			d.broker = broker
+		}
+	}
 }
 
 func (a *Manager) Start(ctx context.Context) error {

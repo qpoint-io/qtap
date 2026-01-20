@@ -14,14 +14,10 @@ const (
 	defaultBufferSize = 512
 )
 
-type AnyEvent interface {
-	Topic() string
-	Any() any
-}
-
-type Event[T any] struct {
-	ts   time.Time
-	data *T
+type Event struct {
+	Topic string
+	TS    time.Time
+	Data  any
 }
 
 type BrokerOpt func(*Broker)
@@ -35,14 +31,16 @@ func SetBufferSize(bufferSize int) BrokerOpt {
 type Broker struct {
 	bufferSize int
 
-	logger *zap.Logger
-	subs   map[chan<- AnyEvent]*subscriber
-	subsMu sync.RWMutex
+	logger  *zap.Logger
+	subs    map[chan<- *Event]*subscriber
+	stopped bool
+	subsMu  sync.RWMutex
 }
 
 func NewBroker(opts ...BrokerOpt) *Broker {
 	b := &Broker{
 		bufferSize: defaultBufferSize,
+		subs:       make(map[chan<- *Event]*subscriber),
 	}
 	for _, opt := range opts {
 		opt(b)
@@ -50,25 +48,37 @@ func NewBroker(opts ...BrokerOpt) *Broker {
 	return b
 }
 
-func (b *Broker) Broadcast(event AnyEvent) error {
-	b.subsMu.RLock()
-	defer b.subsMu.RUnlock()
+func (b *Broker) Broadcast(topic string, data any) {
+	event := &Event{
+		Topic: topic,
+		TS:    time.Now(),
+		Data:  data,
+	}
 
 	var eg multierror.Group
+
+	b.subsMu.RLock()
+	defer b.subsMu.RUnlock()
+	if b.stopped {
+		return
+	}
 	for ch, sub := range b.subs {
 		eg.Go(func() error {
 			return b.send(ch, sub, event)
 		})
 	}
-	return eg.Wait().ErrorOrNil()
+	err := eg.Wait().ErrorOrNil()
+	if err != nil {
+		b.logger.Error("error broadcasting event", zap.Error(err))
+	}
 }
 
-func (b *Broker) send(ch chan<- AnyEvent, sub *subscriber, event AnyEvent) error {
+func (b *Broker) send(ch chan<- *Event, sub *subscriber, event *Event) error {
 	send := true
 	if len(sub.topics) > 0 {
 		send = false
 		for _, topic := range sub.topics {
-			if strings.HasPrefix(topic, event.Topic()) {
+			if strings.HasPrefix(topic, event.Topic) {
 				send = true
 				break
 			}
@@ -83,7 +93,7 @@ func (b *Broker) send(ch chan<- AnyEvent, sub *subscriber, event AnyEvent) error
 	default:
 		b.logger.Warn("subscriber buffer is full, dropping event",
 			zap.String("subscriber", sub.name),
-			zap.String("topic", event.Topic()),
+			zap.String("topic", event.Topic),
 		)
 		return nil
 	}
@@ -91,12 +101,12 @@ func (b *Broker) send(ch chan<- AnyEvent, sub *subscriber, event AnyEvent) error
 	return nil
 }
 
-func (b *Broker) Subscribe(ctx context.Context, name string, eventTopics []string) (<-chan AnyEvent, error) {
+func (b *Broker) Subscribe(ctx context.Context, name string, eventTopics []string) (<-chan *Event, error) {
 	sub := &subscriber{
 		name:   name,
 		topics: eventTopics,
 	}
-	ch := make(chan AnyEvent, b.bufferSize)
+	ch := make(chan *Event, b.bufferSize)
 
 	b.subsMu.Lock()
 	b.subs[ch] = sub
@@ -106,6 +116,14 @@ func (b *Broker) Subscribe(ctx context.Context, name string, eventTopics []strin
 	go func() {
 		<-ctx.Done()
 
+		// all channels are closed when the broker is stopped
+		b.subsMu.RLock()
+		if b.stopped {
+			return
+		}
+		b.subsMu.RUnlock()
+
+		// otherwise, we cancel here
 		b.subsMu.Lock()
 		delete(b.subs, ch)
 		b.subsMu.Unlock()
@@ -118,4 +136,19 @@ func (b *Broker) Subscribe(ctx context.Context, name string, eventTopics []strin
 type subscriber struct {
 	name   string
 	topics []string
+}
+
+func (b *Broker) Stop() {
+	b.subsMu.Lock()
+	defer b.subsMu.Unlock()
+
+	if b.stopped {
+		return
+	}
+
+	for ch := range b.subs {
+		delete(b.subs, ch)
+		close(ch)
+	}
+	b.stopped = true
 }

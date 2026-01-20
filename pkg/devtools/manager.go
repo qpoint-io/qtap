@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/broker"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
@@ -469,4 +470,8 @@ func (m *Manager) EventStoreFactory() *EventStoreFactory {
 
 func (m *Manager) ObjectStoreFactory() *ObjectStoreFactory {
 	return m.objectStore
+}
+
+func (m *Manager) SetBroker(broker *broker.Broker) {
+	m.eventStore.broker = broker
 }

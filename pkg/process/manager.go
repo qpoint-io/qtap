@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/qpoint-io/qtap/pkg/broker"
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/coordinator/core"
 	"github.com/qpoint-io/qtap/pkg/synq"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
@@ -55,6 +57,8 @@ type Manager struct {
 	procs *synq.Map[int, *Process]
 	// processWaiters is a map of pid to channels that are waiting for the process to be discovered
 	processWaiters map[int][]chan *Process
+
+	broker *broker.Broker
 }
 
 var tracer = telemetry.Tracer()
@@ -80,6 +84,10 @@ func NewProcessManager(logger *zap.Logger, procEventer Eventer) *Manager {
 	)
 
 	return pm
+}
+
+func (m *Manager) SetBroker(broker *broker.Broker) {
+	m.broker = broker
 }
 
 func (m *Manager) RegisterProcess(ctx context.Context, p *Process) error {
@@ -350,6 +358,22 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 			}
 		})
 	}
+
+	if m.broker != nil {
+		wg.Go(func() {
+			if replace {
+				return
+			}
+
+			ev := core.ProcessStarted{
+				PID:         p.Pid,
+				Exe:         p.Exe,
+				ContainerID: p.ContainerID,
+			}
+			m.broker.Broadcast(ev.Topic(), ev)
+		})
+	}
+
 	if p := wg.WaitAndRecover(); p != nil {
 		m.Logger.Info("panic observed during process start/replace", zap.Error(p.AsError()))
 	}
@@ -375,6 +399,13 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 	// close the process
 	if err := p.Close(); err != nil {
 		m.Logger.Debug("closing process", zap.Error(err))
+	}
+
+	if m.broker != nil {
+		go func() {
+			ev := core.ProcessStopped{PID: p.Pid}
+			m.broker.Broadcast(ev.Topic(), ev)
+		}()
 	}
 
 	// inform the observers

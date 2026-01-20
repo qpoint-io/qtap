@@ -255,6 +255,7 @@ const (
 type Connection struct {
 	meta `json:"meta,omitempty"`
 
+	PID            int                 `json:"-"` // TODO: temp
 	Tags           map[string][]string `json:"tags,omitzero"`
 	Finalized      bool                `json:"finalized,omitempty"`
 	Direction      Direction           `json:"direction,omitempty"`
@@ -285,6 +286,7 @@ type ConnectionSystem struct {
 
 type ConnectionEndpoint interface {
 	isConnectionEndpoint()
+	GetAddress() qnet.NetAddr
 }
 
 type ConnectionEndpointLocal struct {
@@ -301,8 +303,14 @@ type ConnectionEndpointRemote struct {
 	Address qnet.NetAddr `json:"address,omitempty"`
 }
 
-func (c *ConnectionEndpointLocal) isConnectionEndpoint()  {}
+func (c *ConnectionEndpointLocal) isConnectionEndpoint() {}
+func (c *ConnectionEndpointLocal) GetAddress() qnet.NetAddr {
+	return c.Address
+}
 func (c *ConnectionEndpointRemote) isConnectionEndpoint() {}
+func (c *ConnectionEndpointRemote) GetAddress() qnet.NetAddr {
+	return c.Address
+}
 
 type Container struct {
 	ID    string `json:"id,omitempty"`

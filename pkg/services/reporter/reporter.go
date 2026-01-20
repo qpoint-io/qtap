@@ -158,6 +158,7 @@ func toEventStoreConnection(conn *connection.Connection) *eventstore.Connection 
 			PID:     conn.OpenEvent.PID,
 		}
 		if proc := conn.Process(); proc != nil {
+			c.PID = proc.Pid
 			localEndpoint.Exe = proc.Exe
 
 			if hostname, _ := proc.Hostname(); hostname != "" {

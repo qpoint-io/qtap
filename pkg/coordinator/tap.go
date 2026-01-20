@@ -176,11 +176,13 @@ func (c *Coordinator) handleConnectionOpened(event *core.ConnectionOpened) error
 			Exe: process.Exe,
 		}
 
-		if container, ok := c.containers.Load(process.Container.ID); ok {
-			ev.Process.Container = &plugins.Container{
-				ID:    container.ID,
-				Name:  container.Name,
-				Image: container.Image,
+		if process.Container != nil {
+			if container, ok := c.containers.Load(process.Container.ID); ok {
+				ev.Process.Container = &plugins.Container{
+					ID:    container.ID,
+					Name:  container.Name,
+					Image: container.Image,
+				}
 			}
 		}
 	}
@@ -201,7 +203,7 @@ func (c *Coordinator) handleConnectionClosed(event *core.ConnectionClosed) error
 func handleEvent[T any](event *broker.Event, fn func(event *T) error) error {
 	ev, ok := event.Data.(*T)
 	if !ok {
-		return fmt.Errorf("invalid event data type: %T, expected %T", event.Data, new(T))
+		return fmt.Errorf("invalid event data type: %T, expected %T", event.Data, new(*T))
 	}
 	return fn(ev)
 }

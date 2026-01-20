@@ -365,7 +365,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 				return
 			}
 
-			ev := core.ProcessStarted{
+			ev := &core.ProcessStarted{
 				PID:         p.Pid,
 				Exe:         p.Exe,
 				ContainerID: p.ContainerID,
@@ -403,7 +403,7 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 
 	if m.broker != nil {
 		go func() {
-			ev := core.ProcessStopped{PID: p.Pid}
+			ev := &core.ProcessStopped{PID: p.Pid}
 			m.broker.Broadcast(ev.Topic(), ev)
 		}()
 	}

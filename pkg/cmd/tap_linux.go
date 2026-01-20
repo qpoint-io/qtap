@@ -507,7 +507,7 @@ func runTapCmd(logger *zap.Logger) {
 	}
 
 	/* example plugin listening to process events */
-	events, err := coordinator.Plugins.Subscribe(ctx, "test", []string{"process.started"})
+	events, err := coordinator.Plugins.Subscribe(ctx, "test", nil)
 	if err != nil {
 		logger.Fatal("failed to subscribe to plugin events", zap.Error(err))
 	}

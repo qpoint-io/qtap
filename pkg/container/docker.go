@@ -141,7 +141,7 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 		reportContainerStarted(cr, "docker")
 		if d.broker != nil {
 			go func() {
-				ev := core.ContainerStarted{ID: cr.ID, Name: cr.Name, Image: cr.Image}
+				ev := &core.ContainerStarted{ID: cr.ID, Name: cr.Name, Image: cr.Image}
 				d.broker.Broadcast(ev.Topic(), ev)
 			}()
 		}
@@ -156,7 +156,7 @@ func (d *docker) handleContainerStop(_ context.Context, containerID string) {
 
 	if d.broker != nil {
 		go func() {
-			ev := core.ContainerStopped{ID: containerID}
+			ev := &core.ContainerStopped{ID: containerID}
 			d.broker.Broadcast(ev.Topic(), ev)
 		}()
 	}

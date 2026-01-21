@@ -2,11 +2,10 @@ package plugins
 
 import (
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/log"
+	"github.com/qpoint-io/qtap/pkg/services"
 	"go.uber.org/zap"
 )
-
-// A collection of plugin instances for a single connection
-type StackInstance []HttpPluginInstance
 
 // StackDeployment manages the lifecycle of a collection of plugins
 // and plugin instances. This is a one off deployment and does not
@@ -16,7 +15,7 @@ type StackDeployment struct {
 	pluginAccessor PluginAccessor
 
 	name              string
-	plugins           []HttpPlugin
+	plugins           []Plugin
 	persistentPlugins []config.Plugin
 }
 
@@ -40,9 +39,9 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 		plugins = append(plugins, d.persistentPlugins...)
 	}
 
-	// initilize the plugins
+	// initialize the plugins
 	for _, cp := range plugins {
-		// create an plugin
+		// create a plugin
 		plugin := d.pluginAccessor.Get(PluginType(cp.Type))
 		if plugin == nil {
 			d.logger.Error("plugin not found", zap.String("type", cp.Type))
@@ -57,16 +56,32 @@ func (d *StackDeployment) Setup(conf *config.Stack) error {
 	return nil
 }
 
-func (d *StackDeployment) NewInstance(connection *Connection) StackInstance {
-	ll := connection.logger
-	instances := make(StackInstance, 0, len(d.plugins))
+// NewStack creates plugin instances for the given connection type
+func (d *StackDeployment) NewStack(connType ConnectionType, ctx PluginContext, svcs *services.ServiceRegistry) []PluginInstance {
+	instances := make([]PluginInstance, 0)
 	for _, p := range d.plugins {
-		i := p.NewInstance(connection.Context(), connection.services)
-		if i == nil {
-			ll.Error("plugin returned nil instance, skipping", zap.Stringer("plugin", p.PluginType()))
-			continue
+		switch connType {
+		case ConnectionType_HTTP, ConnectionType_GRPC:
+			if httpP, ok := p.(HttpPlugin); ok {
+				if i := httpP.NewHttpInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else {
+				d.logger.Log(log.TraceLevel, "plugin does not support HTTP protocol, skipping",
+					zap.Stringer("plugin", p.PluginType()),
+					zap.String("connection_type", string(connType)))
+			}
+		case ConnectionType_REDIS:
+			if redisP, ok := p.(RedisPlugin); ok {
+				if i := redisP.NewRedisInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else {
+				d.logger.Log(log.TraceLevel, "plugin does not support Redis protocol, skipping",
+					zap.Stringer("plugin", p.PluginType()),
+					zap.String("connection_type", string(connType)))
+			}
 		}
-		instances = append(instances, i)
 	}
 	return instances
 }

@@ -62,7 +62,7 @@ var (
 )
 
 var (
-	pluginFactories = []plugins.HttpPlugin{
+	pluginFactories = []plugins.Plugin{
 		wrapper.Catch(&logger.Factory{}),
 		wrapper.Catch(&report.Factory{}),
 		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),

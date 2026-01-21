@@ -31,21 +31,31 @@ const (
 	BodyStatusContinueAndBuffer      BodyStatus = 2
 )
 
-var NewHttpPlugin func(config map[string]any) HttpPlugin
-
-type HttpPlugin interface {
+// Plugin is the base interface all plugins must implement for lifecycle & config
+type Plugin interface {
 	Init(logger *zap.Logger, config yaml.Node)
-	NewInstance(PluginContext, *services.ServiceRegistry) HttpPluginInstance
 	Destroy()
 	PluginType() PluginType
 }
 
+// PluginInstance is the base interface for all protocol-specific plugin instances
+type PluginInstance interface {
+	Destroy()
+}
+
+// HttpPlugin is the capability interface for plugins that handle HTTP traffic
+type HttpPlugin interface {
+	Plugin // Embeds base
+	NewHttpInstance(PluginContext, *services.ServiceRegistry) HttpPluginInstance
+}
+
+// HttpPluginInstance handles HTTP traffic for a single connection
 type HttpPluginInstance interface {
+	PluginInstance
 	RequestHeaders(requestHeaders Headers, endOfStream bool) HeadersStatus
 	RequestBody(frame BodyBuffer, endOfStream bool) BodyStatus
 	ResponseHeaders(responseHeaders Headers, endOfStream bool) HeadersStatus
 	ResponseBody(frame BodyBuffer, endOfStream bool) BodyStatus
-	Destroy()
 }
 
 type PluginContext interface {
@@ -119,5 +129,5 @@ type HeaderValue interface {
 // PluginAccessor is a type that can access the plugin registry
 type PluginAccessor interface {
 	// Get retrieves a plugin by type
-	Get(pluginType PluginType) HttpPlugin
+	Get(pluginType PluginType) Plugin
 }

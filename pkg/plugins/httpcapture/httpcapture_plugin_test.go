@@ -227,7 +227,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 
 		// simulate http tx
 		svcFactoryRegistry.Register(services.StaticFactory(objectstore.TypeObjectStore, mockOS), "")
-		plugin := factory.NewInstance(ctx, conn.ServiceRegistry())
+		plugin := factory.NewHttpInstance(ctx, conn.ServiceRegistry())
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 200 should trigger
@@ -246,7 +246,7 @@ func TestHttpCapturePlugin(t *testing.T) {
 		mockOS.EXPECT().ServiceType().AnyTimes().Return(objectstore.TypeObjectStore)
 		// simulate http tx
 		svcFactoryRegistry.Register(services.StaticFactory(objectstore.TypeObjectStore, mockOS), "")
-		plugin := factory.NewInstance(ctx, conn.ServiceRegistry())
+		plugin := factory.NewHttpInstance(ctx, conn.ServiceRegistry())
 		plugin.RequestHeaders(nil, true)
 		plugin.RequestBody(nil, true)
 		// response status 403 should NOT trigger

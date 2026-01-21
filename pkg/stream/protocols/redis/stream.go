@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
+	"github.com/qpoint-io/qtap/pkg/plugins"
+	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
 
@@ -23,13 +25,32 @@ type Stream struct {
 	// Correlation state
 	pendingCommands *CommandQueue
 
+	// Plugin integration
+	pluginManager *plugins.Manager
+	pluginConn    *plugins.Connection
+	domain        string
+
 	closed bool
 	mu     sync.Mutex
 }
 
+type StreamOpt func(*Stream)
+
+func SetPluginManager(manager *plugins.Manager) StreamOpt {
+	return func(s *Stream) {
+		s.pluginManager = manager
+	}
+}
+
+func SetDomain(domain string) StreamOpt {
+	return func(s *Stream) {
+		s.domain = domain
+	}
+}
+
 // NewStream creates a new Redis stream processor
-func NewStream(ctx context.Context, logger *zap.Logger, conn *connection.Connection) *Stream {
-	return &Stream{
+func NewStream(ctx context.Context, logger *zap.Logger, conn *connection.Connection, opts ...StreamOpt) *Stream {
+	s := &Stream{
 		ctx:             ctx,
 		logger:          logger.With(zap.String("protocol", "redis")),
 		conn:            conn,
@@ -37,6 +58,12 @@ func NewStream(ctx context.Context, logger *zap.Logger, conn *connection.Connect
 		responseParser:  NewParser(),
 		pendingCommands: NewCommandQueue(),
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Process handles incoming data events
@@ -46,6 +73,16 @@ func (s *Stream) Process(event *connection.DataEvent) error {
 
 	if s.closed {
 		return nil
+	}
+
+	// Initialize plugin connection on first call (lazy initialization)
+	if s.pluginManager != nil && s.pluginConn == nil {
+		requestID := xid.New().String()
+		var err error
+		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_REDIS, s.conn, requestID)
+		if err != nil {
+			s.logger.Error("creating plugin connection", zap.Error(err))
+		}
 	}
 
 	source := s.conn.OpenEvent.Source
@@ -79,9 +116,10 @@ func (s *Stream) processRequests() {
 		}
 
 		// Create pending command and enqueue
+		timestamp := time.Now()
 		pending := &PendingCommand{
 			Command:   cmd,
-			Timestamp: time.Now(),
+			Timestamp: timestamp,
 		}
 		s.pendingCommands.Enqueue(pending)
 
@@ -90,6 +128,18 @@ func (s *Stream) processRequests() {
 			zap.String("command", strings.ToUpper(cmd.Name)),
 			zap.Int("argc", len(cmd.Args)),
 			zap.Int("pending_count", s.pendingCommands.Len()))
+
+		// Call plugin
+		if s.pluginConn != nil {
+			pluginCmd := &plugins.RedisCommand{
+				Name:      cmd.Name,
+				Args:      cmd.Args,
+				Timestamp: timestamp,
+			}
+			if err := s.pluginConn.OnRedisCommand(pluginCmd); err != nil {
+				s.logger.Error("plugin redis command", zap.Error(err))
+			}
+		}
 	}
 }
 
@@ -113,6 +163,18 @@ func (s *Stream) processResponses() {
 
 		// Log the correlated request/response pair
 		s.logCorrelatedPair(pending, value)
+
+		// Call plugin
+		if s.pluginConn != nil {
+			pluginResult := &plugins.RedisResult{
+				Type:    value.Type.String(),
+				Value:   s.extractValue(value),
+				IsError: value.Type == TypeError || value.Type == TypeBulkError,
+			}
+			if err := s.pluginConn.OnRedisResult(pluginResult); err != nil {
+				s.logger.Error("plugin redis result", zap.Error(err))
+			}
+		}
 	}
 }
 
@@ -140,7 +202,7 @@ func (s *Stream) logCorrelatedPair(cmd *PendingCommand, response *Value) {
 	if isError {
 		s.logger.Warn("redis request/response", fields...)
 	} else {
-		s.logger.Info("redis request/response", fields...)
+		s.logger.Debug("redis request/response", fields...)
 	}
 }
 
@@ -209,6 +271,43 @@ func (s *Stream) logUncorrelatedResponse(value *Value) {
 	s.logger.Info("redis response (uncorrelated)", fields...)
 }
 
+// extractValue converts a Redis Value to a Go any type for plugin consumption
+func (s *Stream) extractValue(value *Value) any {
+	switch value.Type {
+	case TypeSimpleString, TypeError, TypeBulkError, TypeBulkString, TypeVerbatim, TypeBigNumber:
+		if value.IsNull {
+			return nil
+		}
+		return value.Str
+	case TypeInteger:
+		return value.Int
+	case TypeBoolean:
+		return value.Bool
+	case TypeDouble:
+		return value.Float
+	case TypeNull:
+		return nil
+	case TypeArray, TypeSet, TypePush:
+		if value.IsNull {
+			return nil
+		}
+		result := make([]any, len(value.Array))
+		for i := range value.Array {
+			result[i] = s.extractValue(&value.Array[i])
+		}
+		return result
+	case TypeMap:
+		result := make(map[string]any, len(value.Map))
+		for k := range value.Map {
+			v := value.Map[k]
+			result[k] = s.extractValue(&v)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
 // sanitizeArgs returns args suitable for logging, redacting sensitive values
 func (s *Stream) sanitizeArgs(cmd string, args []string) []string {
 	cmd = strings.ToUpper(cmd)
@@ -247,6 +346,11 @@ func (s *Stream) Close() {
 				zap.String("command", pending.Command.Name),
 				zap.Duration("age", time.Since(pending.Timestamp)))
 		}
+	}
+
+	// Teardown plugin connection
+	if s.pluginConn != nil {
+		s.pluginConn.Teardown()
 	}
 
 	s.logger.Debug("closing redis stream")

@@ -38,14 +38,14 @@ type AccessLogConfig struct {
 	Rules  []logRule    `json:"rules" yaml:"rules"`
 }
 
-func NewConsoleJSONFilter() plugins.HttpPlugin {
+func NewConsoleJSONFilter() *factory {
 	return &factory{
 		pluginType: pluginTypeAccessLogs,
 		format:     outputFormatJSON,
 	}
 }
 
-func NewConsoleHttpFilter() plugins.HttpPlugin {
+func NewConsoleHttpFilter() *factory {
 	return &factory{
 		pluginType: pluginTypeDebug,
 		format:     outputFormatConsole,
@@ -98,8 +98,8 @@ func (f *factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.config = &cfg
 }
 
-func (f *factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
-	f.logger.Debug("new plugin instance created")
+func (f *factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+	f.logger.Debug("new HTTP plugin instance created")
 	i := &filterInstance{
 		ctx: ctx,
 
@@ -121,6 +121,16 @@ func (f *factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceR
 	}
 
 	return i
+}
+
+func (f *factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
+	return &redisFilterInstance{
+		ctx:    ctx,
+		logger: f.logger,
+		writer: f.writer,
+		mode:   f.config.Mode,
+		format: f.config.Format,
+	}
 }
 
 func (f *factory) Destroy() {

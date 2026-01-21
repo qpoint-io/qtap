@@ -3,16 +3,22 @@ import { storeToRefs } from 'pinia'
 import { useHttpStore, type HttpTransaction } from '@/stores/http'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
+import { usePersistedFilters } from '@/composables/persistedFilters'
 
 // Re-export SizeUnit for components that import from this file
 export type { SizeUnit } from '@/composables/bufferSettings'
 
+const FILTER_STORAGE_KEY = 'devtools_http_filters'
+
 export function useRequests() {
   // get the store
   const store = useHttpStore()
-  
+
   // get reactive pause state and filters from store
   const { paused, filters } = storeToRefs(store)
+
+  // Filter persistence - restore from localStorage and watch for changes
+  usePersistedFilters(FILTER_STORAGE_KEY, filters)
 
   // watch URL params to sync selected item with buffer GC protection
   const params = useUrlParams()
@@ -33,69 +39,70 @@ export function useRequests() {
   )
 
   const filtered = computed(() => {
+    console.log('filters', filters.value)
     let result = store.requestsBuffer
     
     // Apply each filter
-    filters.value.forEach(filter => {
-      result = result.filter(transaction => {
-        // Get the value to filter against based on the key
-        let fieldValue: string | undefined
+    // filters.value.forEach(filter => {
+    //   result = result.filter(transaction => {
+    //     // Get the value to filter against based on the key
+    //     let fieldValue: string | undefined
         
-        switch (filter.key) {
-          case 'method':
-            fieldValue = transaction.request.method
-            break
-          case 'status':
-            fieldValue = transaction.response.status?.toString()
-            break
-          case 'endpoint':
-            fieldValue = getEndpointFromUrl(transaction.request.url)
-            if (fieldValue === '-') fieldValue = undefined
-            break
-          case 'path':
-            fieldValue = getPathFromUrl(transaction.request.url)
-            if (fieldValue === '-') fieldValue = undefined
-            break
-          case 'direction':
-            fieldValue = transaction.direction
-            break
-          case 'process':
-            fieldValue = transaction.metadata.process_exe
-            break
-          case 'type':
-            fieldValue = transaction.response.content_type
-            break
-        }
+    //     switch (filter.key) {
+    //       case 'method':
+    //         fieldValue = transaction.request.method
+    //         break
+    //       case 'status':
+    //         fieldValue = transaction.response.status?.toString()
+    //         break
+    //       case 'endpoint':
+    //         fieldValue = getEndpointFromUrl(transaction.request.url)
+    //         if (fieldValue === '-') fieldValue = undefined
+    //         break
+    //       case 'path':
+    //         fieldValue = getPathFromUrl(transaction.request.url)
+    //         if (fieldValue === '-') fieldValue = undefined
+    //         break
+    //       case 'direction':
+    //         fieldValue = transaction.direction
+    //         break
+    //       case 'process':
+    //         fieldValue = transaction.metadata.process_exe
+    //         break
+    //       case 'type':
+    //         fieldValue = transaction.response.content_type
+    //         break
+    //     }
         
-        // If field value doesn't exist, filter it out
-        if (!fieldValue) return false
+    //     // If field value doesn't exist, filter it out
+    //     if (!fieldValue) return false
         
-        // Apply the operator
-        const filterValue = filter.value.toLowerCase()
-        const compareValue = fieldValue.toLowerCase()
+    //     // Apply the operator
+    //     const filterValue = filter.value.toLowerCase()
+    //     const compareValue = fieldValue.toLowerCase()
         
-        switch (filter.operator) {
-          case 'is':
-            return compareValue === filterValue
-          case 'is not':
-            return compareValue !== filterValue
-          case 'contains':
-            return compareValue.includes(filterValue)
-          case 'does not contain':
-            return !compareValue.includes(filterValue)
-          case 'starts with':
-            return compareValue.startsWith(filterValue)
-          case 'does not start with':
-            return !compareValue.startsWith(filterValue)
-          case 'ends with':
-            return compareValue.endsWith(filterValue)
-          case 'does not end with':
-            return !compareValue.endsWith(filterValue)
-          default:
-            return true
-        }
-      })
-    })
+    //     switch (filter.operator) {
+    //       case 'is':
+    //         return compareValue === filterValue
+    //       case 'is not':
+    //         return compareValue !== filterValue
+    //       case 'contains':
+    //         return compareValue.includes(filterValue)
+    //       case 'does not contain':
+    //         return !compareValue.includes(filterValue)
+    //       case 'starts with':
+    //         return compareValue.startsWith(filterValue)
+    //       case 'does not start with':
+    //         return !compareValue.startsWith(filterValue)
+    //       case 'ends with':
+    //         return compareValue.endsWith(filterValue)
+    //       case 'does not end with':
+    //         return !compareValue.endsWith(filterValue)
+    //       default:
+    //         return true
+    //     }
+    //   })
+    // })
     
     return result
   })

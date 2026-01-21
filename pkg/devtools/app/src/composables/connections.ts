@@ -3,14 +3,19 @@ import { storeToRefs } from 'pinia'
 import { useConnectionsStore } from '@/stores/connections'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
-import type { Filter } from '@/stores/filter'
+import { usePersistedFilters } from '@/composables/persistedFilters'
+
+const FILTER_STORAGE_KEY = 'devtools_connections_filters'
 
 export function useConnections() {
   // get the store
   const store = useConnectionsStore()
-  
+
   // get reactive pause state and filters from store
   const { paused, filters } = storeToRefs(store)
+
+  // Filter persistence - restore from localStorage and watch for changes
+  usePersistedFilters(FILTER_STORAGE_KEY, filters)
 
   // watch URL params to sync selected item with buffer GC protection
   const params = useUrlParams()

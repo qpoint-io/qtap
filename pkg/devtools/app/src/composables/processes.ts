@@ -4,7 +4,9 @@ import { useProcessesStore } from '@/stores/processes'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
 import { useProcessSettings } from '@/composables/processSettings'
-import type { Filter } from '@/stores/filter'
+import { usePersistedFilters } from '@/composables/persistedFilters'
+
+const FILTER_STORAGE_KEY = 'devtools_processes_filters'
 
 export function useProcesses() {
   // get the store
@@ -12,6 +14,9 @@ export function useProcesses() {
 
   // get reactive pause state and filters from store
   const { paused, filters } = storeToRefs(store)
+
+  // Filter persistence - restore from localStorage and watch for changes
+  usePersistedFilters(FILTER_STORAGE_KEY, filters)
 
   // get process-specific settings
   const { showOnlyWithConnections } = useProcessSettings()

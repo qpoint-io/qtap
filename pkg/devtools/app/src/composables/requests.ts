@@ -3,16 +3,22 @@ import { storeToRefs } from 'pinia'
 import { useHttpStore, type HttpTransaction } from '@/stores/http'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
+import { usePersistedFilters } from '@/composables/persistedFilters'
 
 // Re-export SizeUnit for components that import from this file
 export type { SizeUnit } from '@/composables/bufferSettings'
 
+const FILTER_STORAGE_KEY = 'devtools_http_filters'
+
 export function useRequests() {
   // get the store
   const store = useHttpStore()
-  
+
   // get reactive pause state and filters from store
   const { paused, filters } = storeToRefs(store)
+
+  // Filter persistence - restore from localStorage and watch for changes
+  usePersistedFilters(FILTER_STORAGE_KEY, filters)
 
   // watch URL params to sync selected item with buffer GC protection
   const params = useUrlParams()

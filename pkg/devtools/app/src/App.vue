@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen flex flex-col bg-dt-bg-secondary font-sans text-dt-text-primary">
+  <div class="h-screen flex flex-col bg-dt-bg-secondary font-sans text-dt-text-primary relative">
     <!-- Tab Bar -->
     <div class="flex items-end justify-between bg-dt-bg-secondary border-b border-dt-border-dark">
       <div class="flex items-end">
@@ -35,18 +35,33 @@
         </div>
       </div>
 
-      <!-- Theme Toggle -->
-      <div class="px-2">
+      <!-- Settings -->
+      <div class="flex items-center gap-1 px-2">
         <ThemeToggle />
+        <div class="relative">
+          <button
+            @click="selectTab('settings')"
+            class="p-1 rounded hover:bg-dt-bg-hover dark:hover:bg-dt-bg-dark-hover text-dt-text-secondary dark:text-dt-text-dark-secondary cursor-pointer"
+            :class="{ 'bg-dt-bg-hover dark:bg-dt-bg-dark-hover': activeTab === 'settings' }"
+          >
+            <AdjustmentsIcon class="w-4 h-4" />
+          </button>
+          <!-- Active tab indicator -->
+          <div
+            v-if="activeTab === 'settings'"
+            class="absolute bottom-0 left-0 right-0 h-0.5 bg-dt-accent"
+          ></div>
+        </div>
       </div>
     </div>
 
     <!-- Panel Content -->
-    <div class="flex-1 overflow-hidden bg-dt-bg-primary">
+    <div class="flex-1 overflow-hidden bg-dt-bg-primary dark:bg-dt-bg-dark-primary">
       <Requests v-if="activeTab === 'requests'" />
       <Connections v-else-if="activeTab === 'connections'" />
       <Processes v-else-if="activeTab === 'processes'" />
       <Welcome v-else-if="activeTab === 'welcome'" :connectionStatus="status" @selectTab="selectTab" />
+      <Settings v-else-if="activeTab === 'settings'" />
     </div>
   </div>
 </template>
@@ -63,7 +78,9 @@ import Requests from '@/components/pages/Requests.vue'
 import Connections from '@/components/pages/Connections.vue'
 import Processes from '@/components/pages/Processes.vue'
 import Welcome from '@/components/pages/Welcome.vue'
+import Settings from '@/components/pages/Settings.vue'
 import ThemeToggle from '@/components/ux/ThemeToggle.vue'
+import AdjustmentsIcon from '@/components/icons/AdjustmentsIcon.vue'
 import logoSmallBlack from '@/assets/logo-small-black.svg'
 import logoSmallWhite from '@/assets/logo-small-white.svg'
 

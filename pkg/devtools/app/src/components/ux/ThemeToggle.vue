@@ -1,7 +1,7 @@
 <template>
   <button
     @click="() => toggleTheme()"
-    class="p-1.5 rounded hover:bg-dt-bg-hover text-dt-text-secondary transition-colors duration-200"
+    class="p-1.5 rounded hover:bg-dt-bg-hover text-dt-text-secondary transition-colors duration-200 cursor-pointer"
     :title="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
     :aria-label="isDark ? 'Switch to light mode' : 'Switch to dark mode'"
   >

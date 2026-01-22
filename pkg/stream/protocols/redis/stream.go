@@ -27,7 +27,6 @@ type Stream struct {
 
 	// Plugin integration
 	pluginManager *plugins.Manager
-	pluginConn    *plugins.Connection
 	domain        string
 
 	closed bool
@@ -50,6 +49,7 @@ func SetDomain(domain string) StreamOpt {
 
 // NewStream creates a new Redis stream processor
 func NewStream(ctx context.Context, logger *zap.Logger, conn *connection.Connection, opts ...StreamOpt) *Stream {
+	logger.Warn("🆕 new redis stream", zap.String("connection", conn.ID()), zap.String("direction", conn.Direction()))
 	s := &Stream{
 		ctx:             ctx,
 		logger:          logger.With(zap.String("protocol", "redis")),
@@ -73,16 +73,6 @@ func (s *Stream) Process(event *connection.DataEvent) error {
 
 	if s.closed {
 		return nil
-	}
-
-	// Initialize plugin connection on first call (lazy initialization)
-	if s.pluginManager != nil && s.pluginConn == nil {
-		requestID := xid.New().String()
-		var err error
-		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_REDIS, s.conn, requestID)
-		if err != nil {
-			s.logger.Error("creating plugin connection", zap.Error(err))
-		}
 	}
 
 	source := s.conn.OpenEvent.Source
@@ -121,6 +111,26 @@ func (s *Stream) processRequests() {
 			Command:   cmd,
 			Timestamp: timestamp,
 		}
+
+		// Create a new plugin connection for this command
+		if s.pluginManager != nil {
+			requestID := xid.New().String()
+			pluginConn, err := s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_REDIS, s.conn, requestID)
+			if err != nil {
+				s.logger.Error("creating plugin connection", zap.Error(err))
+			} else {
+				pending.PluginConn = pluginConn
+				pluginCmd := &plugins.RedisCommand{
+					Name:      cmd.Name,
+					Args:      cmd.Args,
+					Timestamp: timestamp,
+				}
+				if err := pluginConn.OnRedisCommand(pluginCmd); err != nil {
+					s.logger.Error("plugin redis command", zap.Error(err))
+				}
+			}
+		}
+
 		s.pendingCommands.Enqueue(pending)
 
 		// Debug log for command queuing
@@ -128,18 +138,6 @@ func (s *Stream) processRequests() {
 			zap.String("command", strings.ToUpper(cmd.Name)),
 			zap.Int("argc", len(cmd.Args)),
 			zap.Int("pending_count", s.pendingCommands.Len()))
-
-		// Call plugin
-		if s.pluginConn != nil {
-			pluginCmd := &plugins.RedisCommand{
-				Name:      cmd.Name,
-				Args:      cmd.Args,
-				Timestamp: timestamp,
-			}
-			if err := s.pluginConn.OnRedisCommand(pluginCmd); err != nil {
-				s.logger.Error("plugin redis command", zap.Error(err))
-			}
-		}
 	}
 }
 
@@ -164,16 +162,17 @@ func (s *Stream) processResponses() {
 		// Log the correlated request/response pair
 		s.logCorrelatedPair(pending, value)
 
-		// Call plugin
-		if s.pluginConn != nil {
+		// Call plugin and teardown the connection for this command
+		if pending.PluginConn != nil {
 			pluginResult := &plugins.RedisResult{
 				Type:    value.Type.String(),
 				Value:   s.extractValue(value),
 				IsError: value.Type == TypeError || value.Type == TypeBulkError,
 			}
-			if err := s.pluginConn.OnRedisResult(pluginResult); err != nil {
+			if err := pending.PluginConn.OnRedisResult(pluginResult); err != nil {
 				s.logger.Error("plugin redis result", zap.Error(err))
 			}
+			pending.PluginConn.Teardown()
 		}
 	}
 }
@@ -340,17 +339,15 @@ func (s *Stream) Close() {
 		s.logger.Warn("redis stream closed with pending commands",
 			zap.Int("pending_count", len(remaining)))
 
-		// Log each pending command for debugging
+		// Log each pending command and teardown its plugin connection
 		for _, pending := range remaining {
 			s.logger.Debug("redis command without response",
 				zap.String("command", pending.Command.Name),
 				zap.Duration("age", time.Since(pending.Timestamp)))
+			if pending.PluginConn != nil {
+				pending.PluginConn.Teardown()
+			}
 		}
-	}
-
-	// Teardown plugin connection
-	if s.pluginConn != nil {
-		s.pluginConn.Teardown()
 	}
 
 	s.logger.Debug("closing redis stream")

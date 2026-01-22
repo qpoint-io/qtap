@@ -1,11 +1,16 @@
 package redis
 
-import "time"
+import (
+	"time"
+
+	"github.com/qpoint-io/qtap/pkg/plugins"
+)
 
 // PendingCommand represents a command awaiting its response
 type PendingCommand struct {
-	Command   *Command
-	Timestamp time.Time
+	Command    *Command
+	Timestamp  time.Time
+	PluginConn *plugins.Connection // Plugin connection for this specific command
 }
 
 // CommandQueue is a simple FIFO queue for pending commands

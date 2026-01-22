@@ -45,10 +45,10 @@ type Manager struct {
 	configSnapshot string
 
 	// domain -> stack mapping
-	domainStacks *synq.Map[stackKey, config.TapHttpConfig]
+	domainStacks *synq.Map[stackKey, config.TapProtocolConfig]
 
 	// default stack
-	defaultStackConfig config.TapHttpConfig
+	defaultStackConfig config.TapProtocolConfig
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -85,7 +85,7 @@ func NewPluginManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 		logger:       logger,
 		bufferSize:   defaultBufferSize,
 		stacks:       synq.NewMap[string, *Stack](),
-		domainStacks: synq.NewMap[stackKey, config.TapHttpConfig](),
+		domainStacks: synq.NewMap[stackKey, config.TapProtocolConfig](),
 	}
 
 	// set options

@@ -760,12 +760,15 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	if (conn_info->conn_pid_id.function == C_CLIENT && conn_info->protocol == P_DNS)
 		stream = true;
 
+	// fetch the stream protocols bitmask once
+	__u32 stream_protocols = get_stream_protocols_setting();
+
 	// check if this is HTTP and we're configured to stream
-	if ((conn_info->protocol == P_HTTP1 || conn_info->protocol == P_HTTP2) && get_stream_http_setting())
+	if ((conn_info->protocol == P_HTTP1 || conn_info->protocol == P_HTTP2) && SHOULD_STREAM_HTTP(stream_protocols))
 		stream = true;
 
-	// Redis: always stream (interim - configurable stack integration later)
-	if (conn_info->protocol == P_REDIS)
+	// check if this is Redis and we're configured to stream
+	if (conn_info->protocol == P_REDIS && SHOULD_STREAM_REDIS(stream_protocols))
 		stream = true;
 
 	// return if we're not streaming, set to ignore and return

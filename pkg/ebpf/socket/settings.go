@@ -14,7 +14,13 @@ type socketSetting uint32
 const (
 	sockSettingIgnoreLoopback socketSetting = iota
 	sockSettingDirection
-	sockSettingStreamHttp
+	sockSettingStreamProtocols
+)
+
+// protocol stream flags (maps to STREAM_*_FLAG in settings.bpf.h)
+const (
+	streamProtocolHTTP  uint32 = 1 << 0
+	streamProtocolRedis uint32 = 1 << 1
 )
 
 // possible traffic directions (maps to DIRECTION enum)
@@ -30,9 +36,9 @@ const (
 
 // socket setting value (maps to SocketSettingValue union)
 type socketSettingValue struct {
-	IgnoreLoopback bool
-	Direction      trafficDirection
-	StreamHttp     bool
+	IgnoreLoopback  bool
+	Direction       trafficDirection
+	StreamProtocols uint32
 }
 
 type SettingsManager struct {
@@ -77,24 +83,46 @@ func (m *SettingsManager) updateConfig() {
 		m.logger.Error("persisting socket setting 'direction'", zap.Error(err))
 	}
 
-	// if any stacks are set in the config
-	// we will stream http
-	streamHttp := m.config.Tap.HasAnyStack()
-
-	// update stream http
-	if err := m.updateSocketSettingStreamHttp(streamHttp); err != nil {
-		m.logger.Error("persisting socket setting 'stream_http'", zap.Error(err))
+	// update stream protocols
+	if err := m.updateSocketSettingStreamProtocols(); err != nil {
+		m.logger.Error("persisting socket setting 'stream_protocols'", zap.Error(err))
 	}
 }
 
-func (m *SettingsManager) updateSocketSettingStreamHttp(streamHttp bool) error {
+func (m *SettingsManager) updateSocketSettingStreamProtocols() error {
+	var protocols uint32
+
+	// check top-level and endpoint-level HTTP configs
+	if m.config.Tap.Http.HasStack() {
+		protocols |= streamProtocolHTTP
+	} else {
+		for _, e := range m.config.Tap.Endpoints {
+			if e.Http.HasStack() {
+				protocols |= streamProtocolHTTP
+				break
+			}
+		}
+	}
+
+	// check top-level and endpoint-level Redis configs
+	if m.config.Tap.Redis.HasStack() {
+		protocols |= streamProtocolRedis
+	} else {
+		for _, e := range m.config.Tap.Endpoints {
+			if e.Redis.HasStack() {
+				protocols |= streamProtocolRedis
+				break
+			}
+		}
+	}
+
 	// create the value
 	value := &socketSettingValue{
-		StreamHttp: streamHttp,
+		StreamProtocols: protocols,
 	}
 
 	// set
-	return m.updateSocketSetting(sockSettingStreamHttp, value)
+	return m.updateSocketSetting(sockSettingStreamProtocols, value)
 }
 
 func (m *SettingsManager) updateSocketSettingIgnoreLoopback(ignore bool) error {
@@ -143,12 +171,8 @@ func (m *SettingsManager) updateSocketSetting(key socketSetting, value *socketSe
 		}
 	case sockSettingDirection:
 		rawValue = uint32(value.Direction)
-	case sockSettingStreamHttp:
-		if value.StreamHttp {
-			rawValue = 1
-		} else {
-			rawValue = 0
-		}
+	case sockSettingStreamProtocols:
+		rawValue = value.StreamProtocols
 	default:
 		return fmt.Errorf("unknown socket setting: %d", key)
 	}

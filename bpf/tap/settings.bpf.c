@@ -48,26 +48,22 @@ static __always_inline enum DIRECTION get_direction_setting() {
 	return (enum DIRECTION) * setting_value;
 }
 
-// extract the stream http setting
-static __always_inline bool get_stream_http_setting() {
+// extract the stream protocols setting (bitmask)
+static __always_inline __u32 get_stream_protocols_setting() {
 	// define the settings key
-	enum SOCKET_SETTINGS key = SOCK_SETTING_STREAM_HTTP;
+	enum SOCKET_SETTINGS key = SOCK_SETTING_STREAM_PROTOCOLS;
 
 	// init setting value
-	__u32 *stream_http;
+	__u32 *stream_protocols;
 
 	// try to fetch the entry
-	stream_http = bpf_map_lookup_elem(&socket_settings_map, &key);
+	stream_protocols = bpf_map_lookup_elem(&socket_settings_map, &key);
 
-	// if it's empty, return the default
-	if (stream_http == NULL) {
-		// bpf_printk("socket: get_ignore_loopback_setting = NULL");
-		return false;
+	// if it's empty, return the default (no protocols streamed)
+	if (stream_protocols == NULL) {
+		return 0;
 	}
 
-	// debug
-	// bpf_printk("socket: get_ignore_loopback_setting = %d", *stream_http);
-
-	// return the value
-	return (bool)*stream_http != 0;
+	// return the bitmask value
+	return *stream_protocols;
 }

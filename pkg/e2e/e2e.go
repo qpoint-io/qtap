@@ -122,7 +122,7 @@ func DefaultTestConfig(mut func(*config.Config)) *config.Config {
 			Direction:       config.TrafficDirection_EGRESS,
 			IgnoreLoopback:  true,
 			AuditIncludeDNS: false,
-			Http: config.TapHttpConfig{
+			Http: config.TapProtocolConfig{
 				Stack: "e2e",
 			},
 		},

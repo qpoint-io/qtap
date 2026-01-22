@@ -13,10 +13,6 @@ import (
 )
 
 func main() {
-
-	// sleep for 5 seconds
-	time.Sleep(5000 * time.Millisecond)
-
 	host := getEnv("REDIS_HOST", "localhost")
 	port := getEnv("REDIS_PORT", "6379")
 	tlsEnabled := getEnv("REDIS_TLS_ENABLED", "false") == "true"
@@ -38,13 +34,14 @@ func main() {
 		fmt.Println("[Go] TLS enabled")
 	}
 
-	client := redis.NewClient(opts)
 	ctx := context.Background()
 
 	iteration := 0
 	for {
 		iteration++
 		fmt.Printf("[Go] Iteration %d\n", iteration)
+
+		client := redis.NewClient(opts)
 
 		// Basic operations
 		key := fmt.Sprintf("go:key:%d", iteration)
@@ -61,6 +58,8 @@ func main() {
 
 		// Pub/sub (publish only)
 		client.Publish(ctx, "go:channel", fmt.Sprintf("message-%d", iteration))
+
+		client.Close()
 
 		if maxIterations > 0 && iteration >= maxIterations {
 			break

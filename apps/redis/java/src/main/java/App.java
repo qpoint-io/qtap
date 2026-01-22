@@ -12,8 +12,6 @@ import java.security.cert.X509Certificate;
 
 public class App {
     public static void main(String[] args) throws Exception {
-        Thread.sleep(5000);
-
         String host = System.getenv().getOrDefault("REDIS_HOST", "localhost");
         int port = Integer.parseInt(System.getenv().getOrDefault("REDIS_PORT", "6379"));
         boolean tlsEnabled = "true".equals(System.getenv().getOrDefault("REDIS_TLS_ENABLED", "false"));
@@ -21,27 +19,30 @@ public class App {
         int maxIterations = Integer.parseInt(System.getenv().getOrDefault("MAX_ITERATIONS", "0"));
         double sleepDuration = Double.parseDouble(System.getenv().getOrDefault("SLEEP_DURATION", "1"));
 
-        Jedis jedis;
-
+        SSLSocketFactory sslSocketFactory = null;
         if (tlsEnabled) {
             System.out.println("[Java] TLS enabled");
-            SSLSocketFactory sslSocketFactory = createSSLSocketFactory(caCertPath);
-            DefaultJedisClientConfig config = DefaultJedisClientConfig.builder()
-                .ssl(true)
-                .sslSocketFactory(sslSocketFactory)
-                .build();
-            jedis = new Jedis(new HostAndPort(host, port), config);
-        } else {
-            jedis = new Jedis(host, port);
+            sslSocketFactory = createSSLSocketFactory(caCertPath);
         }
 
-        try {
-            int iteration = 0;
+        int iteration = 0;
 
-            while (true) {
-                iteration++;
-                System.out.printf("[Java] Iteration %d%n", iteration);
+        while (true) {
+            iteration++;
+            System.out.printf("[Java] Iteration %d%n", iteration);
 
+            Jedis jedis;
+            if (tlsEnabled) {
+                DefaultJedisClientConfig config = DefaultJedisClientConfig.builder()
+                    .ssl(true)
+                    .sslSocketFactory(sslSocketFactory)
+                    .build();
+                jedis = new Jedis(new HostAndPort(host, port), config);
+            } else {
+                jedis = new Jedis(host, port);
+            }
+
+            try {
                 // Basic operations
                 String key = "java:key:" + iteration;
                 jedis.set(key, "value-" + iteration);
@@ -57,17 +58,17 @@ public class App {
 
                 // Pub/sub (publish only)
                 jedis.publish("java:channel", "message-" + iteration);
-
-                if (maxIterations > 0 && iteration >= maxIterations) {
-                    break;
-                }
-                Thread.sleep((long) (sleepDuration * 1000));
+            } finally {
+                jedis.close();
             }
 
-            System.out.printf("[Java] Completed %d iterations%n", iteration);
-        } finally {
-            jedis.close();
+            if (maxIterations > 0 && iteration >= maxIterations) {
+                break;
+            }
+            Thread.sleep((long) (sleepDuration * 1000));
         }
+
+        System.out.printf("[Java] Completed %d iterations%n", iteration);
     }
 
     private static SSLSocketFactory createSSLSocketFactory(String caCertPath) throws Exception {

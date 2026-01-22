@@ -21,14 +21,11 @@ if (tlsEnabled) {
 async function run() {
     let iteration = 0;
 
-    // sleep for 5 seconds
-    await new Promise(resolve => setTimeout(resolve, 5000));
-
-    const redis = new Redis(redisOptions);
-
     while (true) {
         iteration++;
         console.log(`[Node] Iteration ${iteration}`);
+
+        const redis = new Redis(redisOptions);
 
         // Basic operations
         const key = `node:key:${iteration}`;
@@ -46,6 +43,8 @@ async function run() {
         // Pub/sub (publish only)
         await redis.publish('node:channel', `message-${iteration}`);
 
+        await redis.quit();
+
         if (maxIterations > 0 && iteration >= maxIterations) {
             break;
         }
@@ -53,7 +52,6 @@ async function run() {
     }
 
     console.log(`[Node] Completed ${iteration} iterations`);
-    await redis.quit();
 }
 
 run().catch(console.error);

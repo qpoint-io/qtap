@@ -1,8 +1,5 @@
 require 'redis'
 
-# sleep for 5 seconds
-sleep(5)
-
 $stdout.sync = true
 
 host = ENV.fetch('REDIS_HOST', 'localhost')
@@ -22,12 +19,13 @@ if tls_enabled
   end
 end
 
-redis = Redis.new(**redis_options)
 iteration = 0
 
 loop do
   iteration += 1
   puts "[Ruby] Iteration #{iteration}"
+
+  redis = Redis.new(**redis_options)
 
   # Basic operations
   redis.set("ruby:key:#{iteration}", "value-#{iteration}")
@@ -43,6 +41,8 @@ loop do
 
   # Pub/sub (publish only)
   redis.publish("ruby:channel", "message-#{iteration}")
+
+  redis.close
 
   break if max_iterations > 0 && iteration >= max_iterations
   sleep(sleep_duration)

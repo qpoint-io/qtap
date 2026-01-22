@@ -64,7 +64,17 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 
 	// parse redis streams
 	if conn.Protocol == connection.Protocol_REDIS {
-		return redisStream.NewStream(conn.Context(), logger, conn)
+		domain := conn.Domain()
+
+		// if the domain does not have a stack and no default stack is set, skip it
+		if _, exists := m.pluginManager.GetDomainStack(domain, "redis"); !exists {
+			return nil
+		}
+
+		return redisStream.NewStream(conn.Context(), logger, conn,
+			redisStream.SetDomain(domain),
+			redisStream.SetPluginManager(m.pluginManager),
+		)
 	}
 
 	// parse http streams

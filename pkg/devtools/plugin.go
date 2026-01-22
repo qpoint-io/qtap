@@ -45,11 +45,11 @@ func (f *PluginFactory) Init(logger *zap.Logger, config yaml.Node) {
 	)
 }
 
-func (f *PluginFactory) NewInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+func (f *PluginFactory) NewHttpInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	f.logger.Debug("new plugin instance created")
 
 	// TODO: should we return a no-op plugin instance if there are no connected devtools clients?
-	return f.httpCapture.NewInstance(conn, svcs)
+	return f.httpCapture.NewHttpInstance(conn, svcs)
 }
 
 func (f *PluginFactory) Destroy() {}

@@ -25,7 +25,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.logger = logger
 }
 
-func (f *Factory) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+func (f *Factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	f.logger.Debug("new plugin instance created")
 	fi := &filterInstance{
 		logger: f.logger,

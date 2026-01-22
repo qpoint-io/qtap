@@ -105,7 +105,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 		zap.Int("rules", len(cfg.Rules)))
 }
 
-func (f *Factory) NewInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+func (f *Factory) NewHttpInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	ctx, _ := tracer.Start(conn.Context(), "Plugin[http_capture]")
 	// this span is destroyed by the instance.Destroy() method
 

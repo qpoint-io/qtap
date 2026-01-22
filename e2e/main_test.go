@@ -40,7 +40,7 @@ var (
 	logger           *zap.Logger
 	e2ectx           *e2e.Context
 	serviceFactories []services.FactoryFn
-	pluginFactories  []plugins.HttpPlugin
+	pluginFactories  []plugins.Plugin
 	devtoolsManager  *devtools.Manager
 )
 
@@ -156,7 +156,7 @@ func mainSetup() error {
 		func() services.Factory { return devtoolsObjectStoreFactory },
 	}
 
-	pluginFactories = []plugins.HttpPlugin{
+	pluginFactories = []plugins.Plugin{
 		wrapper.Catch(&loggerPlugin.Factory{}),
 		wrapper.Catch(&report.Factory{}),
 		wrapper.Catch(accesslogs.NewConsoleJSONFilter()),

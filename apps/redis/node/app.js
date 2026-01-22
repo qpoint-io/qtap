@@ -18,10 +18,13 @@ if (tlsEnabled) {
     }
 }
 
-const redis = new Redis(redisOptions);
-
 async function run() {
     let iteration = 0;
+
+    // sleep for 5 seconds
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    const redis = new Redis(redisOptions);
 
     while (true) {
         iteration++;

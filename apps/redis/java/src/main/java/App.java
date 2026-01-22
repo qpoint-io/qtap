@@ -12,6 +12,8 @@ import java.security.cert.X509Certificate;
 
 public class App {
     public static void main(String[] args) throws Exception {
+        Thread.sleep(5000);
+
         String host = System.getenv().getOrDefault("REDIS_HOST", "localhost");
         int port = Integer.parseInt(System.getenv().getOrDefault("REDIS_PORT", "6379"));
         boolean tlsEnabled = "true".equals(System.getenv().getOrDefault("REDIS_TLS_ENABLED", "false"));

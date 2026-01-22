@@ -1,5 +1,8 @@
 require 'redis'
 
+# sleep for 5 seconds
+sleep(5)
+
 $stdout.sync = true
 
 host = ENV.fetch('REDIS_HOST', 'localhost')

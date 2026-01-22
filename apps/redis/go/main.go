@@ -13,6 +13,10 @@ import (
 )
 
 func main() {
+
+	// sleep for 5 seconds
+	time.Sleep(5000 * time.Millisecond)
+
 	host := getEnv("REDIS_HOST", "localhost")
 	port := getEnv("REDIS_PORT", "6379")
 	tlsEnabled := getEnv("REDIS_TLS_ENABLED", "false") == "true"

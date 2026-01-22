@@ -128,6 +128,7 @@ func (s *Stream) processRequests() {
 				if err := pluginConn.OnRedisCommand(pluginCmd); err != nil {
 					s.logger.Error("plugin redis command", zap.Error(err))
 				}
+				pluginConn.Meta().SetReadBytes(int64(value.Size()))
 			}
 		}
 
@@ -172,6 +173,7 @@ func (s *Stream) processResponses() {
 			if err := pending.PluginConn.OnRedisResult(pluginResult); err != nil {
 				s.logger.Error("plugin redis result", zap.Error(err))
 			}
+			pending.PluginConn.Meta().SetWriteBytes(int64(value.Size()))
 			pending.PluginConn.Teardown()
 		}
 	}

@@ -56,6 +56,8 @@ func (p *Parser) Parse() (*Value, error) {
 		return nil, err
 	}
 
+	value.size = consumed
+
 	// Remove consumed bytes from buffer
 	p.buffer = p.buffer[consumed:]
 	return value, nil

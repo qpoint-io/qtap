@@ -67,6 +67,12 @@ type Value struct {
 	Array  []Value          // For arrays, sets, pushes
 	Map    map[string]Value // For maps
 	IsNull bool             // For null values
+
+	size int // number of bytes consumed to parse the value
+}
+
+func (v *Value) Size() int {
+	return v.size
 }
 
 // Command represents a parsed Redis command

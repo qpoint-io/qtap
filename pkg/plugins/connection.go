@@ -239,7 +239,11 @@ func (c *Connection) OnHttpRequestHeaders(endOfStream bool) error {
 
 	return c.enqueue("request_headers", func() error {
 		for _, i := range c.stack {
-			httpI := i.(HttpPluginInstance)
+			httpI, ok := i.(HttpPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement HttpPluginInstance - this indicates a bug")
+				continue
+			}
 			status := httpI.RequestHeaders(c.reqHeaderMap, endOfStream)
 
 			switch status {
@@ -264,7 +268,11 @@ func (c *Connection) OnHttpResponseHeaders(endOfStream bool) error {
 
 	return c.enqueue("response_headers", func() error {
 		for _, i := range c.stack {
-			httpI := i.(HttpPluginInstance)
+			httpI, ok := i.(HttpPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement HttpPluginInstance - this indicates a bug")
+				continue
+			}
 			status := httpI.ResponseHeaders(c.resHeaderMap, endOfStream)
 
 			switch status {
@@ -296,7 +304,11 @@ func (c *Connection) OnHttpRequestBody(frame []byte, endOfStream bool) error {
 
 		shouldClearBuffer := !endOfStream
 		for _, i := range c.stack {
-			httpI := i.(HttpPluginInstance)
+			httpI, ok := i.(HttpPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement HttpPluginInstance - this indicates a bug")
+				continue
+			}
 			status := httpI.RequestBody(c.reqBody, endOfStream)
 
 			switch status {
@@ -334,7 +346,11 @@ func (c *Connection) OnHttpResponseBody(frame []byte, endOfStream bool) error {
 
 		shouldClearBuffer := !endOfStream
 		for _, i := range c.stack {
-			httpI := i.(HttpPluginInstance)
+			httpI, ok := i.(HttpPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement HttpPluginInstance - this indicates a bug")
+				continue
+			}
 			status := httpI.ResponseBody(c.resBody, endOfStream)
 
 			switch status {
@@ -373,7 +389,11 @@ func (c *Connection) Meta() Meta {
 func (c *Connection) OnRedisCommand(cmd *RedisCommand) error {
 	return c.enqueue("redis_command", func() error {
 		for _, p := range c.stack {
-			redisP := p.(RedisPluginInstance)
+			redisP, ok := p.(RedisPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement RedisPluginInstance - this indicates a bug")
+				continue
+			}
 			status := redisP.OnRedisCommand(cmd)
 			if status == RedisStatusStopIteration {
 				return nil
@@ -387,7 +407,11 @@ func (c *Connection) OnRedisCommand(cmd *RedisCommand) error {
 func (c *Connection) OnRedisResult(res *RedisResult) error {
 	return c.enqueue("redis_result", func() error {
 		for _, p := range c.stack {
-			redisP := p.(RedisPluginInstance)
+			redisP, ok := p.(RedisPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement RedisPluginInstance - this indicates a bug")
+				continue
+			}
 			status := redisP.OnRedisResult(res)
 			if status == RedisStatusStopIteration {
 				return nil

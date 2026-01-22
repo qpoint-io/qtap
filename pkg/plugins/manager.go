@@ -119,9 +119,16 @@ func (m *Manager) SetConfig(conf *config.Config) {
 	m.domainStacks.Reset()
 
 	// loop through the endpoints to find any that have a specific stack
+	// Store for both HTTP and Redis protocols.
+	// Currently Redis uses the HTTP stack config; the deployment filters
+	// plugins by connection type at instantiation time.
 	for _, endpoint := range conf.Tap.Endpoints {
 		m.domainStacks.Store(
 			stackKey{Domain: endpoint.Domain, Protocol: "http"},
+			endpoint.Http,
+		)
+		m.domainStacks.Store(
+			stackKey{Domain: endpoint.Domain, Protocol: "redis"},
 			endpoint.Http,
 		)
 	}

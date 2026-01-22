@@ -124,12 +124,24 @@ func (f *factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.Serv
 }
 
 func (f *factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
+	var mode displayMode
+	var format outputFormat
+	if f.config != nil {
+		mode = f.config.Mode
+		format = f.config.Format
+	}
+
+	// fall back to the factory's default format if none was configured
+	if format == "" {
+		format = f.format
+	}
+
 	return &redisFilterInstance{
 		ctx:    ctx,
 		logger: f.logger,
 		writer: f.writer,
-		mode:   f.config.Mode,
-		format: f.config.Format,
+		mode:   mode,
+		format: format,
 	}
 }
 

@@ -35,7 +35,7 @@ func (s *EventStore) Save(_ context.Context, item any) {
 
 	ll := s.Log()
 	switch i := item.(type) {
-	case *eventstore.Request, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord, *eventstore.Connection:
+	case *eventstore.Request, *eventstore.DatabaseRequest, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord, *eventstore.Connection:
 		submittedRecords.Inc()
 
 		// Submit directly to Axiom without batching for simplicity
@@ -94,7 +94,7 @@ func (s *EventStore) convertToAxiomEvent(item any) (axiom.Event, error) {
 	var event axiom.Event
 
 	switch v := item.(type) {
-	case *eventstore.Connection, *eventstore.Request, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord:
+	case *eventstore.Connection, *eventstore.Request, *eventstore.DatabaseRequest, *eventstore.PIIEntity, *eventstore.Issue, *eventstore.ArtifactRecord:
 		m, err := toMap(v)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert item to Axiom event: %w", err)

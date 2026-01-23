@@ -82,6 +82,33 @@ type Request struct {
 	RequestAuthToken
 }
 
+// DatabaseRequest represents a database query/command transaction for eventstore
+type DatabaseRequest struct {
+	meta
+	tags
+
+	Timestamp time.Time `json:"timestamp"`
+	Direction string    `json:"direction"`
+
+	// Database identification
+	DatabaseType string `json:"databaseType"` // e.g., "redis", "mongodb", "postgresql", "mysql"
+
+	// Operation details
+	Statement string `json:"statement,omitempty"` // Raw query/command (may be redacted)
+
+	// Result details
+	ResultType    string `json:"resultType,omitempty"`
+	IsError       bool   `json:"isError"`
+	ErrorMsg      string `json:"errorMsg,omitempty"`
+	AffectedCount int64  `json:"affectedCount,omitempty"`
+	ResultCount   int64  `json:"resultCount,omitempty"`
+
+	// Timing and bytes
+	Duration int64 `json:"duration"`
+	WrBytes  int64 `json:"bytesSent"`
+	RdBytes  int64 `json:"bytesReceived"`
+}
+
 type RequestAuthToken struct {
 	AuthTokenMask string `json:"authTokenMask"`
 	// AuthTokenHash is a SHA-256 hash of the auth token. The length is 32 bytes (64 characters) enforced by ClickHouse.

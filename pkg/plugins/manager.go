@@ -45,10 +45,10 @@ type Manager struct {
 	configSnapshot string
 
 	// domain -> stack mapping
-	domainStacks *synq.Map[stackKey, config.TapHttpConfig]
+	domainStacks *synq.Map[stackKey, config.TapProtocolConfig]
 
 	// default stack
-	defaultStackConfig config.TapHttpConfig
+	defaultStackConfig config.TapProtocolConfig
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -85,7 +85,7 @@ func NewPluginManager(logger *zap.Logger, opts ...ManagerOpt) *Manager {
 		logger:       logger,
 		bufferSize:   defaultBufferSize,
 		stacks:       synq.NewMap[string, *Stack](),
-		domainStacks: synq.NewMap[stackKey, config.TapHttpConfig](),
+		domainStacks: synq.NewMap[stackKey, config.TapProtocolConfig](),
 	}
 
 	// set options
@@ -119,9 +119,16 @@ func (m *Manager) SetConfig(conf *config.Config) {
 	m.domainStacks.Reset()
 
 	// loop through the endpoints to find any that have a specific stack
+	// Store for both HTTP and Redis protocols.
+	// Currently Redis uses the HTTP stack config; the deployment filters
+	// plugins by connection type at instantiation time.
 	for _, endpoint := range conf.Tap.Endpoints {
 		m.domainStacks.Store(
 			stackKey{Domain: endpoint.Domain, Protocol: "http"},
+			endpoint.Http,
+		)
+		m.domainStacks.Store(
+			stackKey{Domain: endpoint.Domain, Protocol: "redis"},
 			endpoint.Http,
 		)
 	}

@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Shared Redis server
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./certs:/certs:ro
+      - ./redis-tls.conf:/usr/local/etc/redis/redis-tls.conf:ro
+    command: >
+      sh -c '
+        if [ "$REDIS_TLS_ENABLED" = "true" ]; then
+          echo "Starting Redis with TLS enabled"
+          redis-server /usr/local/etc/redis/redis-tls.conf
+        else
+          echo "Starting Redis without TLS"
+          redis-server
+        fi
+      '
+    healthcheck:
+      test: >
+        sh -c '
+          if [ "$REDIS_TLS_ENABLED" = "true" ]; then
+            redis-cli --tls --cacert /certs/ca.crt ping
+          else
+            redis-cli ping
+          fi
+        '
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    environment:
+      - REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}
+
+  # Ruby client
+  ruby-client:
+    build: ./ruby
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}
+      - REDIS_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Go client
+  go-client:
+    build: ./go
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}
+      - REDIS_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Java client
+  java-client:
+    build: ./java
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}
+      - REDIS_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Node.js client
+  node-client:
+    build: ./node
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_TLS_ENABLED=${REDIS_TLS_ENABLED:-false}
+      - REDIS_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}

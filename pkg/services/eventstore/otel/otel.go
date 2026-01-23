@@ -32,6 +32,12 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 	switch i := item.(type) {
 	case *eventstore.Request:
 		s.logEvent(ctx, i, log.SeverityInfo, fmt.Sprintf("HTTP %s (%d) %s", i.Method, i.Status, i.Url))
+	case *eventstore.DatabaseRequest:
+		severity := log.SeverityInfo
+		if i.IsError {
+			severity = log.SeverityError
+		}
+		s.logEvent(ctx, i, severity, fmt.Sprintf("%s %s", i.DatabaseType, i.Statement))
 	case *eventstore.Issue:
 		s.logEvent(ctx, i, log.SeverityError, fmt.Sprintf("HTTP Error: %s (%d) %s :: %s", i.Method, i.Status, i.URL, i.Error))
 	case *eventstore.PIIEntity:
@@ -170,6 +176,8 @@ func (s *EventStore) getEventType(item any) string {
 	switch item.(type) {
 	case *eventstore.Request:
 		return "request"
+	case *eventstore.DatabaseRequest:
+		return "database_request"
 	case *eventstore.Issue:
 		return "issue"
 	case *eventstore.PIIEntity:
@@ -187,6 +195,8 @@ func (s *EventStore) getEventType(item any) string {
 func (s *EventStore) extractTimestamp(item any) time.Time {
 	switch i := item.(type) {
 	case *eventstore.Request:
+		return i.Timestamp
+	case *eventstore.DatabaseRequest:
 		return i.Timestamp
 	case *eventstore.Issue:
 		return i.Timestamp

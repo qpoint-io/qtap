@@ -19,3 +19,5 @@ tap:
   audit_include_dns: false
   http:
     stack: basic_reporting
+  redis:
+    stack: basic_reporting

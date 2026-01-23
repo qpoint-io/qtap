@@ -760,8 +760,8 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	if (conn_info->conn_pid_id.function == C_CLIENT && conn_info->protocol == P_DNS)
 		stream = true;
 
-	// check if this is HTTP and we're configured to stream
-	if ((conn_info->protocol == P_HTTP1 || conn_info->protocol == P_HTTP2) && get_stream_http_setting())
+	// check if we should stream this protocol based on settings
+	if (should_stream(conn_info->protocol))
 		stream = true;
 
 	// return if we're not streaming, set to ignore and return

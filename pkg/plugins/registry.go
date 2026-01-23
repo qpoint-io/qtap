@@ -8,14 +8,14 @@ import (
 
 // PluginRegistry holds references to active plugin instances
 type PluginRegistry struct {
-	plugins map[PluginType]HttpPlugin
+	plugins map[PluginType]Plugin
 	mu      sync.RWMutex
 }
 
 // NewRegistry creates a new service registry
-func NewRegistry(plugins ...HttpPlugin) *PluginRegistry {
+func NewRegistry(plugins ...Plugin) *PluginRegistry {
 	registry := &PluginRegistry{
-		plugins: make(map[PluginType]HttpPlugin),
+		plugins: make(map[PluginType]Plugin),
 	}
 
 	for _, p := range plugins {
@@ -26,7 +26,7 @@ func NewRegistry(plugins ...HttpPlugin) *PluginRegistry {
 }
 
 // Register adds or replaces a service in the registry
-func (sr *PluginRegistry) Register(svc HttpPlugin) {
+func (sr *PluginRegistry) Register(svc Plugin) {
 	sr.mu.Lock()
 	defer sr.mu.Unlock()
 
@@ -40,8 +40,8 @@ func (sr *PluginRegistry) Register(svc HttpPlugin) {
 	sr.plugins[svc.PluginType()] = svc
 }
 
-// Get retrieves a service by type
-func (sr *PluginRegistry) Get(pluginType PluginType) HttpPlugin {
+// Get retrieves a plugin by type
+func (sr *PluginRegistry) Get(pluginType PluginType) Plugin {
 	sr.mu.RLock()
 	defer sr.mu.RUnlock()
 	return sr.plugins[pluginType]

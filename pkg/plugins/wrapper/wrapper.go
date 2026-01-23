@@ -7,15 +7,16 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// PanicCatcher is a wrapper struct that implements HttpFilter interface
-// and provides panic recovery and logging
+// PanicCatcher is a wrapper struct that implements Plugin interface
+// and provides panic recovery and logging. It conditionally implements
+// HttpPlugin and RedisPlugin based on what the wrapped plugin supports.
 type PanicCatcher struct {
 	logger *zap.Logger
-	p      plugins.HttpPlugin
+	p      plugins.Plugin
 	config yaml.Node
 }
 
-func Catch(toCatch plugins.HttpPlugin) plugins.HttpPlugin {
+func Catch(toCatch plugins.Plugin) plugins.Plugin {
 	return &PanicCatcher{
 		p: toCatch,
 	}
@@ -27,24 +28,29 @@ func (s *PanicCatcher) Init(logger *zap.Logger, config yaml.Node) {
 	s.p.Init(logger, config)
 }
 
-// NewInstance implements the HttpFilter interface
-func (s *PanicCatcher) NewInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+// NewHttpInstance implements the HttpPlugin interface
+func (s *PanicCatcher) NewHttpInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
+	httpP, ok := s.p.(plugins.HttpPlugin)
+	if !ok {
+		return nil
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
-			s.logger.Error("Panic in NewInstance",
+			s.logger.Error("Panic in NewHttpInstance",
 				zap.Any("panic", r),
 			)
 		}
 	}()
 
-	i := s.p.NewInstance(ctx, svcs)
+	i := httpP.NewHttpInstance(ctx, svcs)
 	if i == nil {
 		return nil
 	}
 	return NewSafeHttpFilterInstance(s.logger, i)
 }
 
-// Destroy implements the HttpFilter interface
+// Destroy implements the Plugin interface
 func (s *PanicCatcher) Destroy() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -56,6 +62,28 @@ func (s *PanicCatcher) Destroy() {
 	if s.p != nil {
 		s.p.Destroy()
 	}
+}
+
+// NewRedisInstance implements the RedisPlugin interface
+func (s *PanicCatcher) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
+	redisP, ok := s.p.(plugins.RedisPlugin)
+	if !ok {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in NewRedisInstance",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	i := redisP.NewRedisInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafeRedisFilterInstance(s.logger, i)
 }
 
 // SafeHttpFilterInstance is a wrapper struct that implements HttpFilterInstance interface
@@ -80,6 +108,7 @@ func (s *SafeHttpFilterInstance) RequestHeaders(requestHeaders plugins.Headers, 
 			s.logger.Error("Panic in RequestHeaders",
 				zap.Any("panic", r),
 			)
+			status = plugins.HeadersStatusStopIteration
 		}
 	}()
 
@@ -93,6 +122,7 @@ func (s *SafeHttpFilterInstance) RequestBody(frame plugins.BodyBuffer, endOfStre
 			s.logger.Error("Panic in RequestBody",
 				zap.Any("panic", r),
 			)
+			status = plugins.BodyStatusStopIterationAndBuffer
 		}
 	}()
 
@@ -106,6 +136,7 @@ func (s *SafeHttpFilterInstance) ResponseHeaders(responseHeaders plugins.Headers
 			s.logger.Error("Panic in ResponseHeaders",
 				zap.Any("panic", r),
 			)
+			status = plugins.HeadersStatusStopIteration
 		}
 	}()
 
@@ -119,6 +150,7 @@ func (s *SafeHttpFilterInstance) ResponseBody(frame plugins.BodyBuffer, endOfStr
 			s.logger.Error("Panic in ResponseBody",
 				zap.Any("panic", r),
 			)
+			status = plugins.BodyStatusStopIterationAndBuffer
 		}
 	}()
 
@@ -129,7 +161,63 @@ func (s *SafeHttpFilterInstance) ResponseBody(frame plugins.BodyBuffer, endOfStr
 func (s *SafeHttpFilterInstance) Destroy() {
 	defer func() {
 		if r := recover(); r != nil {
-			s.logger.Error("Panic in Destroy",
+			s.logger.Error("Panic in Destroy (HttpFilterInstance)",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	s.instance.Destroy()
+}
+
+// SafeRedisFilterInstance is a wrapper struct that implements RedisPluginInstance interface
+// and provides panic recovery and logging
+type SafeRedisFilterInstance struct {
+	instance plugins.RedisPluginInstance
+	logger   *zap.Logger
+}
+
+// NewSafeRedisFilterInstance creates a new SafeRedisFilterInstance
+func NewSafeRedisFilterInstance(logger *zap.Logger, instance plugins.RedisPluginInstance) *SafeRedisFilterInstance {
+	return &SafeRedisFilterInstance{
+		logger:   logger,
+		instance: instance,
+	}
+}
+
+// OnRedisCommand implements the RedisPluginInstance interface
+func (s *SafeRedisFilterInstance) OnRedisCommand(cmd *plugins.RedisCommand) (status plugins.RedisStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnRedisCommand",
+				zap.Any("panic", r),
+			)
+			status = plugins.RedisStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnRedisCommand(cmd)
+}
+
+// OnRedisResult implements the RedisPluginInstance interface
+func (s *SafeRedisFilterInstance) OnRedisResult(res *plugins.RedisResult) (status plugins.RedisStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnRedisResult",
+				zap.Any("panic", r),
+			)
+			status = plugins.RedisStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnRedisResult(res)
+}
+
+// Destroy implements the RedisPluginInstance interface
+func (s *SafeRedisFilterInstance) Destroy() {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in Destroy (RedisFilterInstance)",
 				zap.Any("panic", r),
 			)
 		}

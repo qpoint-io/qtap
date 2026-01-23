@@ -25,11 +25,19 @@
 #include "bpf_helpers.h"
 #include "tap.bpf.h"
 
+// Protocol stream flags (bitmask)
+#define STREAM_HTTP_FLAG  (1 << 0)
+#define STREAM_REDIS_FLAG (1 << 1)
+
+// Helper macros for checking protocol stream flags
+#define SHOULD_STREAM_HTTP(flags)  ((flags) & STREAM_HTTP_FLAG)
+#define SHOULD_STREAM_REDIS(flags) ((flags) & STREAM_REDIS_FLAG)
+
 // Settings keys
 enum SOCKET_SETTINGS {
 	SOCK_SETTING_IGNORE_LOOPBACK,
 	SOCK_SETTING_DIRECTION,
-	SOCK_SETTING_STREAM_HTTP,
+	SOCK_SETTING_STREAM_PROTOCOLS,
 };
 
 // Settings value types
@@ -40,8 +48,8 @@ union socket_setting_value {
 	// direction
 	enum DIRECTION direction;
 
-	// stream http
-	bool stream_http;
+	// stream protocols (bitmask of STREAM_*_FLAG values)
+	__u32 stream_protocols;
 };
 
 // Socket settings (from loader app)
@@ -54,4 +62,5 @@ struct {
 
 static __always_inline bool get_ignore_loopback_setting();
 static __always_inline enum DIRECTION get_direction_setting();
-static __always_inline bool get_stream_http_setting();
+static __always_inline __u32 get_stream_protocols_setting();
+static __always_inline bool should_stream(enum PROTOCOL protocol);

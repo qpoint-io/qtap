@@ -67,3 +67,20 @@ static __always_inline __u32 get_stream_protocols_setting() {
 	// return the bitmask value
 	return *stream_protocols;
 }
+
+// check if a protocol should be streamed based on settings
+static __always_inline bool should_stream(enum PROTOCOL protocol) {
+	// fetch the stream protocols bitmask
+	__u32 stream_protocols = get_stream_protocols_setting();
+
+	// check protocol against configured flags
+	switch (protocol) {
+	case P_HTTP1:
+	case P_HTTP2:
+		return SHOULD_STREAM_HTTP(stream_protocols);
+	case P_REDIS:
+		return SHOULD_STREAM_REDIS(stream_protocols);
+	default:
+		return false;
+	}
+}

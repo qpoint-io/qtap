@@ -49,7 +49,6 @@ func SetDomain(domain string) StreamOpt {
 
 // NewStream creates a new Redis stream processor
 func NewStream(ctx context.Context, logger *zap.Logger, conn *connection.Connection, opts ...StreamOpt) *Stream {
-	logger.Warn("🆕 new redis stream", zap.String("connection", conn.ID()), zap.String("direction", conn.Direction()))
 	s := &Stream{
 		ctx:             ctx,
 		logger:          logger.With(zap.String("protocol", "redis")),

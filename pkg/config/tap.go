@@ -1,5 +1,7 @@
 package config
 
+import "slices"
+
 type TrafficDirection string
 
 var (
@@ -46,4 +48,28 @@ func (c *TapConfig) HasAnyStack() bool {
 	}
 
 	return false
+}
+
+func (c *TapConfig) GetAllProtocols() []string {
+	protocols := []string{}
+	if c.Http.HasStack() {
+		protocols = append(protocols, "http1")
+		protocols = append(protocols, "http2")
+	}
+	if c.Redis.HasStack() {
+		protocols = append(protocols, "redis")
+	}
+
+	for _, e := range c.Endpoints {
+		if e.Http.HasStack() {
+			protocols = append(protocols, "http1")
+			protocols = append(protocols, "http2")
+		}
+		if e.Redis.HasStack() {
+			protocols = append(protocols, "redis")
+		}
+	}
+
+	// remove duplicates
+	return slices.Compact(protocols)
 }

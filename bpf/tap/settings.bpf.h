@@ -63,3 +63,4 @@ struct {
 static __always_inline bool get_ignore_loopback_setting();
 static __always_inline enum DIRECTION get_direction_setting();
 static __always_inline __u32 get_stream_protocols_setting();
+static __always_inline bool should_stream(enum PROTOCOL protocol);

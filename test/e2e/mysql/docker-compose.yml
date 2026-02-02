@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: mysql:5.7
+    container_name: mysql-e2e
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MYSQL_DATABASE: testdb
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      - mysql-net
+
+  client:
+    image: mysql:5.7
+    container_name: mysql-client
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - mysql-net
+    entrypoint: ["sleep", "infinity"]
+
+networks:
+  mysql-net:
+    driver: bridge

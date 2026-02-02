@@ -60,6 +60,8 @@ enum PROTOCOL {
 	P_DNS,
 	P_MONGODB,
 	P_REDIS,
+	P_GRPC,
+	P_MYSQL,
 };
 
 enum DIRECTION {

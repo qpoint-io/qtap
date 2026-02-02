@@ -80,6 +80,8 @@ static __always_inline bool should_stream(enum PROTOCOL protocol) {
 		return SHOULD_STREAM_HTTP(stream_protocols);
 	case P_REDIS:
 		return SHOULD_STREAM_REDIS(stream_protocols);
+	case P_MYSQL:
+		return SHOULD_STREAM_MYSQL(stream_protocols);
 	default:
 		return false;
 	}

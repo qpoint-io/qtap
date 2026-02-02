@@ -7,6 +7,7 @@ import (
 	dnsStream "github.com/qpoint-io/qtap/pkg/stream/protocols/dns"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http1"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http2"
+	mysqlStream "github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
 	redisStream "github.com/qpoint-io/qtap/pkg/stream/protocols/redis"
 	"go.uber.org/zap"
 )
@@ -74,6 +75,21 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		return redisStream.NewStream(conn.Context(), logger, conn,
 			redisStream.SetDomain(domain),
 			redisStream.SetPluginManager(m.pluginManager),
+		)
+	}
+
+	// parse mysql streams
+	if conn.Protocol == connection.Protocol_MYSQL {
+		domain := conn.Domain()
+
+		// if the domain does not have a stack and no default stack is set, skip it
+		if _, exists := m.pluginManager.GetDomainStack(domain, "mysql"); !exists {
+			return nil
+		}
+
+		return mysqlStream.NewStream(conn.Context(), logger, conn,
+			mysqlStream.SetDomain(domain),
+			mysqlStream.SetPluginManager(m.pluginManager),
 		)
 	}
 

@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"encoding/hex"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -128,7 +129,7 @@ func TestParseRealStream(t *testing.T) {
 	count := 0
 	for {
 		pkt, err := p.ParsePacket()
-		if err == ErrIncomplete {
+		if errors.Is(err, ErrIncomplete) {
 			break
 		}
 		if err != nil {

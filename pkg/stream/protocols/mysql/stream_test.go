@@ -176,7 +176,7 @@ func TestProcessResponseOK(t *testing.T) {
 	query := "INSERT INTO test VALUES (1)"
 	payload := append([]byte{ComQuery}, []byte(query)...)
 	packet := buildPacket(0, payload)
-	stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+	_ = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
 
 	// Now send OK response
 	okPayload := []byte{
@@ -206,7 +206,7 @@ func TestProcessResponseERR(t *testing.T) {
 	query := "SELECT * FROM nonexistent"
 	payload := append([]byte{ComQuery}, []byte(query)...)
 	packet := buildPacket(0, payload)
-	stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+	_ = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
 
 	// Now send ERR response
 	errPayload := []byte{
@@ -297,7 +297,7 @@ func TestCloseWithPendingCommands(t *testing.T) {
 		query := "SELECT 1"
 		payload := append([]byte{ComQuery}, []byte(query)...)
 		packet := buildPacket(0, payload)
-		stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+		_ = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
 	}
 
 	assert.Len(t, stream.pendingCommands, 3)
@@ -321,7 +321,7 @@ func TestStreamThreadSafety(t *testing.T) {
 			query := "SELECT 1"
 			payload := append([]byte{ComQuery}, []byte(query)...)
 			packet := buildPacket(0, payload)
-			stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+			_ = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
 			done <- true
 		}(i)
 	}

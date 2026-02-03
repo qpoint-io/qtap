@@ -226,8 +226,8 @@ func ParseServerHandshake(pkt *Packet) (*ServerHandshake, error) {
 	if pos+8 > len(pkt.Payload) {
 		return hs, nil
 	}
-	authData := make([]byte, 8)
-	copy(authData, pkt.Payload[pos:pos+8])
+	authData := make([]byte, 0, 21) // 8 + 13 max
+	authData = append(authData, pkt.Payload[pos:pos+8]...)
 	pos += 8
 
 	// Filler (1 byte)
@@ -330,20 +330,6 @@ func readLengthEncodedInt(data []byte) (uint64, int, error) {
 	default:
 		return uint64(data[0]), 1, nil
 	}
-}
-
-// readLengthEncodedString reads a length-encoded string
-func readLengthEncodedString(data []byte) (string, int, error) {
-	length, n, err := readLengthEncodedInt(data)
-	if err != nil {
-		return "", 0, err
-	}
-
-	if len(data) < n+int(length) {
-		return "", 0, ErrIncomplete
-	}
-
-	return string(data[n : n+int(length)]), n + int(length), nil
 }
 
 // BuildQueryPacket creates a COM_QUERY packet

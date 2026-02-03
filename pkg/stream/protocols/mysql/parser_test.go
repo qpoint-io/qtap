@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -51,7 +52,7 @@ func TestParseIncomplete(t *testing.T) {
 	p.Append([]byte{0x09, 0x00, 0x00})
 
 	_, err := p.ParsePacket()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("Expected ErrIncomplete, got %v", err)
 	}
 
@@ -59,7 +60,7 @@ func TestParseIncomplete(t *testing.T) {
 	p.Append([]byte{0x00})
 
 	_, err = p.ParsePacket()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("Expected ErrIncomplete, got %v", err)
 	}
 }
@@ -91,7 +92,7 @@ func TestParseMultiplePackets(t *testing.T) {
 
 	// No more packets
 	_, err = p.ParsePacket()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("Expected ErrIncomplete for empty buffer, got %v", err)
 	}
 }

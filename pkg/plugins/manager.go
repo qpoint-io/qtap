@@ -47,10 +47,8 @@ type Manager struct {
 	// domain -> stack mapping
 	domainStacks *synq.Map[stackKey, config.TapProtocolConfig]
 
-	// default stacks per protocol
-	defaultStackConfig      config.TapProtocolConfig
-	defaultRedisStackConfig config.TapProtocolConfig
-	defaultMySQLStackConfig config.TapProtocolConfig
+	// default stack
+	defaultStackConfig config.TapProtocolConfig
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -121,8 +119,9 @@ func (m *Manager) SetConfig(conf *config.Config) {
 	m.domainStacks.Reset()
 
 	// loop through the endpoints to find any that have a specific stack
-	// Store for HTTP, Redis, and MySQL protocols.
-	// The deployment filters plugins by connection type at instantiation time.
+	// Store for both HTTP and Redis protocols.
+	// Currently Redis uses the HTTP stack config; the deployment filters
+	// plugins by connection type at instantiation time.
 	for _, endpoint := range conf.Tap.Endpoints {
 		m.domainStacks.Store(
 			stackKey{Domain: endpoint.Domain, Protocol: "http"},
@@ -130,19 +129,13 @@ func (m *Manager) SetConfig(conf *config.Config) {
 		)
 		m.domainStacks.Store(
 			stackKey{Domain: endpoint.Domain, Protocol: "redis"},
-			endpoint.Redis,
-		)
-		m.domainStacks.Store(
-			stackKey{Domain: endpoint.Domain, Protocol: "mysql"},
-			endpoint.MySQL,
+			endpoint.Http,
 		)
 	}
 
-	// set protocol-specific default stacks
+	// set the default stack
 	m.mu.Lock()
 	m.defaultStackConfig = conf.Tap.Http
-	m.defaultRedisStackConfig = conf.Tap.Redis
-	m.defaultMySQLStackConfig = conf.Tap.MySQL
 	m.mu.Unlock()
 
 	// generate a snapshot of the incoming config
@@ -208,15 +201,8 @@ func (m *Manager) GetDomainStack(domain, protocol string) (string, bool) {
 		return stackID.Stack, stackID.HasStack()
 	}
 
-	// return the protocol-specific default stack
-	switch protocol {
-	case "redis":
-		return m.defaultRedisStackConfig.Stack, m.defaultRedisStackConfig.HasStack()
-	case "mysql":
-		return m.defaultMySQLStackConfig.Stack, m.defaultMySQLStackConfig.HasStack()
-	default:
-		return m.defaultStackConfig.Stack, m.defaultStackConfig.HasStack()
-	}
+	// return the default stack
+	return m.defaultStackConfig.Stack, m.defaultStackConfig.HasStack()
 }
 
 func (m *Manager) Stop() {

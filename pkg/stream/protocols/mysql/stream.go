@@ -1,5 +1,23 @@
 package mysql
 
+// MySQL Protocol Behavior:
+//
+// Traditional MySQL is strictly synchronous - each command must wait for its
+// response before the next command is sent. This is a half-duplex protocol.
+//
+// MySQL 5.7.12+ added optional command pipelining where multiple commands can
+// be sent before responses arrive, but responses ALWAYS return in the same
+// order as the commands were sent (like Redis or HTTP/1.1 pipelining).
+//
+// There is NO multiplexing within a single TCP connection - each connection
+// handles exactly one session. Multiple concurrent sessions require multiple
+// TCP connections. This is different from HTTP/2 or protocols with stream IDs.
+//
+// Our correlation approach uses a simple FIFO queue of pending commands,
+// matching each response to the oldest pending command. This handles both:
+// - Traditional synchronous MySQL (queue depth 0-1)
+// - Pipelined MySQL 5.7.12+ (queue depth 0-N)
+
 import (
 	"context"
 	"strings"

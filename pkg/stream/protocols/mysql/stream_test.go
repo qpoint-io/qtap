@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -359,5 +360,111 @@ func TestTruncateQuery(t *testing.T) {
 				assert.Equal(t, tt.wantLen, len(result))
 			}
 		})
+	}
+}
+
+// --- Concurrent Session Tests ---
+// MySQL Protocol Note:
+// Traditional MySQL is strictly synchronous - each command must wait for its
+// response before the next command is sent. MySQL 5.7.12+ added optional
+// pipelining where multiple commands can be sent before responses arrive,
+// but responses ALWAYS come back in the order commands were sent.
+// There is no multiplexing within a single connection - each connection
+// handles one session. Multiple sessions require multiple TCP connections.
+
+func TestMultipleConcurrentStreams(t *testing.T) {
+	// Simulates multiple concurrent MySQL connections (each with its own stream)
+	const numStreams = 5
+	streams := make([]*Stream, numStreams)
+	var wg sync.WaitGroup
+
+	// Create independent streams (simulating separate connections)
+	for i := 0; i < numStreams; i++ {
+		stream, _ := createTestStream(t)
+		streams[i] = stream
+	}
+
+	// Send queries concurrently to different streams
+	for i := 0; i < numStreams; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			stream := streams[idx]
+
+			// Each connection sends its own query
+			query := "SELECT " + string(rune('A'+idx))
+			payload := append([]byte{ComQuery}, []byte(query)...)
+			packet := buildPacket(0, payload)
+			_ = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+
+			// Each connection gets its own response
+			okPacket := buildPacket(1, []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00})
+			_ = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: okPacket})
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Each stream should have correlated its own request/response
+	for i, stream := range streams {
+		assert.Equal(t, 0, len(stream.pendingCommands),
+			"stream %d should have no pending commands", i)
+	}
+}
+
+func TestPipelinedQueries(t *testing.T) {
+	// MySQL 5.7.12+ supports pipelining: send multiple queries before
+	// receiving responses. Responses come back in order.
+	stream, _ := createTestStream(t)
+
+	queries := []string{"SELECT 1", "SELECT 2", "SELECT 3"}
+
+	// Send all queries first (pipelining)
+	for i, q := range queries {
+		payload := append([]byte{ComQuery}, []byte(q)...)
+		packet := buildPacket(byte(i), payload)
+		err := stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+		require.NoError(t, err)
+	}
+
+	// All queries should be pending
+	assert.Equal(t, 3, len(stream.pendingCommands))
+	assert.Equal(t, "SELECT 1", stream.pendingCommands[0].Query)
+	assert.Equal(t, "SELECT 2", stream.pendingCommands[1].Query)
+	assert.Equal(t, "SELECT 3", stream.pendingCommands[2].Query)
+
+	// Responses arrive in order
+	for i := range queries {
+		okPacket := buildPacket(byte(i+1), []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00})
+		err := stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: okPacket})
+		require.NoError(t, err)
+
+		// After each response, one fewer pending command
+		assert.Equal(t, 2-i, len(stream.pendingCommands))
+	}
+
+	// All correlated
+	assert.Equal(t, 0, len(stream.pendingCommands))
+}
+
+func TestRapidQuerySequence(t *testing.T) {
+	// Test rapid request-response pairs (traditional MySQL behavior)
+	stream, _ := createTestStream(t)
+
+	for i := 0; i < 100; i++ {
+		// Send query
+		query := "SELECT " + string(rune('0'+i%10))
+		payload := append([]byte{ComQuery}, []byte(query)...)
+		packet := buildPacket(0, payload)
+		err := stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+		require.NoError(t, err)
+
+		// Immediately receive response (traditional synchronous behavior)
+		okPacket := buildPacket(1, []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00})
+		err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: okPacket})
+		require.NoError(t, err)
+
+		// Should always be correlated immediately
+		assert.Equal(t, 0, len(stream.pendingCommands))
 	}
 }

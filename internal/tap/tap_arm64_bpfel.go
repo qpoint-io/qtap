@@ -36,15 +36,16 @@ type TapConnInfo struct {
 		Addr     [16]uint8
 		Port     uint16
 	}
-	_        [4]byte
-	WrBytes  int64
-	RdBytes  int64
-	IsOpen   bool
-	IsSsl    bool
-	_        [2]byte
-	Protocol uint32
-	Ignore   bool
-	_        [7]byte
+	_                 [4]byte
+	WrBytes           int64
+	RdBytes           int64
+	IsOpen            bool
+	IsSsl             bool
+	_                 [2]byte
+	Protocol          uint32
+	Ignore            bool
+	TlsUpgradePending bool
+	_                 [6]byte
 }
 
 type TapDataArgs struct {

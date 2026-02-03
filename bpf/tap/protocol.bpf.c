@@ -296,6 +296,8 @@ static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info,
 	// Server handshake detection: seq_id=0, first byte=0x0a (protocol version 10)
 	if (seq_id == 0 && first_payload_byte == 0x0a) {
 		conn_info->protocol = P_MYSQL;
+		// Watch for STARTTLS upgrade on MySQL connections
+		conn_info->tls_upgrade_pending = true;
 		return true;
 	}
 
@@ -304,6 +306,8 @@ static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info,
 	// COM_STMT_PREPARE=0x16, COM_STMT_EXECUTE=0x17, COM_STMT_CLOSE=0x19
 	if (seq_id == 0 && (first_payload_byte >= 0x00 && first_payload_byte <= 0x1f)) {
 		conn_info->protocol = P_MYSQL;
+		// Watch for STARTTLS upgrade on MySQL connections
+		conn_info->tls_upgrade_pending = true;
 		return true;
 	}
 

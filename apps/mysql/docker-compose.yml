@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  # MySQL server
+  mysql:
+    image: mysql:8
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./certs:/certs:ro
+      - ./mysql-tls.cnf:/etc/mysql/conf.d/tls.cnf:ro
+    environment:
+      - MYSQL_ROOT_PASSWORD=testpassword
+      - MYSQL_DATABASE=testdb
+      - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
+    command: >
+      sh -c '
+        if [ "$MYSQL_TLS_ENABLED" = "true" ]; then
+          echo "Starting MySQL with TLS enabled"
+          exec docker-entrypoint.sh mysqld
+        else
+          echo "Starting MySQL without TLS"
+          exec docker-entrypoint.sh mysqld --skip-ssl
+        fi
+      '
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ptestpassword"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Ruby client
+  ruby-client:
+    build: ./ruby
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=testpassword
+      - MYSQL_DATABASE=testdb
+      - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
+      - MYSQL_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Go client
+  go-client:
+    build: ./go
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=testpassword
+      - MYSQL_DATABASE=testdb
+      - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
+      - MYSQL_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Java client
+  java-client:
+    build: ./java
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=testpassword
+      - MYSQL_DATABASE=testdb
+      - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
+      - MYSQL_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}
+
+  # Node.js client
+  node-client:
+    build: ./node
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=testpassword
+      - MYSQL_DATABASE=testdb
+      - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
+      - MYSQL_CA_CERT=/certs/ca.crt
+      - MAX_ITERATIONS=${MAX_ITERATIONS:-0}
+      - SLEEP_DURATION=${SLEEP_DURATION:-1}

@@ -1,0 +1,8 @@
+{
+  "name": "mysql-client",
+  "version": "1.0.0",
+  "main": "app.js",
+  "dependencies": {
+    "mysql2": "^3.9.0"
+  }
+}

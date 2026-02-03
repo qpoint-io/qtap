@@ -269,6 +269,51 @@ static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info,
 	return false;
 }
 
+// MySQL protocol detection
+// MySQL packets have: 3-byte length (little-endian) + 1-byte sequence ID + payload
+// Server handshake starts with protocol version 0x0a (MySQL 5.x+)
+// Client commands start with COM_* codes (0x00-0x1f typically)
+static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	if (count < 5 || !buf_info->buf) {
+		return false;
+	}
+
+	unsigned char header[5] = {0};
+	if (buf_read(header, sizeof(header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// MySQL packet structure: [len_lo][len_mid][len_hi][seq_id][payload...]
+	uint32_t payload_len = header[0] | (header[1] << 8) | (header[2] << 16);
+	unsigned char seq_id = header[3];
+	unsigned char first_payload_byte = header[4];
+
+	// Sanity check: payload length should be reasonable (< 16MB MySQL max packet)
+	if (payload_len == 0 || payload_len > 0xFFFFFF) {
+		return false;
+	}
+
+	// Server handshake detection: seq_id=0, first byte=0x0a (protocol version 10)
+	if (seq_id == 0 && first_payload_byte == 0x0a) {
+		conn_info->protocol = P_MYSQL;
+		// Watch for STARTTLS upgrade on MySQL connections
+		conn_info->tls_upgrade_pending = true;
+		return true;
+	}
+
+	// Client command detection: seq_id=0, first byte is a valid COM_* command
+	// Common commands: COM_QUIT=0x01, COM_INIT_DB=0x02, COM_QUERY=0x03,
+	// COM_STMT_PREPARE=0x16, COM_STMT_EXECUTE=0x17, COM_STMT_CLOSE=0x19
+	if (seq_id == 0 && (first_payload_byte >= 0x00 && first_payload_byte <= 0x1f)) {
+		conn_info->protocol = P_MYSQL;
+		// Watch for STARTTLS upgrade on MySQL connections
+		conn_info->tls_upgrade_pending = true;
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// set the default protocol to unknown
 	conn_info->protocol = P_UNKNOWN;
@@ -287,6 +332,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect redis - check before HTTP as Redis RESP commands start with *
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_redis(conn_info, buf_info, count);
+
+	// detect mysql - check before HTTP as MySQL binary protocol might be misdetected
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_mysql(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

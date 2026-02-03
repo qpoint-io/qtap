@@ -60,6 +60,8 @@ enum PROTOCOL {
 	P_DNS,
 	P_MONGODB,
 	P_REDIS,
+	P_GRPC,
+	P_MYSQL,
 };
 
 enum DIRECTION {
@@ -111,6 +113,9 @@ struct conn_info {
 	enum PROTOCOL protocol;
 	// Conditions were met to ignore this connection
 	bool ignore;
+	// Watch for TLS upgrade (STARTTLS) on this connection
+	// Set when MySQL/Postgres detected, cleared when TLS detected or connection closes
+	bool tls_upgrade_pending;
 };
 
 // Minimum size of an event

@@ -590,7 +590,11 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 
 	// checks that no ingress reads or egress writes have happened yet, indicating a new connection
 	bool is_new_connection = (direction == D_INGRESS && conn_info->rd_bytes == 0) || (direction == D_EGRESS && conn_info->wr_bytes == 0);
-	if (!is_new_connection)
+
+	// For STARTTLS protocols (MySQL, Postgres), keep checking for TLS upgrade
+	bool check_for_tls = is_new_connection || (conn_info->tls_upgrade_pending && !conn_info->is_ssl);
+
+	if (!check_for_tls)
 		return;
 
 	// initialize the buf_info struct
@@ -599,8 +603,12 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 		.iovcnt = args->iovcnt,
 	};
 
-	// detect tls if not already detected and the connection is new
+	// detect tls if not already detected
 	detect_tls(conn_info, &buf_info, bytes);
+
+	// clear the pending flag once TLS is detected
+	if (conn_info->is_ssl && conn_info->tls_upgrade_pending)
+		conn_info->tls_upgrade_pending = false;
 
 	if (!conn_info->is_ssl)
 		return;

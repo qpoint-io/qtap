@@ -26,8 +26,11 @@ func createTestStreamWithSource(t *testing.T, source connection.Source) (*Stream
 }
 
 // createTestStream creates a stream with Client source (default for most tests)
+// Sets authPacketSeen=true to simulate post-handshake state for command tests
 func createTestStream(t *testing.T) (*Stream, *observer.ObservedLogs) {
-	return createTestStreamWithSource(t, connection.Client)
+	stream, logs := createTestStreamWithSource(t, connection.Client)
+	stream.authPacketSeen = true // Skip auth phase for command tests
+	return stream, logs
 }
 
 // --- isRequest/isResponse Tests ---

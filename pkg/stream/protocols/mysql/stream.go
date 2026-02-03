@@ -25,6 +25,10 @@ type Stream struct {
 	// Correlation state
 	pendingCommands []*PendingCommand
 
+	// Handshake state
+	handshakeComplete bool
+	authPacketSeen    bool // Track if we've skipped the auth packet
+
 	// Plugin integration
 	pluginManager *plugins.Manager
 	domain        string
@@ -109,6 +113,15 @@ func (s *Stream) processRequests() {
 			continue
 		}
 
+		// Skip only the first request packet (auth response)
+		// Commands can arrive before we see the auth OK (pipelining)
+		if !s.authPacketSeen {
+			s.authPacketSeen = true
+			s.logger.Debug("mysql skipping auth packet",
+				zap.Int("length", int(pkt.Length)))
+			continue
+		}
+
 		cmd, data, err := ParseCommand(pkt)
 		if err != nil {
 			s.logger.Debug("mysql parse command error", zap.Error(err))
@@ -139,7 +152,7 @@ func (s *Stream) processRequests() {
 			pluginConn, err := s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_MYSQL, s.conn, requestID)
 			if err != nil {
 				s.logger.Error("creating plugin connection", zap.Error(err))
-			} else {
+			} else if pluginConn != nil {
 				pending.PluginConn = pluginConn
 				pluginCmd := &plugins.MySQLCommand{
 					Type:      cmd,
@@ -174,6 +187,11 @@ func (s *Stream) processResponses() {
 		if len(pkt.Payload) == 0 {
 			continue
 		}
+
+		// Only log response packets at trace level - very verbose
+		// s.logger.Debug("mysql response packet",
+		// 	zap.Int("length", int(pkt.Length)),
+		// 	zap.Uint8("seq_id", pkt.SequenceID))
 
 		// Dequeue the oldest pending command for correlation
 		if len(s.pendingCommands) == 0 {
@@ -267,9 +285,17 @@ func (s *Stream) logUncorrelatedResponse(pkt *Packet) {
 		}
 	}
 
-	s.logger.Debug("mysql response (uncorrelated)",
-		zap.Uint8("seq_id", pkt.SequenceID),
-		zap.Int("length", int(pkt.Length)))
+	// Check if it's OK/ERR response completing the handshake
+	if !s.handshakeComplete {
+		if pkt.Payload[0] == 0x00 || pkt.Payload[0] == 0xfe || pkt.Payload[0] == 0xff {
+			s.handshakeComplete = true
+			s.logger.Debug("mysql handshake complete")
+			return
+		}
+	}
+
+	// Uncorrelated responses (handshake, auth result packets) are normal
+	// during connection setup - don't log them
 }
 
 // buildPluginResult converts parsed response to plugin result
@@ -313,15 +339,30 @@ func (s *Stream) Close() {
 	defer s.mu.Unlock()
 
 	if len(s.pendingCommands) > 0 {
-		s.logger.Warn("mysql stream closed with pending commands",
-			zap.Int("pending_count", len(s.pendingCommands)))
-
+		// Filter out COM_QUIT - it legitimately has no response
+		realPending := make([]*PendingCommand, 0)
 		for _, pending := range s.pendingCommands {
-			s.logger.Debug("mysql command without response",
-				zap.String("command", CommandName(pending.CommandType)),
-				zap.Duration("age", time.Since(pending.Timestamp)))
-			if pending.PluginConn != nil {
-				pending.PluginConn.Teardown()
+			if pending.CommandType == ComQuit {
+				// COM_QUIT never gets a response, just teardown plugin
+				if pending.PluginConn != nil {
+					pending.PluginConn.Teardown()
+				}
+			} else {
+				realPending = append(realPending, pending)
+			}
+		}
+
+		if len(realPending) > 0 {
+			s.logger.Warn("mysql stream closed with pending commands",
+				zap.Int("pending_count", len(realPending)))
+
+			for _, pending := range realPending {
+				s.logger.Debug("mysql command without response",
+					zap.String("command", CommandName(pending.CommandType)),
+					zap.Duration("age", time.Since(pending.Timestamp)))
+				if pending.PluginConn != nil {
+					pending.PluginConn.Teardown()
+				}
 			}
 		}
 	}

@@ -12,136 +12,219 @@
 package rustls
 
 import (
+	"context"
 	"debug/elf"
-	"fmt"
+	"errors"
+	"io"
 
+	"github.com/qpoint-io/qtap/pkg/binutils"
+	"github.com/qpoint-io/qtap/pkg/ebpf/common"
+	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
+	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.uber.org/zap"
 )
 
-// Probe implements TLS interception for rustls binaries.
+const Name = "rustls"
+
+var tracer = telemetry.Tracer()
+
+// compile time check that Probe implements tls.Probe
+var _ tls.Probe = (*Probe)(nil)
+
+// Probe implements tls.Probe for rustls TLS interception.
 type Probe struct {
-	logger *zap.Logger
-
-	// Discovered hook points for this binary
-	sealOffset uint64 // aead_aes_gcm_seal_scatter_impl
-	openOffset uint64 // aead_aes_gcm_open_gather
+	logger  *zap.Logger
+	probeFn func() []*common.Uprobe
 }
 
-// ProbeConfig contains configuration for the rustls probe.
-type ProbeConfig struct {
-	Logger *zap.Logger
+// ScanResult contains the results of scanning a binary for rustls.
+type ScanResult struct {
+	// ContainsRustls indicates if rustls crypto functions were detected.
+	ContainsRustls bool
+
+	// SealOffset is the uprobe offset for the TLS encryption function.
+	// This is aead_aes_gcm_seal_scatter_impl or equivalent.
+	SealOffset uint64
+
+	// OpenOffset is the uprobe offset for the TLS decryption function.
+	// This is aead_aes_gcm_open_gather or equivalent.
+	OpenOffset uint64
+
+	// CryptoFunctions contains all detected crypto functions with scores.
+	CryptoFunctions []ScoredFunction
+
+	// Symbols contains synthetic symbols for the detected functions.
+	// These are created from .eh_frame + pattern matching.
+	Symbols []elf.Symbol
 }
 
-// NewProbe creates a new rustls probe instance.
-func NewProbe(cfg ProbeConfig) *Probe {
+// ProbeName implements tls.ProbeScanResult.
+func (r *ScanResult) ProbeName() string {
+	return Name
+}
+
+// ProbeDetected implements tls.ProbeScanResult.
+func (r *ScanResult) ProbeDetected() bool {
+	return r.ContainsRustls && (r.SealOffset != 0 || r.OpenOffset != 0)
+}
+
+// NewProbe creates a new rustls probe.
+func NewProbe(logger *zap.Logger, probeFn func() []*common.Uprobe) *Probe {
 	return &Probe{
-		logger: cfg.Logger,
+		logger:  logger,
+		probeFn: probeFn,
 	}
 }
 
-// CanProbe checks if the given binary appears to be a rustls application.
-// Returns true if we can identify rustls crypto functions.
-func (p *Probe) CanProbe(path string) (bool, error) {
-	f, err := elf.Open(path)
+// Name implements tls.Probe.
+func (p *Probe) Name() string {
+	return Name
+}
+
+// Scan implements tls.Probe.
+// Analyzes the binary using .eh_frame and AES-NI pattern matching.
+func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.ProbeScanResult, error) {
+	ctx, span := tracer.Start(ctx, "RustlsProbe.Scan")
+	defer span.End()
+
+	result := &ScanResult{}
+
+	// Get the underlying elf.File
+	elfFile, err := target.Elf.Elf(ctx)
 	if err != nil {
-		return false, fmt.Errorf("failed to open ELF: %w", err)
-	}
-	defer f.Close()
-
-	// Look for .eh_frame section (required for our approach)
-	ehFrame := f.Section(".eh_frame")
-	if ehFrame == nil {
-		p.logger.Debug("no .eh_frame section found", zap.String("path", path))
-		return false, nil
+		p.logger.Debug("failed to get ELF file",
+			zap.String("path", target.Path),
+			zap.Error(err))
+		return result, nil
 	}
 
-	// Parse function boundaries from .eh_frame
-	functions, err := p.parseEHFrame(f, ehFrame)
+	// Step 1: Parse .eh_frame to get function boundaries
+	ehParser := NewEHFrameParser(elfFile)
+	functions, err := ehParser.Parse()
 	if err != nil {
-		return false, fmt.Errorf("failed to parse .eh_frame: %w", err)
+		// .eh_frame parsing not yet fully implemented
+		// For now, return not detected
+		p.logger.Debug("failed to parse .eh_frame",
+			zap.String("path", target.Path),
+			zap.Error(err))
+		return result, nil
 	}
 
-	p.logger.Debug("parsed .eh_frame",
-		zap.String("path", path),
-		zap.Int("functions", len(functions)))
-
-	// Look for crypto functions using pattern matching
-	cryptoFuncs, err := p.findCryptoFunctions(f, functions)
-	if err != nil {
-		return false, fmt.Errorf("failed to find crypto functions: %w", err)
+	if len(functions) == 0 {
+		p.logger.Debug("no functions found in .eh_frame",
+			zap.String("path", target.Path))
+		return result, nil
 	}
 
+	// Step 2: Create pattern matcher and find crypto functions
+	matcher, err := NewPatternMatcher(elfFile)
+	if err != nil || matcher == nil {
+		p.logger.Debug("failed to create pattern matcher",
+			zap.String("path", target.Path),
+			zap.Error(err))
+		return result, nil
+	}
+
+	// Find functions with crypto patterns (minimum score of 10 = at least 1 AES-NI instruction)
+	cryptoFuncs := matcher.FindCryptoFunctions(functions, 10)
 	if len(cryptoFuncs) == 0 {
-		p.logger.Debug("no rustls crypto functions found", zap.String("path", path))
-		return false, nil
+		p.logger.Debug("no crypto functions detected",
+			zap.String("path", target.Path))
+		return result, nil
 	}
 
-	// Store discovered offsets
+	result.ContainsRustls = true
+	result.CryptoFunctions = cryptoFuncs
+
+	// Step 3: Identify seal/open functions by characteristics
+	// The seal (encrypt) function is typically larger and called more
+	// The open (decrypt) function is typically smaller
 	for _, cf := range cryptoFuncs {
-		switch cf.role {
-		case "seal":
-			p.sealOffset = cf.start
-		case "open":
-			p.openOffset = cf.start
+		size := cf.Bound.Size()
+
+		// seal_scatter_impl is typically ~500 bytes with high AES count
+		if size >= 400 && size <= 600 && cf.Score.AESCount >= 2 && result.SealOffset == 0 {
+			result.SealOffset = cf.Bound.Start
+			continue
+		}
+
+		// open_gather is typically smaller, ~40-100 bytes
+		if size >= 30 && size <= 150 && cf.Score.AESCount >= 1 && result.OpenOffset == 0 {
+			result.OpenOffset = cf.Bound.Start
 		}
 	}
 
-	p.logger.Info("identified rustls crypto functions",
-		zap.String("path", path),
-		zap.Uint64("sealOffset", p.sealOffset),
-		zap.Uint64("openOffset", p.openOffset))
+	// If we couldn't identify specific functions, use the top crypto functions
+	if result.SealOffset == 0 && len(cryptoFuncs) > 0 {
+		result.SealOffset = cryptoFuncs[0].Bound.Start
+	}
 
-	return p.sealOffset != 0 || p.openOffset != 0, nil
+	// Create synthetic symbols for the detected functions
+	// These will be used by AttachProbes
+	if result.SealOffset != 0 {
+		result.Symbols = append(result.Symbols, elf.Symbol{
+			Name:  "rustls_seal",
+			Value: result.SealOffset,
+		})
+	}
+	if result.OpenOffset != 0 {
+		result.Symbols = append(result.Symbols, elf.Symbol{
+			Name:  "rustls_open",
+			Value: result.OpenOffset,
+		})
+	}
+
+	p.logger.Info("detected rustls crypto functions",
+		zap.String("path", target.Path),
+		zap.Int("totalCrypto", len(cryptoFuncs)),
+		zap.Uint64("sealOffset", result.SealOffset),
+		zap.Uint64("openOffset", result.OpenOffset))
+
+	return result, nil
 }
 
-// functionBounds represents a function's address range from .eh_frame.
-type functionBounds struct {
-	start uint64
-	end   uint64
-	size  uint64
+// Attach implements tls.Probe.
+func (p *Probe) Attach(ctx context.Context, target *tls.ExeLinkAttachable, result tls.ProbeScanResult) (io.Closer, error) {
+	ctx, span := tracer.Start(ctx, "RustlsProbe.Attach")
+	defer span.End()
+
+	ll := p.logger.With(zap.String("exe", target.Path))
+
+	r, ok := result.(*ScanResult)
+	if !ok {
+		ll.DPanic("invalid result type", zap.Any("result", result))
+		return nil, errors.New("invalid result type: expected *ScanResult")
+	}
+
+	if len(r.Symbols) == 0 {
+		return nil, errors.New("no symbols to attach")
+	}
+
+	// Use offset-based attachment since we don't have real symbols
+	return tls.AttachProbes(ctx, ll, target, r.Symbols, binutils.MatchStrategyExact, p.probeFn(), true)
 }
 
-// cryptoFunction represents an identified crypto function.
-type cryptoFunction struct {
-	start    uint64
-	end      uint64
-	role     string // "seal" or "open"
-	aesCount int    // number of AES-NI instructions
-	gcmCount int    // number of GCM-related instructions
+// SharedLibraries implements tls.Probe.
+// rustls is always statically linked, so we don't scan shared libraries.
+func (p *Probe) SharedLibraries() string {
+	return "" // No shared library - rustls is statically linked
 }
 
-// parseEHFrame extracts function boundaries from the .eh_frame section.
-func (p *Probe) parseEHFrame(f *elf.File, section *elf.Section) ([]functionBounds, error) {
-	// TODO: Implement .eh_frame parsing
-	// See: https://refspecs.linuxfoundation.org/LSB_5.0.0/LSB-Core-generic/LSB-Core-generic/ehframechpt.html
-	//
-	// For now, return empty - will be implemented in Phase 1
-	return nil, fmt.Errorf("not implemented")
+// ScanLibrary implements tls.Probe.
+// rustls is always statically linked, so this is a no-op.
+func (p *Probe) ScanLibrary(ctx context.Context, ef *binutils.Elf) (tls.ProbeScanResult, error) {
+	// rustls is statically linked, not a shared library
+	return &ScanResult{}, nil
 }
 
-// findCryptoFunctions scans functions for AES-NI patterns.
-func (p *Probe) findCryptoFunctions(f *elf.File, functions []functionBounds) ([]cryptoFunction, error) {
-	// TODO: Implement pattern matching
-	// - Disassemble each function
-	// - Look for: aesenc, aesenclast, aesdec, aesdeclast, pclmulqdq
-	// - Score by crypto instruction density
-	//
-	// For now, return empty - will be implemented in Phase 2
-	return nil, fmt.Errorf("not implemented")
+// AttachLibrary implements tls.Probe.
+// rustls is always statically linked, so this is a no-op.
+func (p *Probe) AttachLibrary(ctx context.Context, target *tls.ExeLibraryAttachable, result tls.ProbeScanResult) (io.Closer, error) {
+	// rustls is statically linked, not a shared library
+	return nil, errors.New("rustls is statically linked, not a shared library")
 }
 
-// Attach attaches the probe to the target process.
-func (p *Probe) Attach(pid int, path string) error {
-	// TODO: Implement probe attachment
-	// - Load BPF program
-	// - Attach uprobes at sealOffset and openOffset
-	//
-	// For now, return error - will be implemented in Phase 3
-	return fmt.Errorf("not implemented")
-}
-
-// Detach detaches the probe from the target process.
-func (p *Probe) Detach() error {
-	// TODO: Implement probe detachment
-	return fmt.Errorf("not implemented")
+// Close implements tls.Probe.
+func (p *Probe) Close() error {
+	return nil
 }

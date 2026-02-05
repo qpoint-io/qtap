@@ -85,14 +85,17 @@ type TapProcessMeta struct {
 }
 
 type TapRustlsOpenArgs struct {
-	Out    uint64
-	OutLen uint64
+	Fd     int32
+	_      [4]byte
+	OutBuf uint64
+	InLen  uint64
 }
 
 type TapRustlsSealArgs struct {
-	Out   uint64
-	In    uint64
-	InLen uint64
+	Fd     int32
+	_      [4]byte
+	Buf    uint64
+	BufLen uint64
 }
 
 type TapSOCKET_SETTINGS uint32

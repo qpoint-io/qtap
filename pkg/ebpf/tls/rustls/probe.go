@@ -161,16 +161,19 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 
 	// Create synthetic symbols for the detected functions
 	// These will be used by AttachProbes
+	// NOTE: Size must be non-zero or the symbol is filtered out!
 	if result.SealOffset != 0 {
 		result.Symbols = append(result.Symbols, elf.Symbol{
 			Name:  "rustls_seal",
 			Value: result.SealOffset,
+			Size:  1, // Non-zero to pass filter
 		})
 	}
 	if result.OpenOffset != 0 {
 		result.Symbols = append(result.Symbols, elf.Symbol{
 			Name:  "rustls_open",
 			Value: result.OpenOffset,
+			Size:  1, // Non-zero to pass filter
 		})
 	}
 

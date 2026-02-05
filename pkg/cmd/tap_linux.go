@@ -27,6 +27,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/openssl"
+	"github.com/qpoint-io/qtap/pkg/ebpf/tls/rustls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
@@ -107,7 +108,7 @@ func init() {
 
 	// Initialize flags with environment variable fallbacks
 	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
-		getEnvOr("TLS_PROBES", "openssl"),
+		getEnvOr("TLS_PROBES", "openssl,rustls"),
 		"Comma-separated list of TLS probes to use")
 
 	rootCmd.Flags().StringVar(&httpBufferSize, "http-buffer-size",
@@ -564,6 +565,9 @@ func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 		case "openssl":
 			probe := openssl.NewProbe(logger, NewEbpfOpenSSLprobesCreator(objs))
 			probes = append(probes, probe)
+		case "rustls":
+			probe := rustls.NewProbe(logger, NewEbpfRustlsProbesCreator(objs))
+			probes = append(probes, probe)
 		case "none", "":
 			enableTLS = false
 			logger.Info("No TLS probes enabled")
@@ -657,6 +661,21 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 			common.NewUretprobe("SSL_write", objs.TapPrograms.OpensslProbeRetSSL_write),
 			common.NewUretprobe("SSL_write_ex", objs.TapPrograms.OpensslProbeRetSSL_writeEx),
 			common.NewUretprobe("SSL_new", objs.TapPrograms.OpensslProbeRetSSL_new),
+		}
+	}
+}
+
+// NewEbpfRustlsProbesCreator creates a function that returns a list of uprobes for rustls
+// These probes hook aws-lc's EVP_AEAD functions to capture plaintext.
+func NewEbpfRustlsProbesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
+	return func() []*common.Uprobe {
+		return []*common.Uprobe{
+			// seal entry/exit - captures plaintext before encryption
+			common.NewUprobe("rustls_seal", objs.TapPrograms.RustlsProbeEntrySealScatter),
+			common.NewUretprobe("rustls_seal", objs.TapPrograms.RustlsProbeRetSealScatter),
+			// open entry/exit - captures plaintext after decryption
+			common.NewUprobe("rustls_open", objs.TapPrograms.RustlsProbeEntryOpenGather),
+			common.NewUretprobe("rustls_open", objs.TapPrograms.RustlsProbeRetOpenGather),
 		}
 	}
 }

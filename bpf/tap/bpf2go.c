@@ -24,5 +24,6 @@
 #include "socket.bpf.c"
 #include "sock_pid_fd.bpf.c"
 #include "settings.bpf.c"
+#include "rustls.bpf.c"
 
 char _license[] SEC("license") = "GPL";

@@ -16,6 +16,7 @@ import (
 	"debug/elf"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/qpoint-io/qtap/pkg/binutils"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
@@ -81,6 +82,85 @@ func (p *Probe) Name() string {
 	return Name
 }
 
+// vaddrToFileOffset converts a virtual address to a file offset using ELF program headers.
+// For PIE binaries, symbol values are virtual addresses, but uprobes need file offsets.
+func vaddrToFileOffset(elfFile *elf.File, vaddr uint64) uint64 {
+	for _, prog := range elfFile.Progs {
+		if prog.Type != elf.PT_LOAD {
+			continue
+		}
+		// Check if vaddr falls within this segment
+		if vaddr >= prog.Vaddr && vaddr < prog.Vaddr+prog.Memsz {
+			// Convert vaddr to file offset
+			return prog.Off + (vaddr - prog.Vaddr)
+		}
+	}
+	// If no matching segment found, return the vaddr as-is (non-PIE binary)
+	return vaddr
+}
+
+// scanForEVPAEADSymbols looks for aws-lc's EVP_AEAD_CTX_seal_scatter and
+// EVP_AEAD_CTX_open_gather symbols. These are present in aws-lc-rs binaries
+// and provide more reliable hook points than pattern matching.
+func (p *Probe) scanForEVPAEADSymbols(elfFile *elf.File, result *ScanResult) bool {
+	symbols, err := elfFile.Symbols()
+	if err != nil {
+		// Try dynamic symbols
+		symbols, err = elfFile.DynamicSymbols()
+		if err != nil {
+			return false
+		}
+	}
+
+	// Look for EVP_AEAD_CTX_seal_scatter and EVP_AEAD_CTX_open_gather
+	// Symbol names may be prefixed with version like "aws_lc_0_37_0_"
+	for _, sym := range symbols {
+		// Check for seal_scatter
+		if result.SealOffset == 0 {
+			if strings.Contains(sym.Name, "EVP_AEAD_CTX_seal_scatter") ||
+				strings.HasSuffix(sym.Name, "_seal_scatter") && strings.Contains(sym.Name, "EVP_AEAD") {
+				// Convert virtual address to file offset for uprobe
+				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				result.SealOffset = fileOffset
+				result.Symbols = append(result.Symbols, elf.Symbol{
+					Name:  "rustls_seal",
+					Value: fileOffset,
+					Size:  1,
+				})
+			}
+		}
+
+		// Check for open_gather
+		if result.OpenOffset == 0 {
+			if strings.Contains(sym.Name, "EVP_AEAD_CTX_open_gather") ||
+				strings.HasSuffix(sym.Name, "_open_gather") && strings.Contains(sym.Name, "EVP_AEAD") {
+				// Convert virtual address to file offset for uprobe
+				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				result.OpenOffset = fileOffset
+				result.Symbols = append(result.Symbols, elf.Symbol{
+					Name:  "rustls_open",
+					Value: fileOffset,
+					Size:  1,
+				})
+			}
+		}
+
+		// Found both, we're done
+		if result.SealOffset != 0 && result.OpenOffset != 0 {
+			result.ContainsRustls = true
+			return true
+		}
+	}
+
+	// Partial match - still useful if we found at least one
+	if result.SealOffset != 0 || result.OpenOffset != 0 {
+		result.ContainsRustls = true
+		return true
+	}
+
+	return false
+}
+
 // Scan implements tls.Probe.
 // Analyzes the binary using .eh_frame and AES-NI pattern matching.
 func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.ProbeScanResult, error) {
@@ -95,6 +175,16 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 		p.logger.Debug("failed to get ELF file",
 			zap.String("path", target.Path),
 			zap.Error(err))
+		return result, nil
+	}
+
+	// Step 0: Check for EVP_AEAD symbols (aws-lc binaries have these)
+	// This is more reliable than pattern matching for aws-lc
+	if found := p.scanForEVPAEADSymbols(elfFile, result); found {
+		p.logger.Info("detected aws-lc EVP_AEAD symbols",
+			zap.String("path", target.Path),
+			zap.Uint64("sealOffset", result.SealOffset),
+			zap.Uint64("openOffset", result.OpenOffset))
 		return result, nil
 	}
 

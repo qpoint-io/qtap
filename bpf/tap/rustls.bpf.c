@@ -104,6 +104,9 @@ int rustls_probe_entry_seal_scatter(struct pt_regs *ctx) {
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
 	uint32_t pid = pid_tgid >> 32;
 
+	// DEBUG: First line - verify probe fires
+	bpf_printk("rustls/seal_entry: FIRED pid=%d", pid);
+
 	// Get fd from active connection tracking
 	int32_t fd = rustls_get_active_fd(pid_tgid);
 
@@ -223,6 +226,9 @@ int rustls_probe_entry_open_gather(struct pt_regs *ctx) {
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
 	uint32_t pid = pid_tgid >> 32;
 
+	// DEBUG: First line - verify probe fires
+	bpf_printk("rustls/open_entry: FIRED pid=%d", pid);
+
 	// Get fd from active connection tracking
 	int32_t fd = rustls_get_active_fd(pid_tgid);
 
@@ -230,8 +236,12 @@ int rustls_probe_entry_open_gather(struct pt_regs *ctx) {
 	uint64_t out_buf = (uint64_t)PT_REGS_PARM2(ctx);
 	uint64_t in_len = (uint64_t)PT_REGS_PARM6(ctx);
 
+	// DEBUG: Log args before sanity check
+	bpf_printk("rustls/open_entry: out_buf=%llx in_len=%llu", out_buf, in_len);
+
 	// Sanity check
 	if (out_buf == 0 || in_len == 0 || in_len > 65536) {
+		bpf_printk("rustls/open_entry: FAILED sanity check");
 		return 0;
 	}
 

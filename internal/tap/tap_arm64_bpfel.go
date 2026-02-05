@@ -292,6 +292,7 @@ type TapMapSpecs struct {
 	PidFdToSockMap                *ebpf.MapSpec `ebpf:"pid_fd_to_sock_map"`
 	ProcEvents                    *ebpf.MapSpec `ebpf:"proc_events"`
 	ProcessMetaMap                *ebpf.MapSpec `ebpf:"process_meta_map"`
+	RustlsActiveFd                *ebpf.MapSpec `ebpf:"rustls_active_fd"`
 	SocketDataEventBufferHeap     *ebpf.MapSpec `ebpf:"socket_data_event_buffer_heap"`
 	SocketEvents                  *ebpf.MapSpec `ebpf:"socket_events"`
 	SocketHostnameEventHeap       *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
@@ -344,6 +345,7 @@ type TapMaps struct {
 	PidFdToSockMap                *ebpf.Map `ebpf:"pid_fd_to_sock_map"`
 	ProcEvents                    *ebpf.Map `ebpf:"proc_events"`
 	ProcessMetaMap                *ebpf.Map `ebpf:"process_meta_map"`
+	RustlsActiveFd                *ebpf.Map `ebpf:"rustls_active_fd"`
 	SocketDataEventBufferHeap     *ebpf.Map `ebpf:"socket_data_event_buffer_heap"`
 	SocketEvents                  *ebpf.Map `ebpf:"socket_events"`
 	SocketHostnameEventHeap       *ebpf.Map `ebpf:"socket_hostname_event_heap"`
@@ -379,6 +381,7 @@ func (m *TapMaps) Close() error {
 		m.PidFdToSockMap,
 		m.ProcEvents,
 		m.ProcessMetaMap,
+		m.RustlsActiveFd,
 		m.SocketDataEventBufferHeap,
 		m.SocketEvents,
 		m.SocketHostnameEventHeap,

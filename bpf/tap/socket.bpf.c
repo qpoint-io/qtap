@@ -843,6 +843,15 @@ static void respond_to_fd_request(uint64_t pid_tgid, uint32_t fd) {
 	fd_request->fd = fd;
 }
 
+// Forward declaration from rustls.bpf.c - tracks active fd for rustls correlation
+extern void rustls_track_active_fd(uint64_t pid_tgid, int32_t fd);
+
+// Combined function to both respond to fd requests AND track for rustls
+static __always_inline void track_fd(uint64_t pid_tgid, int32_t fd) {
+	respond_to_fd_request(pid_tgid, fd);
+	rustls_track_active_fd(pid_tgid, fd);
+}
+
 // hooks
 SEC("tracepoint/syscalls/sys_enter_socket")
 int syscall__probe_entry_socket(struct trace_event_raw_sys_enter *ctx) {
@@ -1098,6 +1107,10 @@ int syscall__probe_ret_connect(struct trace_event_raw_sys_exit *ctx) {
 		return 0;
 	}
 
+	// Track this fd for rustls correlation - connection is now established
+	// This fd will be used when EVP_AEAD operations happen on this thread
+	track_fd(pid_tgid, *fd);
+
 	// remove the entry from the map
 	bpf_map_delete_elem(&active_fd_args_map, &key);
 
@@ -1144,7 +1157,7 @@ int syscall__probe_entry_sendto(struct trace_event_raw_sys_enter *ctx) {
 	write_args.iovcnt           = 0;
 
 	// share fd if uprobe has requested
-	respond_to_fd_request(pid_tgid, fd);
+	track_fd(pid_tgid, fd);
 
 	return bpf_map_update_elem(&active_write_args_map, &id, &write_args, BPF_ANY);
 }
@@ -1260,7 +1273,7 @@ int syscall__probe_entry_write(struct trace_event_raw_sys_enter *ctx) {
 	write_args.iovcnt           = 0;
 
 	// share fd if uprobe has requested
-	respond_to_fd_request(pid_tgid, fd);
+	track_fd(pid_tgid, fd);
 
 	return bpf_map_update_elem(&active_write_args_map, &id, &write_args, BPF_ANY);
 }
@@ -1376,7 +1389,7 @@ int syscall__probe_entry_writev(struct trace_event_raw_sys_enter *ctx) {
 	writev_args.iovcnt           = iovcnt; // Storing iovcnt for future use in exit tracepoint
 
 	// share fd if uprobe has requested
-	respond_to_fd_request(pid_tgid, fd);
+	track_fd(pid_tgid, fd);
 
 	return bpf_map_update_elem(&active_write_args_map, &id, &writev_args, BPF_ANY);
 }
@@ -1493,7 +1506,7 @@ int syscall__probe_entry_recvfrom(struct trace_event_raw_sys_enter *ctx) {
 	read_args.iovcnt           = 0;
 
 	// share fd if uprobe has requested
-	respond_to_fd_request(pid_tgid, fd);
+	track_fd(pid_tgid, fd);
 
 	return bpf_map_update_elem(&active_read_args_map, &id, &read_args, BPF_ANY);
 }
@@ -1643,7 +1656,7 @@ int syscall__probe_ret_read(struct trace_event_raw_sys_exit *ctx) {
 		TRACE_SOCKET(pid, "syscall/read", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
 
 		// share fd if uprobe has requested
-		respond_to_fd_request(pid_tgid, *fd);
+		track_fd(pid_tgid, *fd);
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1691,7 +1704,7 @@ int syscall__probe_ret_read_init(struct trace_event_raw_sys_exit *ctx) {
 		TRACE_SOCKET(pid, "syscall/read (init)", TRACE_INT("pid", pid), TRACE_INT("fd", read_args->fd), TRACE_INT("bytes", bytes_count));
 
 		// share fd if uprobe has requested
-		respond_to_fd_request(pid_tgid, *fd);
+		track_fd(pid_tgid, *fd);
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1762,7 +1775,7 @@ int syscall__probe_ret_readv(struct trace_event_raw_sys_exit *ctx) {
 		// trace
 		TRACE_SOCKET(pid, "syscall/readv", TRACE_INT("pid", pid), TRACE_INT("fd", readv_args->fd), TRACE_INT("bytes", bytes_count));
 
-		respond_to_fd_request(pid_tgid, *fd);
+		track_fd(pid_tgid, *fd);
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};
@@ -1809,7 +1822,7 @@ int syscall__probe_ret_readv_init(struct trace_event_raw_sys_exit *ctx) {
 		// trace
 		TRACE_SOCKET(pid, "syscall/readv (init)", TRACE_INT("pid", pid), TRACE_INT("fd", readv_args->fd), TRACE_INT("bytes", bytes_count));
 
-		respond_to_fd_request(pid_tgid, *fd);
+		track_fd(pid_tgid, *fd);
 
 		// initialize a socket context
 		struct socket_ctx sock_ctx = {};

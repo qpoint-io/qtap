@@ -591,54 +591,19 @@ int ring_probe_entry_ctr32(struct pt_regs *ctx) {
 
 /*
  * Probe: ring aes_hw_ctr32_encrypt_blocks return
- * For ingress (decrypt), the output buffer now contains plaintext
+ * 
+ * NOTE: CTR32 is symmetric (same function for encrypt/decrypt), so we can't
+ * reliably determine direction. We only capture on entry as EGRESS.
+ * VAES probes (which handle 99% of modern CPUs) have separate encrypt/decrypt
+ * functions and handle both directions correctly.
  */
 SEC("uretprobe/ring_ctr32")
 int ring_probe_ret_ctr32(struct pt_regs *ctx) {
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
-	uint32_t pid = pid_tgid >> 32;
-
-	// Get saved args
-	struct ring_ctr32_args *args = bpf_map_lookup_elem(&active_ring_ctr32_args, &pid_tgid);
-	if (args == NULL) {
-		return 0;
-	}
-
-	uint64_t len = args->blocks * 16;
-	int32_t fd = args->fd;
-	if (fd < 3) {
-		fd = rustls_get_active_fd(pid_tgid);
-	}
-
-	bpf_printk("ring/ctr32_ret: pid=%d fd=%d len=%llu", pid, fd, len);
-
-	if (fd >= 3) {
-		struct pid_fd_key id = {
-			.pid = pid,
-			.fd = fd,
-		};
-
-		struct socket_ctx sock_ctx = {
-			.id = &id,
-			.pid_tgid = pid_tgid,
-			.trace_mod = QTAP_OPENSSL,
-		};
-		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/ctr32");
-
-		struct data_args data = {
-			.fd = fd,
-			.buf = args->out_buf,
-			.iovcnt = 0,
-			.ssl = 0,
-			.ex_bytes = 0,
-		};
-
-		// Capture as INGRESS (plaintext after decryption)
-		process_data(&sock_ctx, D_INGRESS, &data, len, /* ssl */ true);
-	}
-
-	// Cleanup
+	
+	// Just cleanup - data capture happened on entry
+	// We can't capture INGRESS here because CTR32 is symmetric and we
+	// can't distinguish encrypt from decrypt without syscall context
 	bpf_map_delete_elem(&active_ring_ctr32_args, &pid_tgid);
-
 	return 0;
 }

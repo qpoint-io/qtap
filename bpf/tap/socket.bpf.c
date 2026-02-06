@@ -628,7 +628,7 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 }
 
 // common data handler for multiple syscall probes
-static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const struct data_args *args, ssize_t bytes, bool ssl) {
+static __noinline void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const struct data_args *args, ssize_t bytes, bool ssl) {
 	// nothing to do if the buffer is null
 	if ((void *)args->buf == NULL) {
 		return;

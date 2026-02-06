@@ -133,6 +133,6 @@ static __always_inline enum SOCKET_TYPE determine_socket_type(int protocol, int 
 	return sock_type;
 }
 
-static __always_inline void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const struct data_args *args, ssize_t bytes, bool ssl);
+static __noinline void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const struct data_args *args, ssize_t bytes, bool ssl);
 
 static void process_close(struct socket_ctx *ctx);

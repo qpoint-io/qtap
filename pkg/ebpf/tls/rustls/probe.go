@@ -425,15 +425,15 @@ func (p *Probe) SharedLibraries() string {
 // ScanLibrary implements tls.Probe.
 // rustls is always statically linked, so this is a no-op.
 func (p *Probe) ScanLibrary(ctx context.Context, ef *binutils.Elf) (tls.ProbeScanResult, error) {
-	// rustls is statically linked, not a shared library
-	return &ScanResult{}, nil
+	// rustls is statically linked, not a shared library - matches nodetls/gotls pattern
+	return nil, nil
 }
 
 // AttachLibrary implements tls.Probe.
 // rustls is always statically linked, so this is a no-op.
 func (p *Probe) AttachLibrary(ctx context.Context, target *tls.ExeLibraryAttachable, result tls.ProbeScanResult) (io.Closer, error) {
-	// rustls is statically linked, not a shared library
-	return nil, errors.New("rustls is statically linked, not a shared library")
+	// rustls is statically linked, not a shared library - matches nodetls/gotls pattern
+	return nil, nil
 }
 
 // Close implements tls.Probe.

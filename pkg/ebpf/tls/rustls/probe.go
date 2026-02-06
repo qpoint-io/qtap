@@ -84,7 +84,8 @@ func (p *Probe) Name() string {
 
 // vaddrToFileOffset converts a virtual address to a file offset using ELF program headers.
 // For PIE binaries, symbol values are virtual addresses, but uprobes need file offsets.
-func vaddrToFileOffset(elfFile *elf.File, vaddr uint64) uint64 {
+// Returns (offset, true) on success, (0, false) if no matching PT_LOAD segment found.
+func vaddrToFileOffset(elfFile *elf.File, vaddr uint64) (uint64, bool) {
 	for _, prog := range elfFile.Progs {
 		if prog.Type != elf.PT_LOAD {
 			continue
@@ -92,11 +93,11 @@ func vaddrToFileOffset(elfFile *elf.File, vaddr uint64) uint64 {
 		// Check if vaddr falls within this segment
 		if vaddr >= prog.Vaddr && vaddr < prog.Vaddr+prog.Memsz {
 			// Convert vaddr to file offset
-			return prog.Off + (vaddr - prog.Vaddr)
+			return prog.Off + (vaddr - prog.Vaddr), true
 		}
 	}
-	// If no matching segment found, return the vaddr as-is (non-PIE binary)
-	return vaddr
+	// No matching segment found - this indicates an unusual ELF layout
+	return 0, false
 }
 
 // scanForEVPAEADSymbols looks for aws-lc's EVP_AEAD_CTX_seal_scatter and
@@ -120,7 +121,10 @@ func (p *Probe) scanForEVPAEADSymbols(elfFile *elf.File, result *ScanResult) boo
 			if strings.Contains(sym.Name, "EVP_AEAD_CTX_seal_scatter") ||
 				strings.HasSuffix(sym.Name, "_seal_scatter") && strings.Contains(sym.Name, "EVP_AEAD") {
 				// Convert virtual address to file offset for uprobe
-				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				fileOffset, ok := vaddrToFileOffset(elfFile, sym.Value)
+				if !ok {
+					continue // Skip symbols we can't resolve
+				}
 				result.SealOffset = fileOffset
 				result.Symbols = append(result.Symbols, elf.Symbol{
 					Name:  "rustls_seal",
@@ -135,7 +139,10 @@ func (p *Probe) scanForEVPAEADSymbols(elfFile *elf.File, result *ScanResult) boo
 			if strings.Contains(sym.Name, "EVP_AEAD_CTX_open_gather") ||
 				strings.HasSuffix(sym.Name, "_open_gather") && strings.Contains(sym.Name, "EVP_AEAD") {
 				// Convert virtual address to file offset for uprobe
-				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				fileOffset, ok := vaddrToFileOffset(elfFile, sym.Value)
+				if !ok {
+					continue // Skip symbols we can't resolve
+				}
 				result.OpenOffset = fileOffset
 				result.Symbols = append(result.Symbols, elf.Symbol{
 					Name:  "rustls_open",
@@ -182,7 +189,10 @@ func (p *Probe) scanForRingSymbols(elfFile *elf.File, result *ScanResult) bool {
 		// Check for VAES AVX2 optimized encrypt (most common on modern CPUs)
 		if result.SealOffset == 0 {
 			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_gcm_enc_update_vaes_avx2") {
-				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				fileOffset, ok := vaddrToFileOffset(elfFile, sym.Value)
+				if !ok {
+					continue
+				}
 				result.SealOffset = fileOffset
 				result.Symbols = append(result.Symbols, elf.Symbol{
 					Name:  "ring_vaes_enc",
@@ -199,7 +209,10 @@ func (p *Probe) scanForRingSymbols(elfFile *elf.File, result *ScanResult) bool {
 		// Check for VAES AVX2 optimized decrypt
 		if result.OpenOffset == 0 {
 			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_gcm_dec_update_vaes_avx2") {
-				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				fileOffset, ok := vaddrToFileOffset(elfFile, sym.Value)
+				if !ok {
+					continue
+				}
 				result.OpenOffset = fileOffset
 				result.Symbols = append(result.Symbols, elf.Symbol{
 					Name:  "ring_vaes_dec",
@@ -224,7 +237,10 @@ func (p *Probe) scanForRingSymbols(elfFile *elf.File, result *ScanResult) bool {
 	for _, sym := range symbols {
 		if result.SealOffset == 0 && result.OpenOffset == 0 {
 			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_hw_ctr32_encrypt_blocks") {
-				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				fileOffset, ok := vaddrToFileOffset(elfFile, sym.Value)
+				if !ok {
+					continue
+				}
 				result.SealOffset = fileOffset
 				result.OpenOffset = fileOffset // CTR mode is symmetric
 				result.Symbols = append(result.Symbols, elf.Symbol{

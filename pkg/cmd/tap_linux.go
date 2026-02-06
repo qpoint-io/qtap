@@ -666,7 +666,7 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 }
 
 // NewEbpfRustlsProbesCreator creates a function that returns a list of uprobes for rustls
-// These probes hook aws-lc's EVP_AEAD functions and ring's aesni_gcm functions to capture plaintext.
+// These probes hook aws-lc's EVP_AEAD functions and ring's AES-GCM functions to capture plaintext.
 func NewEbpfRustlsProbesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 	return func() []*common.Uprobe {
 		return []*common.Uprobe{
@@ -676,12 +676,14 @@ func NewEbpfRustlsProbesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 			// aws-lc: open entry/exit - captures plaintext after decryption
 			common.NewUprobe("rustls_open", objs.TapPrograms.RustlsProbeEntryOpenGather),
 			common.NewUretprobe("rustls_open", objs.TapPrograms.RustlsProbeRetOpenGather),
-			// ring: encrypt entry/exit - captures plaintext before encryption
-			common.NewUprobe("ring_encrypt", objs.TapPrograms.RingProbeEntryEncrypt),
-			common.NewUretprobe("ring_encrypt", objs.TapPrograms.RingProbeRetEncrypt),
-			// ring: decrypt entry/exit - captures plaintext after decryption
-			common.NewUprobe("ring_decrypt", objs.TapPrograms.RingProbeEntryDecrypt),
-			common.NewUretprobe("ring_decrypt", objs.TapPrograms.RingProbeRetDecrypt),
+			// ring VAES AVX2: modern CPUs with VAES support
+			common.NewUprobe("ring_vaes_enc", objs.TapPrograms.RingProbeEntryVaesEnc),
+			common.NewUretprobe("ring_vaes_enc", objs.TapPrograms.RingProbeRetVaesEnc),
+			common.NewUprobe("ring_vaes_dec", objs.TapPrograms.RingProbeEntryVaesDec),
+			common.NewUretprobe("ring_vaes_dec", objs.TapPrograms.RingProbeRetVaesDec),
+			// ring CTR32: fallback for older CPUs
+			common.NewUprobe("ring_ctr32", objs.TapPrograms.RingProbeEntryCtr32),
+			common.NewUretprobe("ring_ctr32", objs.TapPrograms.RingProbeRetCtr32),
 		}
 	}
 }

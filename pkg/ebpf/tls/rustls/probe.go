@@ -174,48 +174,71 @@ func (p *Probe) scanForRingSymbols(elfFile *elf.File, result *ScanResult) bool {
 		}
 	}
 
-	// Look for ring's versioned AES-GCM encrypt/decrypt symbols
-	// Pattern: ring_core_X_X_X__aesni_gcm_encrypt / ring_core_X_X_X__aesni_gcm_decrypt
+	// Look for ring's versioned AES-GCM symbols
+	// Priority order (by performance/usage on modern CPUs):
+	// 1. aes_gcm_enc_update_vaes_avx2 / aes_gcm_dec_update_vaes_avx2 (VAES+AVX2)
+	// 2. aes_hw_ctr32_encrypt_blocks (fallback)
 	for _, sym := range symbols {
-		// Check for aesni_gcm_encrypt (seal/encryption)
+		// Check for VAES AVX2 optimized encrypt (most common on modern CPUs)
 		if result.SealOffset == 0 {
-			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aesni_gcm_encrypt") {
-				// Convert virtual address to file offset for uprobe
+			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_gcm_enc_update_vaes_avx2") {
 				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
 				result.SealOffset = fileOffset
-				// Use ring_encrypt to match BPF section name
 				result.Symbols = append(result.Symbols, elf.Symbol{
-					Name:  "ring_encrypt",
+					Name:  "ring_vaes_enc",
 					Value: fileOffset,
 					Size:  1,
 				})
-				p.logger.Debug("found ring aesni_gcm_encrypt",
+				p.logger.Debug("found ring aes_gcm_enc_update_vaes_avx2",
 					zap.String("symbol", sym.Name),
 					zap.Uint64("vaddr", sym.Value),
 					zap.Uint64("fileOffset", fileOffset))
 			}
 		}
 
-		// Check for aesni_gcm_decrypt (open/decryption)
+		// Check for VAES AVX2 optimized decrypt
 		if result.OpenOffset == 0 {
-			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aesni_gcm_decrypt") {
-				// Convert virtual address to file offset for uprobe
+			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_gcm_dec_update_vaes_avx2") {
 				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
 				result.OpenOffset = fileOffset
-				// Use ring_decrypt to match BPF section name
 				result.Symbols = append(result.Symbols, elf.Symbol{
-					Name:  "ring_decrypt",
+					Name:  "ring_vaes_dec",
 					Value: fileOffset,
 					Size:  1,
 				})
-				p.logger.Debug("found ring aesni_gcm_decrypt",
+				p.logger.Debug("found ring aes_gcm_dec_update_vaes_avx2",
 					zap.String("symbol", sym.Name),
 					zap.Uint64("vaddr", sym.Value),
 					zap.Uint64("fileOffset", fileOffset))
 			}
 		}
 
-		// Found both, we're done
+		// Found both VAES functions, we're done
+		if result.SealOffset != 0 && result.OpenOffset != 0 {
+			result.ContainsRustls = true
+			return true
+		}
+	}
+
+	// Fallback: CTR32 for CPUs without VAES
+	for _, sym := range symbols {
+		if result.SealOffset == 0 && result.OpenOffset == 0 {
+			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aes_hw_ctr32_encrypt_blocks") {
+				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				result.SealOffset = fileOffset
+				result.OpenOffset = fileOffset // CTR mode is symmetric
+				result.Symbols = append(result.Symbols, elf.Symbol{
+					Name:  "ring_ctr32",
+					Value: fileOffset,
+					Size:  1,
+				})
+				p.logger.Debug("found ring aes_hw_ctr32_encrypt_blocks (fallback)",
+					zap.String("symbol", sym.Name),
+					zap.Uint64("vaddr", sym.Value),
+					zap.Uint64("fileOffset", fileOffset))
+			}
+		}
+
 		if result.SealOffset != 0 && result.OpenOffset != 0 {
 			result.ContainsRustls = true
 			return true

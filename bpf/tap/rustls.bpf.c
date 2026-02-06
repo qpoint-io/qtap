@@ -49,7 +49,7 @@ struct {
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct rustls_seal_args);
 	__uint(max_entries, 1024);
-} active_rustls_seal_args SEC(".maps");
+} active_rustls_seal_args_map SEC(".maps");
 
 // Arguments saved at open entry (decryption)
 struct rustls_open_args {
@@ -64,7 +64,7 @@ struct {
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct rustls_open_args);
 	__uint(max_entries, 1024);
-} active_rustls_open_args SEC(".maps");
+} active_rustls_open_args_map SEC(".maps");
 
 // Get the active fd for this thread (set by syscall probes)
 static __always_inline int32_t rustls_get_active_fd(uint64_t pid_tgid) {
@@ -131,7 +131,7 @@ int rustls_probe_entry_seal_scatter(struct pt_regs *ctx) {
 		.buf = in_ptr,
 		.buf_len = in_len,
 	};
-	bpf_map_update_elem(&active_rustls_seal_args, &pid_tgid, &args, BPF_ANY);
+	bpf_map_update_elem(&active_rustls_seal_args_map, &pid_tgid, &args, BPF_ANY);
 
 	return 0;
 }
@@ -146,7 +146,7 @@ int rustls_probe_ret_seal_scatter(struct pt_regs *ctx) {
 	uint32_t pid = pid_tgid >> 32;
 
 	// Get saved args
-	struct rustls_seal_args *args = bpf_map_lookup_elem(&active_rustls_seal_args, &pid_tgid);
+	struct rustls_seal_args *args = bpf_map_lookup_elem(&active_rustls_seal_args_map, &pid_tgid);
 	if (args == NULL) {
 		bpf_printk("rustls/seal_ret: no args for pid=%d", pid);
 		return 0;
@@ -156,7 +156,7 @@ int rustls_probe_ret_seal_scatter(struct pt_regs *ctx) {
 	int ret = (int)PT_REGS_RC(ctx);
 	if (ret != 1) {
 		bpf_printk("rustls/seal_ret: ret=%d (not 1) pid=%d", ret, pid);
-		bpf_map_delete_elem(&active_rustls_seal_args, &pid_tgid);
+		bpf_map_delete_elem(&active_rustls_seal_args_map, &pid_tgid);
 		return 0;
 	}
 
@@ -171,7 +171,7 @@ int rustls_probe_ret_seal_scatter(struct pt_regs *ctx) {
 	if (fd < 3) {
 		// Still no valid fd
 		bpf_printk("rustls/seal_ret: no valid fd for pid=%d", pid);
-		bpf_map_delete_elem(&active_rustls_seal_args, &pid_tgid);
+		bpf_map_delete_elem(&active_rustls_seal_args_map, &pid_tgid);
 		return 0;
 	}
 
@@ -202,7 +202,7 @@ int rustls_probe_ret_seal_scatter(struct pt_regs *ctx) {
 	process_data(&sock_ctx, D_EGRESS, &data, args->buf_len, /* ssl */ true);
 
 	// Cleanup
-	bpf_map_delete_elem(&active_rustls_seal_args, &pid_tgid);
+	bpf_map_delete_elem(&active_rustls_seal_args_map, &pid_tgid);
 
 	return 0;
 }
@@ -251,7 +251,7 @@ int rustls_probe_entry_open_gather(struct pt_regs *ctx) {
 		.out_buf = out_buf,
 		.in_len = in_len,
 	};
-	bpf_map_update_elem(&active_rustls_open_args, &pid_tgid, &args, BPF_ANY);
+	bpf_map_update_elem(&active_rustls_open_args_map, &pid_tgid, &args, BPF_ANY);
 
 	return 0;
 }
@@ -266,7 +266,7 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 	uint32_t pid = pid_tgid >> 32;
 
 	// Get saved args
-	struct rustls_open_args *args = bpf_map_lookup_elem(&active_rustls_open_args, &pid_tgid);
+	struct rustls_open_args *args = bpf_map_lookup_elem(&active_rustls_open_args_map, &pid_tgid);
 	if (args == NULL) {
 		return 0;
 	}
@@ -274,7 +274,7 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 	// Check return value
 	int ret = (int)PT_REGS_RC(ctx);
 	if (ret != 1) {
-		bpf_map_delete_elem(&active_rustls_open_args, &pid_tgid);
+		bpf_map_delete_elem(&active_rustls_open_args_map, &pid_tgid);
 		return 0;
 	}
 
@@ -285,7 +285,7 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 	}
 	
 	if (fd < 3) {
-		bpf_map_delete_elem(&active_rustls_open_args, &pid_tgid);
+		bpf_map_delete_elem(&active_rustls_open_args_map, &pid_tgid);
 		return 0;
 	}
 
@@ -316,7 +316,7 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 	process_data(&sock_ctx, D_INGRESS, &data, args->in_len, /* ssl */ true);
 
 	// Cleanup
-	bpf_map_delete_elem(&active_rustls_open_args, &pid_tgid);
+	bpf_map_delete_elem(&active_rustls_open_args_map, &pid_tgid);
 
 	return 0;
 }
@@ -356,14 +356,14 @@ struct {
 	__type(key, uint64_t);
 	__type(value, struct ring_vaes_args);
 	__uint(max_entries, 4096);
-} active_ring_vaes_enc_args SEC(".maps");
+} active_ring_vaes_enc_args_map SEC(".maps");
 
 struct {
 	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);
 	__type(value, struct ring_vaes_args);
 	__uint(max_entries, 4096);
-} active_ring_vaes_dec_args SEC(".maps");
+} active_ring_vaes_dec_args_map SEC(".maps");
 
 /*
  * VAES AVX2 Encrypt entry - capture plaintext input
@@ -417,7 +417,7 @@ int ring_probe_entry_vaes_enc(struct pt_regs *ctx) {
 		.buf = in_buf,
 		.len = len,
 	};
-	bpf_map_update_elem(&active_ring_vaes_enc_args, &pid_tgid, &args, BPF_ANY);
+	bpf_map_update_elem(&active_ring_vaes_enc_args_map, &pid_tgid, &args, BPF_ANY);
 	
 	return 0;
 }
@@ -427,7 +427,7 @@ int ring_probe_ret_vaes_enc(struct pt_regs *ctx) {
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
 	
 	// Just cleanup - data capture already happened on entry
-	bpf_map_delete_elem(&active_ring_vaes_enc_args, &pid_tgid);
+	bpf_map_delete_elem(&active_ring_vaes_enc_args_map, &pid_tgid);
 	return 0;
 }
 
@@ -461,7 +461,7 @@ int ring_probe_entry_vaes_dec(struct pt_regs *ctx) {
 		.buf = out_buf,
 		.len = len,
 	};
-	bpf_map_update_elem(&active_ring_vaes_dec_args, &pid_tgid, &args, BPF_ANY);
+	bpf_map_update_elem(&active_ring_vaes_dec_args_map, &pid_tgid, &args, BPF_ANY);
 	
 	return 0;
 }
@@ -471,7 +471,7 @@ int ring_probe_ret_vaes_dec(struct pt_regs *ctx) {
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
 	uint32_t pid = pid_tgid >> 32;
 	
-	struct ring_vaes_args *args = bpf_map_lookup_elem(&active_ring_vaes_dec_args, &pid_tgid);
+	struct ring_vaes_args *args = bpf_map_lookup_elem(&active_ring_vaes_dec_args_map, &pid_tgid);
 	if (args == NULL) return 0;
 	
 	int32_t fd = args->fd;
@@ -494,7 +494,7 @@ int ring_probe_ret_vaes_dec(struct pt_regs *ctx) {
 		process_data(&sock_ctx, D_INGRESS, &data, args->len, /* ssl */ true);
 	}
 	
-	bpf_map_delete_elem(&active_ring_vaes_dec_args, &pid_tgid);
+	bpf_map_delete_elem(&active_ring_vaes_dec_args_map, &pid_tgid);
 	return 0;
 }
 
@@ -516,7 +516,7 @@ struct {
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct ring_ctr32_args);
 	__uint(max_entries, 4096);
-} active_ring_ctr32_args SEC(".maps");
+} active_ring_ctr32_args_map SEC(".maps");
 
 /*
  * Probe: ring aes_hw_ctr32_encrypt_blocks entry
@@ -584,7 +584,7 @@ int ring_probe_entry_ctr32(struct pt_regs *ctx) {
 		.out_buf = out_buf,
 		.blocks = blocks,
 	};
-	bpf_map_update_elem(&active_ring_ctr32_args, &pid_tgid, &args, BPF_ANY);
+	bpf_map_update_elem(&active_ring_ctr32_args_map, &pid_tgid, &args, BPF_ANY);
 
 	return 0;
 }
@@ -604,6 +604,6 @@ int ring_probe_ret_ctr32(struct pt_regs *ctx) {
 	// Just cleanup - data capture happened on entry
 	// We can't capture INGRESS here because CTR32 is symmetric and we
 	// can't distinguish encrypt from decrypt without syscall context
-	bpf_map_delete_elem(&active_ring_ctr32_args, &pid_tgid);
+	bpf_map_delete_elem(&active_ring_ctr32_args_map, &pid_tgid);
 	return 0;
 }

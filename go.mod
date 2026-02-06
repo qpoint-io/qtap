@@ -1,6 +1,6 @@
 module github.com/qpoint-io/qtap
 
-go 1.25.5
+go 1.25.7
 
 require (
 	github.com/advbet/sseclient v0.0.0-20250521071159-d88bf8fc2362

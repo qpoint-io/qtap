@@ -161,6 +161,76 @@ func (p *Probe) scanForEVPAEADSymbols(elfFile *elf.File, result *ScanResult) boo
 	return false
 }
 
+// scanForRingSymbols looks for ring's versioned assembly symbols.
+// Ring prefixes all symbols with ring_core_{version}__ (e.g., ring_core_0_17_14__).
+// These are C-compatible assembly functions inherited from BoringSSL.
+func (p *Probe) scanForRingSymbols(elfFile *elf.File, result *ScanResult) bool {
+	symbols, err := elfFile.Symbols()
+	if err != nil {
+		// Try dynamic symbols
+		symbols, err = elfFile.DynamicSymbols()
+		if err != nil {
+			return false
+		}
+	}
+
+	// Look for ring's versioned AES-GCM encrypt/decrypt symbols
+	// Pattern: ring_core_X_X_X__aesni_gcm_encrypt / ring_core_X_X_X__aesni_gcm_decrypt
+	for _, sym := range symbols {
+		// Check for aesni_gcm_encrypt (seal/encryption)
+		if result.SealOffset == 0 {
+			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aesni_gcm_encrypt") {
+				// Convert virtual address to file offset for uprobe
+				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				result.SealOffset = fileOffset
+				// Use ring_encrypt to match BPF section name
+				result.Symbols = append(result.Symbols, elf.Symbol{
+					Name:  "ring_encrypt",
+					Value: fileOffset,
+					Size:  1,
+				})
+				p.logger.Debug("found ring aesni_gcm_encrypt",
+					zap.String("symbol", sym.Name),
+					zap.Uint64("vaddr", sym.Value),
+					zap.Uint64("fileOffset", fileOffset))
+			}
+		}
+
+		// Check for aesni_gcm_decrypt (open/decryption)
+		if result.OpenOffset == 0 {
+			if strings.HasPrefix(sym.Name, "ring_core_") && strings.HasSuffix(sym.Name, "__aesni_gcm_decrypt") {
+				// Convert virtual address to file offset for uprobe
+				fileOffset := vaddrToFileOffset(elfFile, sym.Value)
+				result.OpenOffset = fileOffset
+				// Use ring_decrypt to match BPF section name
+				result.Symbols = append(result.Symbols, elf.Symbol{
+					Name:  "ring_decrypt",
+					Value: fileOffset,
+					Size:  1,
+				})
+				p.logger.Debug("found ring aesni_gcm_decrypt",
+					zap.String("symbol", sym.Name),
+					zap.Uint64("vaddr", sym.Value),
+					zap.Uint64("fileOffset", fileOffset))
+			}
+		}
+
+		// Found both, we're done
+		if result.SealOffset != 0 && result.OpenOffset != 0 {
+			result.ContainsRustls = true
+			return true
+		}
+	}
+
+	// Partial match - still useful if we found at least one
+	if result.SealOffset != 0 || result.OpenOffset != 0 {
+		result.ContainsRustls = true
+		return true
+	}
+
+	return false
+}
+
 // Scan implements tls.Probe.
 // Analyzes the binary using .eh_frame and AES-NI pattern matching.
 func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.ProbeScanResult, error) {
@@ -178,10 +248,20 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 		return result, nil
 	}
 
-	// Step 0: Check for EVP_AEAD symbols (aws-lc binaries have these)
+	// Step 0a: Check for EVP_AEAD symbols (aws-lc binaries have these)
 	// This is more reliable than pattern matching for aws-lc
 	if found := p.scanForEVPAEADSymbols(elfFile, result); found {
 		p.logger.Info("detected aws-lc EVP_AEAD symbols",
+			zap.String("path", target.Path),
+			zap.Uint64("sealOffset", result.SealOffset),
+			zap.Uint64("openOffset", result.OpenOffset))
+		return result, nil
+	}
+
+	// Step 0b: Check for ring's versioned assembly symbols
+	// Ring uses ring_core_{version}__aesni_gcm_encrypt/decrypt
+	if found := p.scanForRingSymbols(elfFile, result); found {
+		p.logger.Info("detected ring assembly symbols",
 			zap.String("path", target.Path),
 			zap.Uint64("sealOffset", result.SealOffset),
 			zap.Uint64("openOffset", result.OpenOffset))

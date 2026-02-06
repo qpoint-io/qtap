@@ -84,6 +84,20 @@ type TapProcessMeta struct {
 	_              [2]byte
 }
 
+type TapRingDecryptArgs struct {
+	Fd  int32
+	_   [4]byte
+	Out uint64
+	Len uint64
+}
+
+type TapRingEncryptArgs struct {
+	Fd  int32
+	_   [4]byte
+	Inp uint64
+	Len uint64
+}
+
 type TapRustlsOpenArgs struct {
 	Fd     int32
 	_      [4]byte
@@ -219,6 +233,10 @@ type TapProgramSpecs struct {
 	OpensslProbeRetSSL_writeEx   *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_write_ex"`
 	OpensslProbeEntrySSL_free    *ebpf.ProgramSpec `ebpf:"openssl_probe_entry_SSL_free"`
 	OpensslProbeRetSSL_new       *ebpf.ProgramSpec `ebpf:"openssl_probe_ret_SSL_new"`
+	RingProbeEntryDecrypt        *ebpf.ProgramSpec `ebpf:"ring_probe_entry_decrypt"`
+	RingProbeEntryEncrypt        *ebpf.ProgramSpec `ebpf:"ring_probe_entry_encrypt"`
+	RingProbeRetDecrypt          *ebpf.ProgramSpec `ebpf:"ring_probe_ret_decrypt"`
+	RingProbeRetEncrypt          *ebpf.ProgramSpec `ebpf:"ring_probe_ret_encrypt"`
 	RustlsProbeEntryOpenGather   *ebpf.ProgramSpec `ebpf:"rustls_probe_entry_open_gather"`
 	RustlsProbeEntrySealScatter  *ebpf.ProgramSpec `ebpf:"rustls_probe_entry_seal_scatter"`
 	RustlsProbeRetOpenGather     *ebpf.ProgramSpec `ebpf:"rustls_probe_ret_open_gather"`
@@ -276,6 +294,8 @@ type TapMapSpecs struct {
 	ActiveFileToPidFdMap          *ebpf.MapSpec `ebpf:"active_file_to_pid_fd_map"`
 	ActiveFileToSockMap           *ebpf.MapSpec `ebpf:"active_file_to_sock_map"`
 	ActiveReadArgsMap             *ebpf.MapSpec `ebpf:"active_read_args_map"`
+	ActiveRingDecryptArgs         *ebpf.MapSpec `ebpf:"active_ring_decrypt_args"`
+	ActiveRingEncryptArgs         *ebpf.MapSpec `ebpf:"active_ring_encrypt_args"`
 	ActiveRustlsOpenArgs          *ebpf.MapSpec `ebpf:"active_rustls_open_args"`
 	ActiveRustlsSealArgs          *ebpf.MapSpec `ebpf:"active_rustls_seal_args"`
 	ActiveSockAllocFileArgs       *ebpf.MapSpec `ebpf:"active_sock_alloc_file_args"`
@@ -329,6 +349,8 @@ type TapMaps struct {
 	ActiveFileToPidFdMap          *ebpf.Map `ebpf:"active_file_to_pid_fd_map"`
 	ActiveFileToSockMap           *ebpf.Map `ebpf:"active_file_to_sock_map"`
 	ActiveReadArgsMap             *ebpf.Map `ebpf:"active_read_args_map"`
+	ActiveRingDecryptArgs         *ebpf.Map `ebpf:"active_ring_decrypt_args"`
+	ActiveRingEncryptArgs         *ebpf.Map `ebpf:"active_ring_encrypt_args"`
 	ActiveRustlsOpenArgs          *ebpf.Map `ebpf:"active_rustls_open_args"`
 	ActiveRustlsSealArgs          *ebpf.Map `ebpf:"active_rustls_seal_args"`
 	ActiveSockAllocFileArgs       *ebpf.Map `ebpf:"active_sock_alloc_file_args"`
@@ -365,6 +387,8 @@ func (m *TapMaps) Close() error {
 		m.ActiveFileToPidFdMap,
 		m.ActiveFileToSockMap,
 		m.ActiveReadArgsMap,
+		m.ActiveRingDecryptArgs,
+		m.ActiveRingEncryptArgs,
 		m.ActiveRustlsOpenArgs,
 		m.ActiveRustlsSealArgs,
 		m.ActiveSockAllocFileArgs,
@@ -409,6 +433,10 @@ type TapPrograms struct {
 	OpensslProbeRetSSL_writeEx   *ebpf.Program `ebpf:"openssl__probe_ret_SSL_write_ex"`
 	OpensslProbeEntrySSL_free    *ebpf.Program `ebpf:"openssl_probe_entry_SSL_free"`
 	OpensslProbeRetSSL_new       *ebpf.Program `ebpf:"openssl_probe_ret_SSL_new"`
+	RingProbeEntryDecrypt        *ebpf.Program `ebpf:"ring_probe_entry_decrypt"`
+	RingProbeEntryEncrypt        *ebpf.Program `ebpf:"ring_probe_entry_encrypt"`
+	RingProbeRetDecrypt          *ebpf.Program `ebpf:"ring_probe_ret_decrypt"`
+	RingProbeRetEncrypt          *ebpf.Program `ebpf:"ring_probe_ret_encrypt"`
 	RustlsProbeEntryOpenGather   *ebpf.Program `ebpf:"rustls_probe_entry_open_gather"`
 	RustlsProbeEntrySealScatter  *ebpf.Program `ebpf:"rustls_probe_entry_seal_scatter"`
 	RustlsProbeRetOpenGather     *ebpf.Program `ebpf:"rustls_probe_ret_open_gather"`
@@ -469,6 +497,10 @@ func (p *TapPrograms) Close() error {
 		p.OpensslProbeRetSSL_writeEx,
 		p.OpensslProbeEntrySSL_free,
 		p.OpensslProbeRetSSL_new,
+		p.RingProbeEntryDecrypt,
+		p.RingProbeEntryEncrypt,
+		p.RingProbeRetDecrypt,
+		p.RingProbeRetEncrypt,
 		p.RustlsProbeEntryOpenGather,
 		p.RustlsProbeEntrySealScatter,
 		p.RustlsProbeRetOpenGather,

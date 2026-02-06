@@ -666,16 +666,22 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 }
 
 // NewEbpfRustlsProbesCreator creates a function that returns a list of uprobes for rustls
-// These probes hook aws-lc's EVP_AEAD functions to capture plaintext.
+// These probes hook aws-lc's EVP_AEAD functions and ring's aesni_gcm functions to capture plaintext.
 func NewEbpfRustlsProbesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 	return func() []*common.Uprobe {
 		return []*common.Uprobe{
-			// seal entry/exit - captures plaintext before encryption
+			// aws-lc: seal entry/exit - captures plaintext before encryption
 			common.NewUprobe("rustls_seal", objs.TapPrograms.RustlsProbeEntrySealScatter),
 			common.NewUretprobe("rustls_seal", objs.TapPrograms.RustlsProbeRetSealScatter),
-			// open entry/exit - captures plaintext after decryption
+			// aws-lc: open entry/exit - captures plaintext after decryption
 			common.NewUprobe("rustls_open", objs.TapPrograms.RustlsProbeEntryOpenGather),
 			common.NewUretprobe("rustls_open", objs.TapPrograms.RustlsProbeRetOpenGather),
+			// ring: encrypt entry/exit - captures plaintext before encryption
+			common.NewUprobe("ring_encrypt", objs.TapPrograms.RingProbeEntryEncrypt),
+			common.NewUretprobe("ring_encrypt", objs.TapPrograms.RingProbeRetEncrypt),
+			// ring: decrypt entry/exit - captures plaintext after decryption
+			common.NewUprobe("ring_decrypt", objs.TapPrograms.RingProbeEntryDecrypt),
+			common.NewUretprobe("ring_decrypt", objs.TapPrograms.RingProbeRetDecrypt),
 		}
 	}
 }

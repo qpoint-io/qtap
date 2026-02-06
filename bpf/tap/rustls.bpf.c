@@ -320,3 +320,250 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 
 	return 0;
 }
+
+/*
+ * ============================================================================
+ * RING-SPECIFIC PROBES
+ * ============================================================================
+ * 
+ * ring's aesni_gcm_encrypt/decrypt have different calling conventions than
+ * aws-lc's EVP_AEAD functions. Plaintext is in register parameters:
+ *
+ * ring_core_X_X_X__aesni_gcm_encrypt:
+ *   rdi = inp (PLAINTEXT input)
+ *   rsi = out (ciphertext output)
+ *   rdx = len
+ *   rcx = key
+ *   r8  = ivec
+ *   r9  = Htable
+ *   stack = Xi
+ *
+ * ring_core_X_X_X__aesni_gcm_decrypt:
+ *   rdi = inp (ciphertext input)
+ *   rsi = out (PLAINTEXT output)
+ *   rdx = len
+ *   rcx = key
+ *   r8  = ivec
+ *   r9  = Htable
+ *   stack = Xi
+ */
+
+// Arguments saved at ring encrypt entry
+struct ring_encrypt_args {
+	int32_t fd;
+	uint64_t inp;      // plaintext buffer (capture on entry)
+	uint64_t len;
+};
+
+// Arguments saved at ring decrypt entry
+struct ring_decrypt_args {
+	int32_t fd;
+	uint64_t out;      // plaintext buffer (capture on return)
+	uint64_t len;
+};
+
+// Map to save ring encrypt arguments
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, uint64_t);  // pid_tgid
+	__type(value, struct ring_encrypt_args);
+	__uint(max_entries, 4096);
+} active_ring_encrypt_args SEC(".maps");
+
+// Map to save ring decrypt arguments
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, uint64_t);  // pid_tgid
+	__type(value, struct ring_decrypt_args);
+	__uint(max_entries, 4096);
+} active_ring_decrypt_args SEC(".maps");
+
+/*
+ * Probe: ring aesni_gcm_encrypt entry (EGRESS - data being sent/encrypted)
+ * Plaintext is in rdi, capture it before encryption
+ */
+SEC("uprobe/ring_encrypt")
+int ring_probe_entry_encrypt(struct pt_regs *ctx) {
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+	uint32_t pid = pid_tgid >> 32;
+
+	bpf_printk("ring/encrypt_entry: FIRED pid=%d", pid);
+
+	// Get fd from active connection tracking
+	int32_t fd = rustls_get_active_fd(pid_tgid);
+
+	// Parameters in registers (System V AMD64 ABI)
+	uint64_t inp = (uint64_t)PT_REGS_PARM1(ctx);  // plaintext
+	uint64_t len = (uint64_t)PT_REGS_PARM3(ctx);  // length
+
+	// Sanity check - ring requires minimum 288 bytes for fast path
+	if (inp == 0 || len == 0 || len > 65536) {
+		return 0;
+	}
+
+	bpf_printk("ring/encrypt_entry: inp=%llx len=%llu fd=%d", inp, len, fd);
+
+	// Save args for return handler
+	struct ring_encrypt_args args = {
+		.fd = fd,
+		.inp = inp,
+		.len = len,
+	};
+	bpf_map_update_elem(&active_ring_encrypt_args, &pid_tgid, &args, BPF_ANY);
+
+	return 0;
+}
+
+/*
+ * Probe: ring aesni_gcm_encrypt return
+ * Process the plaintext we captured on entry
+ */
+SEC("uretprobe/ring_encrypt")
+int ring_probe_ret_encrypt(struct pt_regs *ctx) {
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+	uint32_t pid = pid_tgid >> 32;
+
+	// Get saved args
+	struct ring_encrypt_args *args = bpf_map_lookup_elem(&active_ring_encrypt_args, &pid_tgid);
+	if (args == NULL) {
+		return 0;
+	}
+
+	bpf_printk("ring/encrypt_ret: pid=%d fd=%d len=%llu", pid, args->fd, args->len);
+
+	int32_t fd = args->fd;
+	if (fd < 3) {
+		fd = rustls_get_active_fd(pid_tgid);
+	}
+
+	if (fd < 3) {
+		bpf_map_delete_elem(&active_ring_encrypt_args, &pid_tgid);
+		return 0;
+	}
+
+	// Construct pid_fd_key
+	struct pid_fd_key id = {
+		.pid = pid,
+		.fd = fd,
+	};
+
+	// Build data_args for plaintext
+	struct data_args data = {
+		.fd = fd,
+		.buf = args->inp,
+		.iovcnt = 0,
+		.ssl = 0,
+		.ex_bytes = 0,
+	};
+
+	// Build socket context
+	struct socket_ctx sock_ctx = {
+		.id = &id,
+		.pid_tgid = pid_tgid,
+		.trace_mod = QTAP_OPENSSL,  // Reuse OpenSSL module for TLS
+	};
+	bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/encrypt");
+
+	// Process plaintext (EGRESS = data being sent/encrypted)
+	process_data(&sock_ctx, D_EGRESS, &data, args->len, /* ssl */ true);
+
+	// Cleanup
+	bpf_map_delete_elem(&active_ring_encrypt_args, &pid_tgid);
+
+	return 0;
+}
+
+/*
+ * Probe: ring aesni_gcm_decrypt entry
+ * Save the output buffer pointer - plaintext will be there after return
+ */
+SEC("uprobe/ring_decrypt")
+int ring_probe_entry_decrypt(struct pt_regs *ctx) {
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+	uint32_t pid = pid_tgid >> 32;
+
+	bpf_printk("ring/decrypt_entry: FIRED pid=%d", pid);
+
+	// Get fd from active connection tracking
+	int32_t fd = rustls_get_active_fd(pid_tgid);
+
+	// Parameters in registers
+	uint64_t out = (uint64_t)PT_REGS_PARM2(ctx);  // output buffer (will contain plaintext)
+	uint64_t len = (uint64_t)PT_REGS_PARM3(ctx);  // length
+
+	// Sanity check
+	if (out == 0 || len == 0 || len > 65536) {
+		return 0;
+	}
+
+	bpf_printk("ring/decrypt_entry: out=%llx len=%llu fd=%d", out, len, fd);
+
+	// Save args for return handler
+	struct ring_decrypt_args args = {
+		.fd = fd,
+		.out = out,
+		.len = len,
+	};
+	bpf_map_update_elem(&active_ring_decrypt_args, &pid_tgid, &args, BPF_ANY);
+
+	return 0;
+}
+
+/*
+ * Probe: ring aesni_gcm_decrypt return
+ * Now the output buffer contains decrypted plaintext
+ */
+SEC("uretprobe/ring_decrypt")
+int ring_probe_ret_decrypt(struct pt_regs *ctx) {
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+	uint32_t pid = pid_tgid >> 32;
+
+	// Get saved args
+	struct ring_decrypt_args *args = bpf_map_lookup_elem(&active_ring_decrypt_args, &pid_tgid);
+	if (args == NULL) {
+		return 0;
+	}
+
+	bpf_printk("ring/decrypt_ret: pid=%d fd=%d len=%llu", pid, args->fd, args->len);
+
+	int32_t fd = args->fd;
+	if (fd < 3) {
+		fd = rustls_get_active_fd(pid_tgid);
+	}
+
+	if (fd < 3) {
+		bpf_map_delete_elem(&active_ring_decrypt_args, &pid_tgid);
+		return 0;
+	}
+
+	// Construct pid_fd_key
+	struct pid_fd_key id = {
+		.pid = pid,
+		.fd = fd,
+	};
+
+	// Build data_args for plaintext (now in output buffer)
+	struct data_args data = {
+		.fd = fd,
+		.buf = args->out,
+		.iovcnt = 0,
+		.ssl = 0,
+		.ex_bytes = 0,
+	};
+
+	// Build socket context
+	struct socket_ctx sock_ctx = {
+		.id = &id,
+		.pid_tgid = pid_tgid,
+		.trace_mod = QTAP_OPENSSL,
+	};
+	bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/decrypt");
+
+	// Process plaintext (INGRESS = data being received/decrypted)
+	process_data(&sock_ctx, D_INGRESS, &data, args->len, /* ssl */ true);
+
+	// Cleanup
+	bpf_map_delete_elem(&active_ring_decrypt_args, &pid_tgid);
+
+	return 0;
+}

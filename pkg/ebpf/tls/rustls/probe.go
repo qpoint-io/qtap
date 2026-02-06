@@ -15,6 +15,7 @@ import (
 	"context"
 	"debug/elf"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -281,10 +282,11 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 	// Get the underlying elf.File
 	elfFile, err := target.Elf.Elf(ctx)
 	if err != nil {
+		// ELF parsing failure is a real error - propagate it
 		p.logger.Debug("failed to get ELF file",
 			zap.String("path", target.Path),
 			zap.Error(err))
-		return result, nil
+		return nil, fmt.Errorf("getting ELF file: %w", err)
 	}
 
 	// Step 0a: Check for EVP_AEAD symbols (aws-lc binaries have these)

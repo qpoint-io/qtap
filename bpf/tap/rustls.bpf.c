@@ -45,7 +45,7 @@ struct rustls_seal_args {
 
 // Map to save seal arguments for return probe
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct rustls_seal_args);
 	__uint(max_entries, 1024);
@@ -60,7 +60,7 @@ struct rustls_open_args {
 
 // Map to save open arguments for return probe
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct rustls_open_args);
 	__uint(max_entries, 1024);
@@ -352,14 +352,14 @@ struct ring_vaes_args {
 };
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);
 	__type(value, struct ring_vaes_args);
 	__uint(max_entries, 4096);
 } active_ring_vaes_enc_args SEC(".maps");
 
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);
 	__type(value, struct ring_vaes_args);
 	__uint(max_entries, 4096);
@@ -512,7 +512,7 @@ struct ring_ctr32_args {
 
 // Map to save ring CTR32 arguments
 struct {
-	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(type, BPF_MAP_TYPE_LRU_HASH);
 	__type(key, uint64_t);  // pid_tgid
 	__type(value, struct ring_ctr32_args);
 	__uint(max_entries, 4096);

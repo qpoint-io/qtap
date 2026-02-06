@@ -290,7 +290,7 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 	// Step 0a: Check for EVP_AEAD symbols (aws-lc binaries have these)
 	// This is more reliable than pattern matching for aws-lc
 	if found := p.scanForEVPAEADSymbols(elfFile, result); found {
-		p.logger.Info("detected aws-lc EVP_AEAD symbols",
+		p.logger.Debug("detected aws-lc EVP_AEAD symbols",
 			zap.String("path", target.Path),
 			zap.Uint64("sealOffset", result.SealOffset),
 			zap.Uint64("openOffset", result.OpenOffset))
@@ -300,7 +300,7 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 	// Step 0b: Check for ring's versioned assembly symbols
 	// Ring uses ring_core_{version}__aesni_gcm_encrypt/decrypt
 	if found := p.scanForRingSymbols(elfFile, result); found {
-		p.logger.Info("detected ring assembly symbols",
+		p.logger.Debug("detected ring assembly symbols",
 			zap.String("path", target.Path),
 			zap.Uint64("sealOffset", result.SealOffset),
 			zap.Uint64("openOffset", result.OpenOffset))
@@ -386,7 +386,7 @@ func (p *Probe) Scan(ctx context.Context, target *tls.ExeElfScannable) (tls.Prob
 		})
 	}
 
-	p.logger.Info("detected rustls crypto functions",
+	p.logger.Debug("detected rustls crypto functions",
 		zap.String("path", target.Path),
 		zap.Int("totalCrypto", len(cryptoFuncs)),
 		zap.Uint64("sealOffset", result.SealOffset),

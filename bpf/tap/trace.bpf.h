@@ -38,6 +38,7 @@ enum QTAP_COMPONENT {
 	QTAP_PROCESS,
 	QTAP_PROTOCOL,
 	QTAP_REDIRECTOR,
+	QTAP_RUSTLS,
 	QTAP_SOCKET,
 };
 
@@ -370,5 +371,6 @@ static __always_inline void trace_port(uint64_t tsid, const char *title, uint16_
 #define TRACE_PROCESS(pid, ...)    TRACE_IF_ENABLED(QTAP_PROCESS, pid, __VA_ARGS__)
 #define TRACE_PROTOCOL(pid, ...)   TRACE_IF_ENABLED(QTAP_PROTOCOL, pid, __VA_ARGS__)
 #define TRACE_REDIRECTOR(pid, ...) TRACE_IF_ENABLED(QTAP_REDIRECTOR, pid, __VA_ARGS__)
+#define TRACE_RUSTLS(pid, ...)     TRACE_IF_ENABLED(QTAP_RUSTLS, pid, __VA_ARGS__)
 #define TRACE_SOCKET(pid, ...)     TRACE_IF_ENABLED(QTAP_SOCKET, pid, __VA_ARGS__)
 #endif

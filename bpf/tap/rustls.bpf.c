@@ -194,7 +194,7 @@ int rustls_probe_ret_seal_scatter(struct pt_regs *ctx) {
 	struct socket_ctx sock_ctx = {
 		.id = &id,
 		.pid_tgid = pid_tgid,
-		.trace_mod = QTAP_OPENSSL,
+		.trace_mod = QTAP_RUSTLS,
 	};
 	bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "rustls/seal");
 
@@ -308,7 +308,7 @@ int rustls_probe_ret_open_gather(struct pt_regs *ctx) {
 	struct socket_ctx sock_ctx = {
 		.id = &id,
 		.pid_tgid = pid_tgid,
-		.trace_mod = QTAP_OPENSSL,
+		.trace_mod = QTAP_RUSTLS,
 	};
 	bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "rustls/open");
 
@@ -397,7 +397,7 @@ int ring_probe_entry_vaes_enc(struct pt_regs *ctx) {
 		struct conn_info *ci = bpf_map_lookup_elem(&conn_info_map, &id);
 		
 		if (ci && ci->is_open) {
-			struct socket_ctx sock_ctx = { .id = &id, .pid_tgid = pid_tgid, .trace_mod = QTAP_OPENSSL };
+			struct socket_ctx sock_ctx = { .id = &id, .pid_tgid = pid_tgid, .trace_mod = QTAP_RUSTLS };
 			bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/vaes_enc");
 			
 			struct data_args data = {
@@ -481,7 +481,7 @@ int ring_probe_ret_vaes_dec(struct pt_regs *ctx) {
 	
 	if (fd >= 3) {
 		struct pid_fd_key id = { .pid = pid, .fd = fd };
-		struct socket_ctx sock_ctx = { .id = &id, .pid_tgid = pid_tgid, .trace_mod = QTAP_OPENSSL };
+		struct socket_ctx sock_ctx = { .id = &id, .pid_tgid = pid_tgid, .trace_mod = QTAP_RUSTLS };
 		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/vaes_dec");
 		
 		struct data_args data = {
@@ -561,7 +561,7 @@ int ring_probe_entry_ctr32(struct pt_regs *ctx) {
 		struct socket_ctx sock_ctx = {
 			.id = &id,
 			.pid_tgid = pid_tgid,
-			.trace_mod = QTAP_OPENSSL,
+			.trace_mod = QTAP_RUSTLS,
 		};
 		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "ring/ctr32");
 

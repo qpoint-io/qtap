@@ -297,11 +297,11 @@ type TapMapSpecs struct {
 	ActiveFileToPidFdMap          *ebpf.MapSpec `ebpf:"active_file_to_pid_fd_map"`
 	ActiveFileToSockMap           *ebpf.MapSpec `ebpf:"active_file_to_sock_map"`
 	ActiveReadArgsMap             *ebpf.MapSpec `ebpf:"active_read_args_map"`
-	ActiveRingCtr32Args           *ebpf.MapSpec `ebpf:"active_ring_ctr32_args"`
-	ActiveRingVaesDecArgs         *ebpf.MapSpec `ebpf:"active_ring_vaes_dec_args"`
-	ActiveRingVaesEncArgs         *ebpf.MapSpec `ebpf:"active_ring_vaes_enc_args"`
-	ActiveRustlsOpenArgs          *ebpf.MapSpec `ebpf:"active_rustls_open_args"`
-	ActiveRustlsSealArgs          *ebpf.MapSpec `ebpf:"active_rustls_seal_args"`
+	ActiveRingCtr32ArgsMap        *ebpf.MapSpec `ebpf:"active_ring_ctr32_args_map"`
+	ActiveRingVaesDecArgsMap      *ebpf.MapSpec `ebpf:"active_ring_vaes_dec_args_map"`
+	ActiveRingVaesEncArgsMap      *ebpf.MapSpec `ebpf:"active_ring_vaes_enc_args_map"`
+	ActiveRustlsOpenArgsMap       *ebpf.MapSpec `ebpf:"active_rustls_open_args_map"`
+	ActiveRustlsSealArgsMap       *ebpf.MapSpec `ebpf:"active_rustls_seal_args_map"`
 	ActiveSockAllocFileArgs       *ebpf.MapSpec `ebpf:"active_sock_alloc_file_args"`
 	ActiveSocketArgsMap           *ebpf.MapSpec `ebpf:"active_socket_args_map"`
 	ActiveSocketTypes             *ebpf.MapSpec `ebpf:"active_socket_types"`
@@ -353,11 +353,11 @@ type TapMaps struct {
 	ActiveFileToPidFdMap          *ebpf.Map `ebpf:"active_file_to_pid_fd_map"`
 	ActiveFileToSockMap           *ebpf.Map `ebpf:"active_file_to_sock_map"`
 	ActiveReadArgsMap             *ebpf.Map `ebpf:"active_read_args_map"`
-	ActiveRingCtr32Args           *ebpf.Map `ebpf:"active_ring_ctr32_args"`
-	ActiveRingVaesDecArgs         *ebpf.Map `ebpf:"active_ring_vaes_dec_args"`
-	ActiveRingVaesEncArgs         *ebpf.Map `ebpf:"active_ring_vaes_enc_args"`
-	ActiveRustlsOpenArgs          *ebpf.Map `ebpf:"active_rustls_open_args"`
-	ActiveRustlsSealArgs          *ebpf.Map `ebpf:"active_rustls_seal_args"`
+	ActiveRingCtr32ArgsMap        *ebpf.Map `ebpf:"active_ring_ctr32_args_map"`
+	ActiveRingVaesDecArgsMap      *ebpf.Map `ebpf:"active_ring_vaes_dec_args_map"`
+	ActiveRingVaesEncArgsMap      *ebpf.Map `ebpf:"active_ring_vaes_enc_args_map"`
+	ActiveRustlsOpenArgsMap       *ebpf.Map `ebpf:"active_rustls_open_args_map"`
+	ActiveRustlsSealArgsMap       *ebpf.Map `ebpf:"active_rustls_seal_args_map"`
 	ActiveSockAllocFileArgs       *ebpf.Map `ebpf:"active_sock_alloc_file_args"`
 	ActiveSocketArgsMap           *ebpf.Map `ebpf:"active_socket_args_map"`
 	ActiveSocketTypes             *ebpf.Map `ebpf:"active_socket_types"`
@@ -392,11 +392,11 @@ func (m *TapMaps) Close() error {
 		m.ActiveFileToPidFdMap,
 		m.ActiveFileToSockMap,
 		m.ActiveReadArgsMap,
-		m.ActiveRingCtr32Args,
-		m.ActiveRingVaesDecArgs,
-		m.ActiveRingVaesEncArgs,
-		m.ActiveRustlsOpenArgs,
-		m.ActiveRustlsSealArgs,
+		m.ActiveRingCtr32ArgsMap,
+		m.ActiveRingVaesDecArgsMap,
+		m.ActiveRingVaesEncArgsMap,
+		m.ActiveRustlsOpenArgsMap,
+		m.ActiveRustlsSealArgsMap,
 		m.ActiveSockAllocFileArgs,
 		m.ActiveSocketArgsMap,
 		m.ActiveSocketTypes,

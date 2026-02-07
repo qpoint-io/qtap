@@ -27,7 +27,7 @@
 #include "net.bpf.h"
 
 // This keeps instruction count below BPF's limit of 4096 per probe
-#define LOOP_LIMIT    100
+#define LOOP_LIMIT    64
 #define LOOP_LIMIT_SM 25
 
 // Check if BPF_UPROBE is not defined

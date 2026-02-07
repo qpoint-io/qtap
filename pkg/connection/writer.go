@@ -114,12 +114,24 @@ func (m *Manager) WriteDoneEvent(cookie uint64) {
 }
 
 func (m *Manager) WriteTLSClientHelloEvent(c uint64, h *tlsutils.ClientHello) {
-	m.logger.Debug("writing handshake event",
+	m.logger.Debug("writing tls client hello event",
 		zap.Uint64("cookie", c),
 		zap.Any("client_hello", h),
 	)
 
 	m.HandleEvent(TLSClientHelloEvent{
+		Cookie: Cookie(c),
+		Msg:    h,
+	})
+}
+
+func (m *Manager) WriteTLSServerHelloEvent(c uint64, h *tlsutils.ServerHello) {
+	m.logger.Debug("writing tls server hello event",
+		zap.Uint64("cookie", c),
+		zap.Any("server_hello", h),
+	)
+
+	m.HandleEvent(TLSServerHelloEvent{
 		Cookie: Cookie(c),
 		Msg:    h,
 	})

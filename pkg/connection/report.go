@@ -17,6 +17,7 @@ type report struct {
 	dataEventCount         uint64
 	gotOrigDestEvent       bool
 	gotTLSClientHelloEvent bool
+	gotTLSServerHelloEvent bool
 	gotProtocolEvent       bool
 	gotHandlerTypeEvent    bool
 }
@@ -40,6 +41,8 @@ func (r *report) reportEvent(event any) {
 		r.dataEventCount++
 	case TLSClientHelloEvent:
 		r.gotTLSClientHelloEvent = true
+	case TLSServerHelloEvent:
+		r.gotTLSServerHelloEvent = true
 	case OriginalDestinationEvent:
 		r.gotOrigDestEvent = true
 	case HandlerTypeEvent:

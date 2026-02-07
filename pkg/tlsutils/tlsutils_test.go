@@ -336,6 +336,235 @@ func TestParseSupportedVersionsFromExtensions(t *testing.T) {
 	}
 }
 
+func TestParseServerHello(t *testing.T) {
+	tests := []struct {
+		name    string
+		record  []byte
+		want    *ServerHello
+		wantErr string
+	}{
+		{
+			name:    "empty record",
+			record:  []byte{},
+			want:    nil,
+			wantErr: "record too short",
+		},
+		{
+			name: "valid TLS 1.2 ServerHello",
+			record: []byte{
+				// TLS Record Layer
+				0x16,       // Content Type: Handshake
+				0x03, 0x03, // TLS Version 1.2
+				0x00, 0x31, // Length: 49 bytes
+				// Handshake Protocol
+				0x02,             // Handshake Type: Server Hello
+				0x00, 0x00, 0x2D, // Length: 45 bytes
+				0x03, 0x03, // Server Version: TLS 1.2
+				// Random (32 bytes)
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x00,       // Session ID Length: 0
+				0xC0, 0x2F, // Cipher Suite: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+				0x00,       // Compression Method: null
+				0x00, 0x05, // Extensions Length: 5 bytes
+				// Renegotiation Info Extension
+				0xFF, 0x01, // Extension Type: Renegotiation Info
+				0x00, 0x01, // Extension Length: 1 byte
+				0x00, // Data
+			},
+			want: &ServerHello{
+				Version:     VersionTLS12,
+				CipherSuite: CipherSuite(0xC02F),
+				ALPN:        "",
+			},
+			wantErr: "",
+		},
+		{
+			name: "valid TLS 1.3 ServerHello with supported_versions and ALPN",
+			record: []byte{
+				// TLS Record Layer
+				0x16,       // Content Type: Handshake
+				0x03, 0x03, // TLS Version 1.2 (compatibility)
+				0x00, 0x3D, // Length: 61 bytes
+				// Handshake Protocol
+				0x02,             // Handshake Type: Server Hello
+				0x00, 0x00, 0x39, // Length: 57 bytes
+				0x03, 0x03, // Server Version: TLS 1.2 (compatibility, real version in extension)
+				// Random (32 bytes)
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x00,       // Session ID Length: 0
+				0x13, 0x01, // Cipher Suite: TLS_AES_128_GCM_SHA256
+				0x00,       // Compression Method: null
+				0x00, 0x11, // Extensions Length: 17 bytes
+				// Supported Versions Extension (6 bytes)
+				0x00, 0x2B, // Extension Type: Supported Versions
+				0x00, 0x02, // Extension Length: 2 bytes
+				0x03, 0x04, // TLS 1.3
+				// ALPN Extension (11 bytes)
+				0x00, 0x10, // Extension Type: ALPN
+				0x00, 0x07, // Extension Length: 7 bytes
+				0x00, 0x05, // Protocol List Length: 5 bytes
+				0x02,       // Protocol Length: 2
+				0x68, 0x32, // "h2"
+				0x01, // Protocol Length: 1 (extra protocol)
+				0x00, // empty (ignored)
+			},
+			want: &ServerHello{
+				Version:     VersionTLS13,
+				CipherSuite: CipherSuite(0x1301),
+				ALPN:        "h2",
+			},
+			wantErr: "",
+		},
+		{
+			name: "not a handshake record",
+			record: []byte{
+				// TLS Record Layer - Application Data (not handshake)
+				0x17,       // Content Type: Application Data
+				0x03, 0x03, // TLS Version
+				0x00, 0x28, // Length: 40 bytes
+				// Handshake-like header (but content type is wrong)
+				0x02,             // Would be Server Hello
+				0x00, 0x00, 0x24, // Length
+				0x03, 0x03, // Version
+				// Random (32 bytes)
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x00,       // Session ID Length
+				0xC0, 0x2F, // Cipher Suite
+				0x00, // Compression
+			},
+			want:    nil,
+			wantErr: "not a TLS handshake record",
+		},
+		{
+			name: "not a ServerHello",
+			record: []byte{
+				// TLS Record Layer
+				0x16,       // Content Type: Handshake
+				0x03, 0x03, // TLS Version
+				0x00, 0x2C, // Length: 44 bytes
+				// Handshake Protocol
+				0x01,             // Handshake Type: Client Hello (not Server Hello)
+				0x00, 0x00, 0x28, // Length: 40 bytes
+				0x03, 0x03, // Version
+				// Random (32 bytes)
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x00,       // Session ID Length
+				0x00, 0x02, // Cipher Suites Length
+				0xC0, 0x2F, // Cipher Suite
+				0x01, // Compression Methods Length
+				0x00, // Compression Method
+			},
+			want:    nil,
+			wantErr: "not a ServerHello",
+		},
+		{
+			name: "ServerHello with session ID",
+			record: []byte{
+				// TLS Record Layer
+				0x16,       // Content Type: Handshake
+				0x03, 0x03, // TLS Version 1.2
+				0x00, 0x2E, // Length: 46 bytes (4 + 42)
+				// Handshake Protocol
+				0x02,             // Handshake Type: Server Hello
+				0x00, 0x00, 0x2A, // Length: 42 bytes (body only)
+				0x03, 0x03, // Server Version: TLS 1.2
+				// Random (32 bytes)
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+				0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+				0x04,                   // Session ID Length: 4
+				0xAA, 0xBB, 0xCC, 0xDD, // Session ID
+				0xC0, 0x2F, // Cipher Suite: TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+				0x00, // Compression Method: null
+				// No extensions
+			},
+			want: &ServerHello{
+				Version:     VersionTLS12,
+				CipherSuite: CipherSuite(0xC02F),
+				ALPN:        "",
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseServerHello(tt.record)
+			if tt.wantErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErr)
+				require.Nil(t, got)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, got)
+				require.Equal(t, tt.want.Version, got.Version, "Version should match")
+				require.Equal(t, tt.want.CipherSuite, got.CipherSuite, "CipherSuite should match")
+				require.Equal(t, tt.want.ALPN, got.ALPN, "ALPN should match")
+			}
+		})
+	}
+}
+
+func TestServerHelloControlValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		hello    *ServerHello
+		expected map[string]any
+	}{
+		{
+			"Complete ServerHello",
+			&ServerHello{
+				Version:     VersionTLS13,
+				CipherSuite: CipherSuite(0x1301),
+				ALPN:        "h2",
+			},
+			map[string]any{
+				"enabled":     true,
+				"version":     1.3,
+				"cipherSuite": "TLS_AES_128_GCM_SHA256",
+				"alpn":        "h2",
+			},
+		},
+		{
+			"ServerHello without ALPN",
+			&ServerHello{
+				Version:     VersionTLS12,
+				CipherSuite: CipherSuite(0xC02F),
+				ALPN:        "",
+			},
+			map[string]any{
+				"enabled":     true,
+				"version":     1.2,
+				"cipherSuite": "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+				"alpn":        "",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.hello.ControlValues()
+			require.Equal(t, tt.expected["enabled"], got["enabled"])
+			require.Equal(t, tt.expected["version"], got["version"])
+			require.Equal(t, tt.expected["cipherSuite"], got["cipherSuite"])
+			require.Equal(t, tt.expected["alpn"], got["alpn"])
+		})
+	}
+}
+
 func TestParseClientHello(t *testing.T) {
 	tests := []struct {
 		name    string

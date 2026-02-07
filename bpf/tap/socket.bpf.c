@@ -163,6 +163,14 @@ struct {
 	__type(value, struct socket_tls_client_hello_event);
 } socket_tls_client_hello_event_heap SEC(".maps");
 
+// Heap memory for temporary storing tls server hello events
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, uint32_t);
+	__type(value, struct socket_tls_server_hello_event);
+} socket_tls_server_hello_event_heap SEC(".maps");
+
 // submit the open event …
 static void submit_open_event(struct socket_ctx *ctx, struct conn_info *conn_info) {
 	// don't submit more than once
@@ -611,19 +619,34 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	}
 
 	// if we're ssl, extract the tls handshake
-	uint32_t key                                = 0;
-	struct socket_tls_client_hello_event *hello = bpf_map_lookup_elem(&socket_tls_client_hello_event_heap, &key);
-	if (hello == NULL) {
-		return;
+	uint32_t key = 0;
+
+	// capture ClientHello on egress (client sending to server)
+	if (direction == D_EGRESS) {
+		struct socket_tls_client_hello_event *hello = bpf_map_lookup_elem(&socket_tls_client_hello_event_heap, &key);
+		if (hello == NULL) {
+			return;
+		}
+
+		if (capture_tls_client_hello(hello, &buf_info, bytes)) {
+			hello->type        = S_TLS_CLIENT_HELLO;
+			hello->attr.cookie = conn_info->cookie;
+			bpf_ringbuf_output(&socket_events, hello, sizeof(*hello), 0);
+		}
 	}
 
-	if (capture_tls_client_hello(hello, &buf_info, bytes)) {
-		hello->type        = S_TLS_CLIENT_HELLO;
-		hello->attr.cookie = conn_info->cookie;
-		// handshake.data now contains the complete ClientHello
-		// handshake.size contains the actual size of the data
+	// capture ServerHello on ingress (server responding to client)
+	if (direction == D_INGRESS) {
+		struct socket_tls_server_hello_event *server_hello = bpf_map_lookup_elem(&socket_tls_server_hello_event_heap, &key);
+		if (server_hello == NULL) {
+			return;
+		}
 
-		bpf_ringbuf_output(&socket_events, hello, sizeof(*hello), 0);
+		if (capture_tls_server_hello(server_hello, &buf_info, bytes)) {
+			server_hello->type        = S_TLS_SERVER_HELLO;
+			server_hello->attr.cookie = conn_info->cookie;
+			bpf_ringbuf_output(&socket_events, server_hello, sizeof(*server_hello), 0);
+		}
 	}
 }
 

@@ -179,6 +179,7 @@ const (
 	socketEvents_PROTO
 	socketEvents_HOSTNAME
 	socketEvents_TLS_CLIENT_HELLO
+	socketEvents_TLS_SERVER_HELLO
 )
 
 // event
@@ -332,6 +333,13 @@ func (e socketProtoEvent) ProtocolString() string {
 
 // socketTLSClientHelloAttr represents the attributes within the socket_tls_client_hello_attr_t struct.
 type socketTLSClientHelloAttr struct {
+	Cookie uint64  // 8 bytes
+	Size   uint32  // 4 bytes
+	_      [4]byte // 4 bytes padding to align to 8 bytes
+}
+
+// socketTLSServerHelloAttr represents the attributes within the socket_tls_server_hello_attr_t struct.
+type socketTLSServerHelloAttr struct {
 	Cookie uint64  // 8 bytes
 	Size   uint32  // 4 bytes
 	_      [4]byte // 4 bytes padding to align to 8 bytes

@@ -141,7 +141,10 @@ func toEventStoreConnection(conn *connection.Connection) *eventstore.Connection 
 		c.BytesSent = uint64(conn.CloseEvent.WrBytes)
 	}
 
-	if conn.TLSClientHello != nil {
+	// Prefer ServerHello (negotiated values) over ClientHello (proposed values)
+	if conn.TLSServerHello != nil {
+		c.TLSVersion = conn.TLSServerHello.Version
+	} else if conn.TLSClientHello != nil {
 		c.TLSVersion = conn.TLSClientHello.Version
 	}
 

@@ -38,6 +38,7 @@ enum SOCKET_EVENT {
 	S_PROTO            = 4ULL,
 	S_HOSTNAME         = 5ULL,
 	S_TLS_CLIENT_HELLO = 6ULL,
+	S_TLS_SERVER_HELLO = 7ULL,
 };
 
 enum CONNECTION_TYPE {
@@ -231,6 +232,19 @@ struct socket_tls_client_hello_event {
 	// Event type
 	uint64_t type;
 	struct socket_tls_client_hello_attr_t {
+		// Socket cookie
+		uint64_t cookie;
+		// TLS handshake size
+		uint32_t size;
+	} attr;
+	// TLS handshake data
+	unsigned char data[MAX_MSG_SIZE];
+};
+
+struct socket_tls_server_hello_event {
+	// Event type
+	uint64_t type;
+	struct socket_tls_server_hello_attr_t {
 		// Socket cookie
 		uint64_t cookie;
 		// TLS handshake size

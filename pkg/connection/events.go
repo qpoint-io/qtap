@@ -141,3 +141,12 @@ type TLSClientHelloEvent struct {
 func (e TLSClientHelloEvent) QueuePriority() int {
 	return 1
 }
+
+type TLSServerHelloEvent struct {
+	Cookie
+	Msg *tlsutils.ServerHello
+}
+
+func (e TLSServerHelloEvent) QueuePriority() int {
+	return 1
+}

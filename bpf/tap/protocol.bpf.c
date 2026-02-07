@@ -88,6 +88,49 @@ static bool capture_tls_client_hello(struct socket_tls_client_hello_event *hands
 	return false;
 }
 
+static bool capture_tls_server_hello(struct socket_tls_server_hello_event *handshake, struct buf_info *buf_info, size_t count) {
+	if (!handshake || count < MINIMUM_TLS_HANDSHAKE_SIZE || !buf_info->buf) {
+		return false;
+	}
+
+	unsigned char tls_header[6] = {0};
+	if (buf_read((char *)&tls_header, sizeof(tls_header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// Check for TLS handshake record (0x16) with valid version
+	if (tls_header[0] == 0x16 && tls_header[1] == 0x03 && tls_header[2] >= 0x01) {
+		// Check for ServerHello (0x02)
+		if (tls_header[5] != 0x02) {
+			return false;
+		}
+
+		uint16_t handshake_body_size = (tls_header[3] << 8) | tls_header[4];
+
+		// Calculate total size needed (record header + payload)
+		uint32_t total_size = TLS_RECORD_HEADER_SIZE + handshake_body_size;
+
+		// Ensure we have enough data and don't exceed our buffer
+		if (total_size > count || total_size > MAX_MSG_SIZE) {
+			return false;
+		}
+
+		total_size &= (MAX_MSG_SIZE - 1);
+
+		// Read the entire handshake into our buffer
+		if (buf_read((char *)handshake->data, total_size, buf_info, 0) == 0) {
+			return false;
+		}
+
+		// Store the actual size
+		handshake->attr.size = total_size;
+
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_http(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// Initialize to zero to ensure null-termination
 	char http1_method_prefix[8] = {0};

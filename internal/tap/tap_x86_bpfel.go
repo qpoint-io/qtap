@@ -153,6 +153,16 @@ type TapSocketTlsClientHelloEvent struct {
 	Data [30720]uint8
 }
 
+type TapSocketTlsServerHelloEvent struct {
+	Type uint64
+	Attr struct {
+		Cookie uint64
+		Size   uint32
+		_      [4]byte
+	}
+	Data [30720]uint8
+}
+
 // LoadTap returns the embedded CollectionSpec for Tap.
 func LoadTap() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_TapBytes)
@@ -277,6 +287,7 @@ type TapMapSpecs struct {
 	SocketHostnameEventHeap       *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.MapSpec `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_client_hello_event_heap"`
+	SocketTlsServerHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_server_hello_event_heap"`
 	SslToFdMap                    *ebpf.MapSpec `ebpf:"ssl_to_fd_map"`
 	TraceEvents                   *ebpf.MapSpec `ebpf:"trace_events"`
 	TraceToggleMap                *ebpf.MapSpec `ebpf:"trace_toggle_map"`
@@ -327,6 +338,7 @@ type TapMaps struct {
 	SocketHostnameEventHeap       *ebpf.Map `ebpf:"socket_hostname_event_heap"`
 	SocketSettingsMap             *ebpf.Map `ebpf:"socket_settings_map"`
 	SocketTlsClientHelloEventHeap *ebpf.Map `ebpf:"socket_tls_client_hello_event_heap"`
+	SocketTlsServerHelloEventHeap *ebpf.Map `ebpf:"socket_tls_server_hello_event_heap"`
 	SslToFdMap                    *ebpf.Map `ebpf:"ssl_to_fd_map"`
 	TraceEvents                   *ebpf.Map `ebpf:"trace_events"`
 	TraceToggleMap                *ebpf.Map `ebpf:"trace_toggle_map"`
@@ -360,6 +372,7 @@ func (m *TapMaps) Close() error {
 		m.SocketHostnameEventHeap,
 		m.SocketSettingsMap,
 		m.SocketTlsClientHelloEventHeap,
+		m.SocketTlsServerHelloEventHeap,
 		m.SslToFdMap,
 		m.TraceEvents,
 		m.TraceToggleMap,

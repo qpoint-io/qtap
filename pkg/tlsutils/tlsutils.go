@@ -16,6 +16,24 @@ type ClientHello struct {
 	ALPNs   []string
 }
 
+// CipherSuite represents a TLS cipher suite
+type CipherSuite uint16
+
+func (c CipherSuite) String() string {
+	return tls.CipherSuiteName(uint16(c))
+}
+
+func (c CipherSuite) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+// ServerHello contains the negotiated TLS parameters from the server
+type ServerHello struct {
+	Version     TLSVersion
+	CipherSuite CipherSuite
+	ALPN        string // single selected protocol, not a list
+}
+
 type TLSVersion uint16
 
 // TLS version constants
@@ -236,5 +254,147 @@ func (c *ClientHello) ControlValues() map[string]any {
 		"version": c.Version.Float(),
 		"sni":     c.SNI,
 		"alpn":    c.ALPNs,
+	}
+}
+
+// ParseServerHello parses a TLS ServerHello message from a byte slice.
+// The input should be a complete TLS record starting with the record header.
+func ParseServerHello(record []byte) (*ServerHello, error) {
+	// Minimum size: 5 (record header) + 4 (handshake header) + 2 (version) + 32 (random) + 1 (session id len)
+	const minSize = 44
+	if len(record) < minSize {
+		return nil, errors.New("record too short for ServerHello")
+	}
+
+	// Validate TLS record header
+	// record[0] = content type (0x16 = handshake)
+	// record[1:3] = version
+	// record[3:5] = length
+	if record[0] != 0x16 {
+		return nil, errors.New("not a TLS handshake record")
+	}
+
+	recordLen := int(record[3])<<8 | int(record[4])
+	if len(record) < 5+recordLen {
+		return nil, errors.New("incomplete TLS record")
+	}
+
+	// Move past record header to handshake message
+	handshake := record[5:]
+
+	// Validate handshake header
+	// handshake[0] = handshake type (0x02 = ServerHello)
+	// handshake[1:4] = length (24-bit)
+	if handshake[0] != 0x02 {
+		return nil, fmt.Errorf("not a ServerHello (type=%d)", handshake[0])
+	}
+
+	handshakeLen := int(handshake[1])<<16 | int(handshake[2])<<8 | int(handshake[3])
+	if len(handshake) < 4+handshakeLen {
+		return nil, errors.New("incomplete ServerHello handshake")
+	}
+
+	// Parse ServerHello body (after handshake header)
+	body := handshake[4:]
+
+	// ServerHello structure:
+	// - version: 2 bytes
+	// - random: 32 bytes
+	// - session_id_length: 1 byte
+	// - session_id: variable
+	// - cipher_suite: 2 bytes
+	// - compression_method: 1 byte
+	// - extensions_length: 2 bytes (optional)
+	// - extensions: variable (optional)
+
+	if len(body) < 35 { // 2 + 32 + 1 minimum
+		return nil, errors.New("ServerHello body too short")
+	}
+
+	s := &ServerHello{}
+
+	// Version (may be overridden by supported_versions extension for TLS 1.3)
+	s.Version = TLSVersion(uint16(body[0])<<8 | uint16(body[1]))
+
+	// Skip random (32 bytes)
+	offset := 34
+
+	// Session ID
+	if offset >= len(body) {
+		return nil, errors.New("unexpected end of ServerHello")
+	}
+	sessionIDLen := int(body[offset])
+	offset++
+	offset += sessionIDLen
+
+	// Cipher suite (2 bytes)
+	if offset+2 > len(body) {
+		return nil, errors.New("unexpected end of ServerHello at cipher suite")
+	}
+	s.CipherSuite = CipherSuite(uint16(body[offset])<<8 | uint16(body[offset+1]))
+	offset += 2
+
+	// Compression method (1 byte)
+	if offset >= len(body) {
+		return nil, errors.New("unexpected end of ServerHello at compression")
+	}
+	offset++
+
+	// Extensions (optional)
+	if offset+2 <= len(body) {
+		extLen := int(body[offset])<<8 | int(body[offset+1])
+		offset += 2
+
+		if offset+extLen <= len(body) {
+			extensions := body[offset : offset+extLen]
+
+			// Parse extensions for supported_versions (TLS 1.3) and ALPN
+			s.parseServerHelloExtensions(extensions)
+		}
+	}
+
+	return s, nil
+}
+
+// parseServerHelloExtensions parses extensions from ServerHello
+func (s *ServerHello) parseServerHelloExtensions(extensions []byte) {
+	offset := 0
+
+	for offset+4 <= len(extensions) {
+		extType := uint16(extensions[offset])<<8 | uint16(extensions[offset+1])
+		extLen := int(extensions[offset+2])<<8 | int(extensions[offset+3])
+		offset += 4
+
+		if offset+extLen > len(extensions) {
+			break
+		}
+
+		extData := extensions[offset : offset+extLen]
+
+		switch extType {
+		case 43: // supported_versions - contains actual negotiated version for TLS 1.3
+			if len(extData) >= 2 {
+				s.Version = TLSVersion(uint16(extData[0])<<8 | uint16(extData[1]))
+			}
+		case 16: // ALPN - contains single selected protocol
+			// Format: 2 bytes list length, then 1 byte protocol length + protocol
+			if len(extData) >= 4 {
+				protoLen := int(extData[2])
+				if len(extData) >= 3+protoLen {
+					s.ALPN = string(extData[3 : 3+protoLen])
+				}
+			}
+		}
+
+		offset += extLen
+	}
+}
+
+func (s *ServerHello) ControlValues() map[string]any {
+	return map[string]any{
+		"enabled":     true,
+		"version":     s.Version.Float(),
+		"cipherSuite": s.CipherSuite.String(),
+		"alpn":        s.ALPN,
 	}
 }

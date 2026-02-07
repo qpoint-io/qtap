@@ -134,6 +134,10 @@ func (m *Manager) SetConfig(conf *config.Config) {
 			stackKey{Domain: endpoint.Domain, Protocol: "mysql"},
 			endpoint.MySQL,
 		)
+		m.domainStacks.Store(
+			stackKey{Domain: endpoint.Domain, Protocol: "postgres"},
+			endpoint.Postgres,
+		)
 	}
 
 	// set the default stack

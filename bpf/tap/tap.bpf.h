@@ -62,6 +62,7 @@ enum PROTOCOL {
 	P_REDIS,
 	P_GRPC,
 	P_MYSQL,
+	P_POSTGRES,
 };
 
 enum DIRECTION {

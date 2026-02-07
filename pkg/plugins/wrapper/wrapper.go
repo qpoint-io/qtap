@@ -170,6 +170,84 @@ func (s *SafeHttpFilterInstance) Destroy() {
 	s.instance.Destroy()
 }
 
+// NewPostgresInstance implements the PostgresPlugin interface
+func (s *PanicCatcher) NewPostgresInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.PostgresPluginInstance {
+	pgP, ok := s.p.(plugins.PostgresPlugin)
+	if !ok {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in NewPostgresInstance",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	i := pgP.NewPostgresInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafePostgresFilterInstance(s.logger, i)
+}
+
+// SafePostgresFilterInstance is a wrapper struct that implements PostgresPluginInstance interface
+// and provides panic recovery and logging
+type SafePostgresFilterInstance struct {
+	instance plugins.PostgresPluginInstance
+	logger   *zap.Logger
+}
+
+// NewSafePostgresFilterInstance creates a new SafePostgresFilterInstance
+func NewSafePostgresFilterInstance(logger *zap.Logger, instance plugins.PostgresPluginInstance) *SafePostgresFilterInstance {
+	return &SafePostgresFilterInstance{
+		logger:   logger,
+		instance: instance,
+	}
+}
+
+// OnPostgresCommand implements the PostgresPluginInstance interface
+func (s *SafePostgresFilterInstance) OnPostgresCommand(cmd *plugins.PostgresCommand) (status plugins.PostgresStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnPostgresCommand",
+				zap.Any("panic", r),
+			)
+			status = plugins.PostgresStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnPostgresCommand(cmd)
+}
+
+// OnPostgresResult implements the PostgresPluginInstance interface
+func (s *SafePostgresFilterInstance) OnPostgresResult(res *plugins.PostgresResult) (status plugins.PostgresStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnPostgresResult",
+				zap.Any("panic", r),
+			)
+			status = plugins.PostgresStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnPostgresResult(res)
+}
+
+// Destroy implements the PostgresPluginInstance interface
+func (s *SafePostgresFilterInstance) Destroy() {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in Destroy (PostgresFilterInstance)",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	s.instance.Destroy()
+}
+
 // SafeRedisFilterInstance is a wrapper struct that implements RedisPluginInstance interface
 // and provides panic recovery and logging
 type SafeRedisFilterInstance struct {

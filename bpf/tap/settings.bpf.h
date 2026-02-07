@@ -26,14 +26,16 @@
 #include "tap.bpf.h"
 
 // Protocol stream flags (bitmask)
-#define STREAM_HTTP_FLAG  (1 << 0)
-#define STREAM_REDIS_FLAG (1 << 1)
-#define STREAM_MYSQL_FLAG (1 << 2)
+#define STREAM_HTTP_FLAG     (1 << 0)
+#define STREAM_REDIS_FLAG    (1 << 1)
+#define STREAM_MYSQL_FLAG    (1 << 2)
+#define STREAM_POSTGRES_FLAG (1 << 3)
 
 // Helper macros for checking protocol stream flags
-#define SHOULD_STREAM_HTTP(flags)  ((flags) & STREAM_HTTP_FLAG)
-#define SHOULD_STREAM_REDIS(flags) ((flags) & STREAM_REDIS_FLAG)
-#define SHOULD_STREAM_MYSQL(flags) ((flags) & STREAM_MYSQL_FLAG)
+#define SHOULD_STREAM_HTTP(flags)     ((flags) & STREAM_HTTP_FLAG)
+#define SHOULD_STREAM_REDIS(flags)    ((flags) & STREAM_REDIS_FLAG)
+#define SHOULD_STREAM_MYSQL(flags)    ((flags) & STREAM_MYSQL_FLAG)
+#define SHOULD_STREAM_POSTGRES(flags) ((flags) & STREAM_POSTGRES_FLAG)
 
 // Settings keys
 enum SOCKET_SETTINGS {

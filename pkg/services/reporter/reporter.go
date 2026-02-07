@@ -232,6 +232,8 @@ func toEventStoreL7Protocol(protocol connection.Protocol) eventstore.L7Protocol 
 		return eventstore.L7Protocol_MYSQL
 	case connection.Protocol_MONGODB:
 		return eventstore.L7Protocol_MONGODB
+	case connection.Protocol_POSTGRES:
+		return eventstore.L7Protocol_POSTGRES
 	default:
 		return eventstore.L7Protocol_OTHER
 	}

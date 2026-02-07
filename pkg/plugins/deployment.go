@@ -91,6 +91,16 @@ func (d *StackDeployment) NewStack(connType ConnectionType, ctx PluginContext, s
 					zap.Stringer("plugin", p.PluginType()),
 					zap.String("connection_type", string(connType)))
 			}
+		case ConnectionType_POSTGRES:
+			if pgP, ok := p.(PostgresPlugin); ok {
+				if i := pgP.NewPostgresInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else {
+				d.logger.Log(log.TraceLevel, "plugin does not support PostgreSQL protocol, skipping",
+					zap.Stringer("plugin", p.PluginType()),
+					zap.String("connection_type", string(connType)))
+			}
 		}
 	}
 	return instances

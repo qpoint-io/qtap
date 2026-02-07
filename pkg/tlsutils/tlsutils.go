@@ -295,7 +295,7 @@ func ParseServerHello(record []byte) (*ServerHello, error) {
 	}
 
 	// Parse ServerHello body (after handshake header)
-	body := handshake[4:]
+	body := handshake[4 : 4+handshakeLen]
 
 	// ServerHello structure:
 	// - version: 2 bytes

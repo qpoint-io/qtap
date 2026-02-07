@@ -115,8 +115,6 @@ static bool capture_tls_server_hello(struct socket_tls_server_hello_event *hands
 			return false;
 		}
 
-		total_size &= (MAX_MSG_SIZE - 1);
-
 		// Read the entire handshake into our buffer
 		if (buf_read((char *)handshake->data, total_size, buf_info, 0) == 0) {
 			return false;

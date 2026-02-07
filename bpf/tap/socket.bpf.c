@@ -699,8 +699,15 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 	}
 
 	// set ssl right away if provided
-	if (ssl && !conn_info->is_ssl)
+	// Track whether this is a new TLS upgrade (for STARTTLS protocols like MySQL)
+	bool tls_just_upgraded = false;
+	if (ssl && !conn_info->is_ssl) {
 		conn_info->is_ssl = true;
+		// If the protocol was already detected during plaintext (STARTTLS),
+		// we need to re-emit the protocol event with the updated is_ssl flag
+		if (conn_info->protocol != P_UNKNOWN)
+			tls_just_upgraded = true;
+	}
 
 	// once we're ssl, don't process unless from ssl functions
 	if (!ssl && conn_info->is_ssl) {
@@ -751,6 +758,11 @@ static void process_data(struct socket_ctx *ctx, enum DIRECTION direction, const
 
 	// if we successfully detected the protocol, submit the protocol event
 	if (protocol == P_UNKNOWN && conn_info->protocol != P_UNKNOWN)
+		submit_proto_event(ctx, conn_info);
+
+	// if TLS was just upgraded on an already-known protocol (STARTTLS),
+	// re-emit the protocol event so userspace gets the updated is_ssl flag
+	if (tls_just_upgraded)
 		submit_proto_event(ctx, conn_info);
 
 	// we only stream data if we know the protocol

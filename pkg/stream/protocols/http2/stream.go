@@ -190,6 +190,14 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			attribute.String("direction", string(event.Direction)),
 		))
 
+		// Skip stream 0 (connection control stream).
+		// HTTP/2 stream 0 carries only control frames (SETTINGS, PING,
+		// WINDOW_UPDATE, GOAWAY) — never request/response data.
+		// Creating sessions for stream 0 produces phantom events.
+		if frame.Header().StreamID == 0 {
+			continue
+		}
+
 		// session
 		session := s.initSession(frame.Header().StreamID)
 

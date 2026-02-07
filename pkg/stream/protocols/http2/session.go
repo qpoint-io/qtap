@@ -281,6 +281,11 @@ func (s *Session) HandleTrailers(fields []hpack.HeaderField) {
 		if meta.Status != "" && meta.Status != "0" {
 			s.res.StatusCode = grpcStatusToHTTP(meta.Status)
 			s.res.Status = http.StatusText(s.res.StatusCode)
+
+			// Also update the :status pseudo-header so that plugins reading
+			// status via the header map (e.g., report plugin's HeaderMap.Status())
+			// see the gRPC-mapped status instead of the original HTTP 200.
+			s.res.Header.Set(":status", strconv.Itoa(s.res.StatusCode))
 		}
 	}
 }

@@ -178,6 +178,17 @@ func ParseBindMessage(payload []byte) (portal string, stmtName string) {
 	return portal, stmtName
 }
 
+// ParseCloseMessage extracts the close type and name from a Close ('C') message payload.
+// The payload is: type_byte ('S' for statement, 'P' for portal) + name\0
+func ParseCloseMessage(payload []byte) (closeType byte, name string) {
+	if len(payload) < 2 {
+		return 0, ""
+	}
+	closeType = payload[0]
+	name, _ = ReadCString(payload, 1)
+	return closeType, name
+}
+
 // ParseCommandComplete extracts the command tag from a CommandComplete ('C') message payload.
 func ParseCommandComplete(payload []byte) string {
 	if len(payload) == 0 {

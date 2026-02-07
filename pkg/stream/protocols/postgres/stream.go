@@ -74,6 +74,8 @@ type Stream struct {
 	preparedStatements map[string]string
 	// The SQL text from the most recent Parse for unnamed statements
 	lastParseSQL string
+	// SQL resolved from the most recent Bind, waiting for Execute
+	pendingBindSQL []string
 
 	// Plugin integration
 	pluginManager *plugins.Manager
@@ -226,21 +228,38 @@ func (s *Stream) processRequests() {
 				}
 
 			case MsgBind:
-				// Bind message — we could extract params here but skip for V1
-				_, _ = ParseBindMessage(msg.Payload)
+				// Bind message: resolve statement name → SQL and queue for Execute
+				_, stmtName := ParseBindMessage(msg.Payload)
+				var sql string
+				if stmtName == "" {
+					sql = s.lastParseSQL
+				} else {
+					sql = s.preparedStatements[stmtName]
+				}
+				s.pendingBindSQL = append(s.pendingBindSQL, sql)
 
 			case MsgExecute:
-				// Execute triggers the query — enqueue the pending SQL
-				sql := s.lastParseSQL
+				// Execute triggers the query — dequeue from pendingBindSQL
+				var sql string
+				if len(s.pendingBindSQL) > 0 {
+					sql = s.pendingBindSQL[0]
+					s.pendingBindSQL = s.pendingBindSQL[1:]
+				}
 				if sql != "" {
 					s.enqueueCommand(sql)
-					s.lastParseSQL = ""
 				}
 
 			case MsgSync:
 				// Sync marks end of an extended query batch — nothing to do
 
-			case MsgDescribe, MsgClose, MsgFlush:
+			case MsgClose:
+				// Close message: clean up named prepared statements
+				closeType, closeName := ParseCloseMessage(msg.Payload)
+				if closeType == 'S' && closeName != "" {
+					delete(s.preparedStatements, closeName)
+				}
+
+			case MsgDescribe, MsgFlush:
 				// Informational messages, skip
 
 			case MsgTerminate:
@@ -311,7 +330,9 @@ func (s *Stream) processResponses() {
 
 			case MsgErrorResponse:
 				severity, code, message := ParseErrorResponse(msg.Payload)
-				s.logger.Warn("postgres error during startup",
+				// Server-side errors during startup (bad credentials, etc.) are
+				// not qtap issues — log at debug to avoid alarming customers.
+				s.logger.Debug("postgres error during startup",
 					zap.String("severity", severity),
 					zap.String("code", code),
 					zap.String("message", message))
@@ -390,7 +411,7 @@ func (s *Stream) enqueueCommand(sql string) {
 		requestID := xid.New().String()
 		pluginConn, err := s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_POSTGRES, s.conn, requestID)
 		if err != nil {
-			s.logger.Error("creating plugin connection", zap.Error(err))
+			s.logger.Debug("creating plugin connection", zap.Error(err))
 		} else if pluginConn != nil {
 			pending.PluginConn = pluginConn
 			pluginCmd := &plugins.PostgresCommand{
@@ -398,7 +419,7 @@ func (s *Stream) enqueueCommand(sql string) {
 				Timestamp: timestamp,
 			}
 			if err := pluginConn.OnPostgresCommand(pluginCmd); err != nil {
-				s.logger.Error("plugin postgres command", zap.Error(err))
+				s.logger.Debug("plugin postgres command", zap.Error(err))
 			}
 		}
 	}
@@ -445,7 +466,7 @@ func (s *Stream) completeCommand(tag string, isEmpty bool) {
 			RowCount:   parseRowCount(tag),
 		}
 		if err := pending.PluginConn.OnPostgresResult(pluginResult); err != nil {
-			s.logger.Error("plugin postgres result", zap.Error(err))
+			s.logger.Debug("plugin postgres result", zap.Error(err))
 		}
 		pending.PluginConn.Teardown()
 	}
@@ -454,7 +475,9 @@ func (s *Stream) completeCommand(tag string, isEmpty bool) {
 // completeCommandWithError matches an ErrorResponse to the oldest pending command
 func (s *Stream) completeCommandWithError(severity, code, message string) {
 	if len(s.pendingCommands) == 0 {
-		s.logger.Warn("postgres uncorrelated error",
+		// Uncorrelated errors can happen during normal operation (e.g.,
+		// async notices, cancelled queries). Not a qtap issue.
+		s.logger.Debug("postgres uncorrelated error",
 			zap.String("severity", severity),
 			zap.String("code", code),
 			zap.String("message", message))
@@ -466,7 +489,9 @@ func (s *Stream) completeCommandWithError(severity, code, message string) {
 
 	latency := time.Since(pending.Timestamp)
 
-	s.logger.Warn("postgres request/response",
+	// SQL errors are normal application behavior (syntax errors, missing
+	// tables, permission denied, etc.) — not qtap issues. Log at debug.
+	s.logger.Debug("postgres request/response",
 		zap.String("query", truncateQuery(pending.Query)),
 		zap.String("result", "Error"),
 		zap.String("severity", severity),
@@ -482,7 +507,7 @@ func (s *Stream) completeCommandWithError(severity, code, message string) {
 			ErrorMessage: message,
 		}
 		if err := pending.PluginConn.OnPostgresResult(pluginResult); err != nil {
-			s.logger.Error("plugin postgres result", zap.Error(err))
+			s.logger.Debug("plugin postgres result", zap.Error(err))
 		}
 		pending.PluginConn.Teardown()
 	}
@@ -494,7 +519,7 @@ func (s *Stream) Close() {
 	defer s.mu.Unlock()
 
 	if len(s.pendingCommands) > 0 {
-		s.logger.Warn("postgres stream closed with pending commands",
+		s.logger.Debug("postgres stream closed with pending commands",
 			zap.Int("pending_count", len(s.pendingCommands)))
 
 		for _, pending := range s.pendingCommands {

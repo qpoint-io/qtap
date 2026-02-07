@@ -187,7 +187,7 @@ func (s *Stream) processRequests() {
 			requestID := xid.New().String()
 			pluginConn, err := s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_MYSQL, s.conn, requestID)
 			if err != nil {
-				s.logger.Error("creating plugin connection", zap.Error(err))
+				s.logger.Debug("creating plugin connection", zap.Error(err))
 			} else if pluginConn != nil {
 				pending.PluginConn = pluginConn
 				pluginCmd := &plugins.MySQLCommand{
@@ -196,7 +196,7 @@ func (s *Stream) processRequests() {
 					Timestamp: timestamp,
 				}
 				if err := pluginConn.OnMySQLCommand(pluginCmd); err != nil {
-					s.logger.Error("plugin mysql command", zap.Error(err))
+					s.logger.Debug("plugin mysql command", zap.Error(err))
 				}
 				pluginConn.Meta().SetReadBytes(int64(pkt.Length + 4))
 			}
@@ -365,7 +365,7 @@ func (s *Stream) finishResultSet() {
 	if pending.PluginConn != nil {
 		pluginResult := s.buildPluginResult(rs)
 		if err := pending.PluginConn.OnMySQLResult(pluginResult); err != nil {
-			s.logger.Error("plugin mysql result", zap.Error(err))
+			s.logger.Debug("plugin mysql result", zap.Error(err))
 		}
 		pending.PluginConn.Meta().SetWriteBytes(totalBytes)
 		pending.PluginConn.Teardown()
@@ -379,7 +379,7 @@ func (s *Stream) completeResponse(pending *PendingCommand, pkt *Packet, resp int
 	if pending.PluginConn != nil {
 		pluginResult := s.buildPluginResult(resp)
 		if err := pending.PluginConn.OnMySQLResult(pluginResult); err != nil {
-			s.logger.Error("plugin mysql result", zap.Error(err))
+			s.logger.Debug("plugin mysql result", zap.Error(err))
 		}
 		pending.PluginConn.Meta().SetWriteBytes(int64(pkt.Length + 4))
 		pending.PluginConn.Teardown()
@@ -420,11 +420,10 @@ func (s *Stream) logCorrelatedPair(cmd *PendingCommand, pkt *Packet, resp interf
 		fields = append(fields, zap.String("response", "unknown"))
 	}
 
-	if _, ok := resp.(*ERRResponse); ok {
-		s.logger.Warn("mysql request/response", fields...)
-	} else {
-		s.logger.Debug("mysql request/response", fields...)
-	}
+	// Log all request/response pairs at debug level — ERR responses from the
+	// MySQL server are normal application behavior (syntax errors, permission
+	// denied, etc.), not qtap issues. Don't alarm customers with warn/error.
+	s.logger.Debug("mysql request/response", fields...)
 }
 
 // logUncorrelatedResponse logs responses without matching commands
@@ -526,7 +525,7 @@ func (s *Stream) Close() {
 		}
 
 		if len(realPending) > 0 {
-			s.logger.Warn("mysql stream closed with pending commands",
+			s.logger.Debug("mysql stream closed with pending commands",
 				zap.Int("pending_count", len(realPending)))
 
 			for _, pending := range realPending {

@@ -26,6 +26,11 @@ if tls_enabled
   mysql_options[:ssl_mode] = :required
   if ca_cert_path && File.exist?(ca_cert_path)
     mysql_options[:sslca] = ca_cert_path
+  else
+    # Skip certificate verification for self-signed certs (e.g., MySQL 8.0 defaults)
+    # MariaDB's libmysqlclient (used by Alpine's mysql-dev) defaults to strict
+    # verification even with ssl_mode: :required, so we must explicitly disable it
+    mysql_options[:sslverify] = false
   end
 else
   puts "[Ruby] TLS disabled"

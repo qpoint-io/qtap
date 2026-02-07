@@ -198,6 +198,7 @@ type TapProgramSpecs struct {
 	CleanupPidFdFileEntries      *ebpf.ProgramSpec `ebpf:"cleanup_pid_fd_file_entries"`
 	OpensslProbeEntrySSL_read    *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read"`
 	OpensslProbeEntrySSL_readEx  *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read_ex"`
+	OpensslProbeEntrySSL_setFd   *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_set_fd"`
 	OpensslProbeEntrySSL_write   *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write"`
 	OpensslProbeEntrySSL_writeEx *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write_ex"`
 	OpensslProbeRetSSL_read      *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_read"`
@@ -375,6 +376,7 @@ type TapPrograms struct {
 	CleanupPidFdFileEntries      *ebpf.Program `ebpf:"cleanup_pid_fd_file_entries"`
 	OpensslProbeEntrySSL_read    *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read"`
 	OpensslProbeEntrySSL_readEx  *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read_ex"`
+	OpensslProbeEntrySSL_setFd   *ebpf.Program `ebpf:"openssl__probe_entry_SSL_set_fd"`
 	OpensslProbeEntrySSL_write   *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write"`
 	OpensslProbeEntrySSL_writeEx *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write_ex"`
 	OpensslProbeRetSSL_read      *ebpf.Program `ebpf:"openssl__probe_ret_SSL_read"`
@@ -431,6 +433,7 @@ func (p *TapPrograms) Close() error {
 		p.CleanupPidFdFileEntries,
 		p.OpensslProbeEntrySSL_read,
 		p.OpensslProbeEntrySSL_readEx,
+		p.OpensslProbeEntrySSL_setFd,
 		p.OpensslProbeEntrySSL_write,
 		p.OpensslProbeEntrySSL_writeEx,
 		p.OpensslProbeRetSSL_read,

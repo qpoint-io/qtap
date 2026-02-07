@@ -106,9 +106,10 @@ func main() {
 }
 
 func registerTLSConfig(caCertPath string) error {
-	rootCertPool := x509.NewCertPool()
+	tlsConfig := &tls.Config{}
 
 	if caCertPath != "" {
+		rootCertPool := x509.NewCertPool()
 		pem, err := os.ReadFile(caCertPath)
 		if err != nil {
 			return fmt.Errorf("failed to read CA cert: %w", err)
@@ -116,11 +117,15 @@ func registerTLSConfig(caCertPath string) error {
 		if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
 			return fmt.Errorf("failed to append CA cert")
 		}
+		tlsConfig.RootCAs = rootCertPool
 	}
 
-	return mysql.RegisterTLSConfig("custom", &tls.Config{
-		RootCAs: rootCertPool,
-	})
+	// Allow self-signed certs (for testing)
+	if os.Getenv("MYSQL_TLS_SKIP_VERIFY") == "true" || caCertPath == "" {
+		tlsConfig.InsecureSkipVerify = true
+	}
+
+	return mysql.RegisterTLSConfig("custom", tlsConfig)
 }
 
 func getEnv(key, defaultValue string) string {

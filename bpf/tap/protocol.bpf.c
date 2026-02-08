@@ -353,6 +353,53 @@ static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info,
 	return false;
 }
 
+// Kafka detection: 4-byte length + 2-byte ApiKey (0-67) + 2-byte ApiVersion (0-16) + 4-byte CorrelationID
+// ApiVersions (18) or Metadata (3) are most common first requests
+static bool detect_kafka(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	if (count < 14 || !buf_info->buf) {
+		return false;
+	}
+
+	unsigned char hdr[14] = {0};
+	if (buf_read((char *)&hdr, sizeof(hdr), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// Length field (4 bytes, big-endian) — must be reasonable (> 8, < 100MB)
+	__u32 length = (__u32)hdr[0] << 24 | (__u32)hdr[1] << 16 | (__u32)hdr[2] << 8 | hdr[3];
+	if (length < 8 || length > 104857600) {
+		return false;
+	}
+
+	// ApiKey (2 bytes) — valid range 0-67
+	__u16 api_key = (__u16)hdr[4] << 8 | hdr[5];
+	if (api_key > 67) {
+		return false;
+	}
+
+	// ApiVersion (2 bytes) — valid range 0-16
+	__u16 api_version = (__u16)hdr[6] << 8 | hdr[7];
+	if (api_version > 16) {
+		return false;
+	}
+
+	// Boost confidence: first request is usually ApiVersions (18) or Metadata (3)
+	if (api_key == 18 || api_key == 3) {
+		conn_info->protocol = P_KAFKA;
+		return true;
+	}
+
+	// For other ApiKeys, require additional validation
+	// Check CorrelationID is reasonable (typically starts at 0 or 1)
+	__u32 corr_id = (__u32)hdr[8] << 24 | (__u32)hdr[9] << 16 | (__u32)hdr[10] << 8 | hdr[11];
+	if (corr_id > 1000000) {
+		return false;
+	}
+
+	conn_info->protocol = P_KAFKA;
+	return true;
+}
+
 static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// set the default protocol to unknown
 	conn_info->protocol = P_UNKNOWN;
@@ -367,6 +414,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect mongodb - check before HTTP as MongoDB binary data might be misdetected as HTTP
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_mongodb(conn_info, buf_info, count);
+
+	// detect kafka - check before HTTP as Kafka binary frames might be misdetected
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_kafka(conn_info, buf_info, count);
 
 	// detect redis - check before HTTP as Redis RESP commands start with *
 	if (conn_info->protocol == P_UNKNOWN)

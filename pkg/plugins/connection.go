@@ -26,6 +26,7 @@ const (
 	ConnectionType_GRPC    ConnectionType = "grpc"
 	ConnectionType_REDIS   ConnectionType = "redis"
 	ConnectionType_MYSQL   ConnectionType = "mysql"
+	ConnectionType_KAFKA   ConnectionType = "kafka"
 )
 
 const (
@@ -440,6 +441,24 @@ func (c *Connection) OnMySQLCommand(cmd *MySQLCommand) error {
 	})
 }
 
+// OnKafkaCommand processes a Kafka command through the Kafka plugin stack
+func (c *Connection) OnKafkaCommand(cmd *KafkaCommand) error {
+	return c.enqueue("kafka_command", func() error {
+		for _, p := range c.stack {
+			kafkaP, ok := p.(KafkaPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement KafkaPluginInstance - this indicates a bug")
+				continue
+			}
+			status := kafkaP.OnKafkaCommand(cmd)
+			if status == KafkaStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
 // OnMySQLResult processes a MySQL result through the MySQL plugin stack
 func (c *Connection) OnMySQLResult(res *MySQLResult) error {
 	return c.enqueue("mysql_result", func() error {
@@ -451,6 +470,24 @@ func (c *Connection) OnMySQLResult(res *MySQLResult) error {
 			}
 			status := mysqlP.OnMySQLResult(res)
 			if status == MySQLStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// OnKafkaResult processes a Kafka result through the Kafka plugin stack
+func (c *Connection) OnKafkaResult(res *KafkaResult) error {
+	return c.enqueue("kafka_result", func() error {
+		for _, p := range c.stack {
+			kafkaP, ok := p.(KafkaPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement KafkaPluginInstance - this indicates a bug")
+				continue
+			}
+			status := kafkaP.OnKafkaResult(res)
+			if status == KafkaStatusStopIteration {
 				return nil
 			}
 		}

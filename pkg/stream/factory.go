@@ -7,6 +7,7 @@ import (
 	dnsStream "github.com/qpoint-io/qtap/pkg/stream/protocols/dns"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http1"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http2"
+kafkaStream "github.com/qpoint-io/qtap/pkg/stream/protocols/kafka"
 	mysqlStream "github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
 	redisStream "github.com/qpoint-io/qtap/pkg/stream/protocols/redis"
 	"go.uber.org/zap"
@@ -78,7 +79,7 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		)
 	}
 
-	// parse mysql streams
+// parse mysql streams
 	if conn.Protocol == connection.Protocol_MYSQL {
 		domain := conn.Domain()
 
@@ -90,6 +91,21 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		return mysqlStream.NewStream(conn.Context(), logger, conn,
 			mysqlStream.SetDomain(domain),
 			mysqlStream.SetPluginManager(m.pluginManager),
+		)
+	}
+
+	// parse kafka streams
+	if conn.Protocol == connection.Protocol_KAFKA {
+		domain := conn.Domain()
+
+		// if the domain does not have a stack and no default stack is set, skip it
+		if _, exists := m.pluginManager.GetDomainStack(domain, "kafka"); !exists {
+			return nil
+		}
+
+		return kafkaStream.NewStream(conn.Context(), logger, conn,
+			kafkaStream.SetDomain(domain),
+			kafkaStream.SetPluginManager(m.pluginManager),
 		)
 	}
 

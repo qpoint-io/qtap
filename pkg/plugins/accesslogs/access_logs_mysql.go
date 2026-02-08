@@ -299,7 +299,7 @@ func buildMySQLQueryContent(cmd *plugins.MySQLCommand) string {
 	sb.WriteString("\n")
 
 	sb.WriteString(subsectionStyle.Render("Query") + "\n")
-	
+
 	// Format query nicely
 	query := cmd.Query
 	if len(query) > 500 {
@@ -370,12 +370,12 @@ func extractQueryType(query string) string {
 	if query == "" {
 		return "UNKNOWN"
 	}
-	
+
 	// Find first word
 	parts := strings.Fields(query)
 	if len(parts) == 0 {
 		return "UNKNOWN"
 	}
-	
+
 	return strings.ToUpper(parts[0])
 }

@@ -137,8 +137,8 @@ func TestParseERRPacket(t *testing.T) {
 	payload := []byte{
 		0xff,       // ERR header
 		0x28, 0x04, // error code 1064 (little-endian)
-		'#',                            // SQL state marker
-		'4', '2', '0', '0', '0',        // SQL state
+		'#',                     // SQL state marker
+		'4', '2', '0', '0', '0', // SQL state
 		'Y', 'o', 'u', ' ', 'h', 'a', 'v', 'e', // message
 	}
 
@@ -174,7 +174,7 @@ func TestParseERRPacket(t *testing.T) {
 func TestParseServerHandshake(t *testing.T) {
 	// Simplified handshake packet
 	payload := []byte{
-		0x0a, // protocol version 10
+		0x0a,                            // protocol version 10
 		'8', '.', '0', '.', '3', '2', 0, // server version (null-terminated)
 		0x01, 0x00, 0x00, 0x00, // connection ID = 1
 		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', // auth plugin data part 1
@@ -183,9 +183,9 @@ func TestParseServerHandshake(t *testing.T) {
 		0x21,       // character set (utf8)
 		0x02, 0x00, // status flags
 		0x0f, 0xff, // capability flags upper
-		0x15,                            // auth plugin data length
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,    // reserved
-		'i', 'j', 'k', 'l', 'm', 0,      // auth plugin data part 2
+		0x15,                         // auth plugin data length
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // reserved
+		'i', 'j', 'k', 'l', 'm', 0, // auth plugin data part 2
 		'c', 'a', 'c', 'h', 'i', 'n', 'g', '_', 's', 'h', 'a', '2', '_', 'p', 'a', 's', 's', 'w', 'o', 'r', 'd', 0, // auth plugin name
 	}
 

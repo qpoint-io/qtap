@@ -316,6 +316,12 @@ func (p *Parser) ParseResponse() (*Response, error) {
 		resp.ErrorCode = int16(binary.BigEndian.Uint16(data[4:6]))
 	}
 
+	// Save raw body after correlation ID for post-correlation parsing (e.g., Fetch messages)
+	if len(data) > 4 {
+		resp.RawBody = make([]byte, len(data)-4)
+		copy(resp.RawBody, data[4:])
+	}
+
 	// Consume the message from the buffer
 	p.buffer = p.buffer[totalSize:]
 	return resp, nil
@@ -328,6 +334,7 @@ func (p *Parser) extractRequestDetails(req *Request, data []byte, offset int, ap
 	switch apiKey {
 	case ApiKeyProduce:
 		req.Topics = p.extractProduceTopics(data, offset, apiVersion, flexible)
+		req.Messages = p.extractProduceMessages(data, offset, apiVersion, flexible)
 	case ApiKeyFetch:
 		req.Topics = p.extractFetchTopics(data, offset, apiVersion, flexible)
 	case ApiKeyMetadata:
@@ -527,6 +534,511 @@ func (p *Parser) skipNullableString(data []byte, offset int) int {
 		return -1
 	}
 	return offset + int(strLen)
+}
+
+// Message extraction constants
+const (
+	MaxMessages  = 10    // Max message samples per request
+	MaxValueSize = 65536 // 64KB max per message value
+	MaxKeySize   = 1024  // 1KB max per message key
+)
+
+// readSignedVarint reads a ZigZag-encoded signed varint (used in Kafka record batch records).
+func readSignedVarint(data []byte, offset int) (int32, int) {
+	uval, n := readUnsignedVarint(data, offset)
+	if n < 0 {
+		return 0, -1
+	}
+	// ZigZag decode
+	return int32((uval >> 1) ^ -(uval & 1)), n
+}
+
+// extractRecordBatchMessages parses records from a v2 record batch (magic=2).
+// Returns extracted messages and whether any were found.
+func extractRecordBatchMessages(data []byte, topic string, partition int32, maxMessages int) []KafkaMessage {
+	// Record batch header: baseOffset(8) + batchLength(4) + partitionLeaderEpoch(4) +
+	// magic(1) + crc(4) + attributes(2) + lastOffsetDelta(4) + baseTimestamp(8) +
+	// maxTimestamp(8) + producerId(8) + producerEpoch(2) + baseSequence(4) + recordCount(4)
+	// = 61 bytes total
+	if len(data) < 61 {
+		return nil
+	}
+
+	magic := data[16]
+	if magic != 2 {
+		return nil // Only support v2 record batches
+	}
+
+	attributes := int16(binary.BigEndian.Uint16(data[21:23]))
+	compression := attributes & 0x07
+	if compression != 0 {
+		return nil // Skip compressed batches in v1
+	}
+
+	recordCount := int32(binary.BigEndian.Uint32(data[57:61]))
+	if recordCount <= 0 {
+		return nil
+	}
+
+	offset := 61
+	limit := int(recordCount)
+	if limit > maxMessages {
+		limit = maxMessages
+	}
+
+	var messages []KafkaMessage
+	for range limit {
+		if offset >= len(data) {
+			break
+		}
+
+		// Record: length(varint), attributes(1), timestampDelta(varint), offsetDelta(varint),
+		// keyLength(varint), key(bytes), valueLength(varint), value(bytes), headerCount(varint), headers...
+		recordLen, n := readSignedVarint(data, offset)
+		if n < 0 || recordLen < 0 {
+			break
+		}
+		offset += n
+		recordEnd := offset + int(recordLen)
+		if recordEnd > len(data) {
+			break
+		}
+
+		// attributes (1 byte)
+		if offset >= recordEnd {
+			break
+		}
+		offset++
+
+		// timestampDelta
+		_, n = readSignedVarint(data, offset)
+		if n < 0 {
+			break
+		}
+		offset += n
+
+		// offsetDelta
+		_, n = readSignedVarint(data, offset)
+		if n < 0 {
+			break
+		}
+		offset += n
+
+		// keyLength (signed varint, -1 = null)
+		keyLen, n := readSignedVarint(data, offset)
+		if n < 0 {
+			break
+		}
+		offset += n
+
+		var key string
+		if keyLen > 0 {
+			if offset+int(keyLen) > recordEnd {
+				break
+			}
+			kl := int(keyLen)
+			if kl > MaxKeySize {
+				kl = MaxKeySize
+			}
+			key = string(data[offset : offset+kl])
+			offset += int(keyLen)
+		}
+		// keyLen == -1 means null key, key stays empty
+
+		// valueLength (signed varint, -1 = null)
+		valueLen, n := readSignedVarint(data, offset)
+		if n < 0 {
+			break
+		}
+		offset += n
+
+		var value string
+		var truncated bool
+		if valueLen > 0 {
+			if offset+int(valueLen) > recordEnd {
+				break
+			}
+			vl := int(valueLen)
+			if vl > MaxValueSize {
+				vl = MaxValueSize
+				truncated = true
+			}
+			value = string(data[offset : offset+vl])
+		}
+		// valueLen == -1 means null value, value stays empty
+
+		messages = append(messages, KafkaMessage{
+			Topic:     topic,
+			Partition: partition,
+			Key:       key,
+			Value:     value,
+			Truncated: truncated,
+		})
+
+		// Skip to next record
+		offset = recordEnd
+	}
+
+	return messages
+}
+
+// extractProduceMessages extracts message samples from a Produce request body.
+// This navigates the Produce request structure to find record batches.
+func (p *Parser) extractProduceMessages(data []byte, offset int, apiVersion int16, flexible bool) []KafkaMessage {
+	// Skip transactional_id (v3+)
+	if flexible {
+		_, newOffset := readCompactNullableString(data, offset)
+		if newOffset < 0 {
+			return nil
+		}
+		offset = newOffset
+	} else if apiVersion >= 3 {
+		offset = p.skipNullableString(data, offset)
+		if offset < 0 {
+			return nil
+		}
+	}
+
+	// Skip acks (2) + timeout (4)
+	offset += 6
+	if offset > len(data) {
+		return nil
+	}
+
+	// Topic array
+	var topicCount int
+	if flexible {
+		tc, newOffset := readCompactArrayLen(data, offset)
+		if newOffset < 0 || tc <= 0 {
+			return nil
+		}
+		topicCount = tc
+		offset = newOffset
+	} else {
+		if offset+4 > len(data) {
+			return nil
+		}
+		topicCount = int(int32(binary.BigEndian.Uint32(data[offset : offset+4])))
+		offset += 4
+		if topicCount <= 0 {
+			return nil
+		}
+	}
+
+	var messages []KafkaMessage
+
+	for t := 0; t < topicCount && len(messages) < MaxMessages; t++ {
+		// Topic name
+		var topicName string
+		if flexible {
+			var newOffset int
+			topicName, newOffset = readCompactString(data, offset)
+			if newOffset < 0 {
+				return messages
+			}
+			offset = newOffset
+		} else {
+			if offset+2 > len(data) {
+				return messages
+			}
+			tl := int(int16(binary.BigEndian.Uint16(data[offset : offset+2])))
+			offset += 2
+			if tl < 0 || offset+tl > len(data) {
+				return messages
+			}
+			topicName = string(data[offset : offset+tl])
+			offset += tl
+		}
+
+		// Partition array
+		var partCount int
+		if flexible {
+			pc, newOffset := readCompactArrayLen(data, offset)
+			if newOffset < 0 || pc <= 0 {
+				return messages
+			}
+			partCount = pc
+			offset = newOffset
+		} else {
+			if offset+4 > len(data) {
+				return messages
+			}
+			partCount = int(int32(binary.BigEndian.Uint32(data[offset : offset+4])))
+			offset += 4
+			if partCount <= 0 {
+				return messages
+			}
+		}
+
+		for pt := 0; pt < partCount && len(messages) < MaxMessages; pt++ {
+			// partition_index (int32)
+			if offset+4 > len(data) {
+				return messages
+			}
+			partitionID := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+			offset += 4
+
+			// record_set size
+			var recordSetSize int
+			if flexible {
+				// COMPACT_BYTES: unsigned varint length+1
+				rawLen, n := readUnsignedVarint(data, offset)
+				if n < 0 {
+					return messages
+				}
+				offset += n
+				if rawLen == 0 {
+					continue // null
+				}
+				recordSetSize = int(rawLen - 1)
+			} else {
+				if offset+4 > len(data) {
+					return messages
+				}
+				recordSetSize = int(int32(binary.BigEndian.Uint32(data[offset : offset+4])))
+				offset += 4
+				if recordSetSize <= 0 {
+					continue
+				}
+			}
+
+			if offset+recordSetSize > len(data) {
+				return messages
+			}
+
+			// Parse record batch within the record set
+			batchData := data[offset : offset+recordSetSize]
+			msgs := extractRecordBatchMessages(batchData, topicName, partitionID, MaxMessages-len(messages))
+			messages = append(messages, msgs...)
+
+			offset += recordSetSize
+
+			// Skip tagged fields for this partition (flexible)
+			if flexible {
+				newOffset := skipTaggedFields(data, offset)
+				if newOffset < 0 {
+					return messages
+				}
+				offset = newOffset
+			}
+		}
+
+		// Skip tagged fields for this topic (flexible)
+		if flexible {
+			newOffset := skipTaggedFields(data, offset)
+			if newOffset < 0 {
+				return messages
+			}
+			offset = newOffset
+		}
+	}
+
+	return messages
+}
+
+// ExtractFetchResponseMessages extracts message samples from a Fetch response body.
+// Called after correlation when we know the API key is Fetch.
+// body is the raw response data after the 4-byte correlation ID.
+func ExtractFetchResponseMessages(body []byte, apiVersion int16) []KafkaMessage {
+	flexible := isFlexibleVersion(ApiKeyFetch, apiVersion)
+
+	offset := skipFetchResponseHeader(body, apiVersion, flexible)
+	if offset < 0 || offset > len(body) {
+		return nil
+	}
+
+	topicCount, newOff := readArrayLen(body, offset, flexible)
+	if topicCount <= 0 || newOff < 0 {
+		return nil
+	}
+	offset = newOff
+
+	var messages []KafkaMessage
+	for t := 0; t < topicCount && len(messages) < MaxMessages; t++ {
+		topicName, off := readFetchTopicName(body, offset, apiVersion, flexible)
+		if off < 0 {
+			return messages
+		}
+		offset = off
+
+		partCount, off2 := readArrayLen(body, offset, flexible)
+		if partCount <= 0 || off2 < 0 {
+			return messages
+		}
+		offset = off2
+
+		for pt := 0; pt < partCount && len(messages) < MaxMessages; pt++ {
+			partitionID, recordSetData, off3 := parseFetchPartition(body, offset, apiVersion, flexible)
+			if off3 < 0 {
+				return messages
+			}
+			offset = off3
+			if len(recordSetData) > 0 {
+				msgs := extractRecordBatchMessages(recordSetData, topicName, partitionID, MaxMessages-len(messages))
+				messages = append(messages, msgs...)
+			}
+		}
+
+		if flexible {
+			off4 := skipTaggedFields(body, offset)
+			if off4 < 0 {
+				return messages
+			}
+			offset = off4
+		}
+	}
+
+	return messages
+}
+
+// skipFetchResponseHeader skips the fixed fields at the start of a Fetch response body.
+func skipFetchResponseHeader(body []byte, apiVersion int16, flexible bool) int {
+	offset := 0
+	if flexible {
+		newOffset := skipTaggedFields(body, offset)
+		if newOffset < 0 {
+			return -1
+		}
+		offset = newOffset
+	}
+	if apiVersion >= 1 {
+		offset += 4 // throttle_time_ms
+	}
+	if apiVersion >= 7 {
+		offset += 6 // error_code(2) + session_id(4)
+	}
+	return offset
+}
+
+// readArrayLen reads an array length (legacy or compact).
+func readArrayLen(data []byte, offset int, flexible bool) (int, int) {
+	if flexible {
+		return readCompactArrayLen(data, offset)
+	}
+	if offset+4 > len(data) {
+		return -1, -1
+	}
+	n := int(int32(binary.BigEndian.Uint32(data[offset : offset+4])))
+	return n, offset + 4
+}
+
+// readFetchTopicName reads the topic identifier from a Fetch response topic entry.
+func readFetchTopicName(data []byte, offset int, apiVersion int16, flexible bool) (string, int) {
+	switch {
+	case apiVersion >= 13:
+		if offset+16 > len(data) {
+			return "", -1
+		}
+		return "<uuid>", offset + 16
+	case flexible:
+		return readCompactString(data, offset)
+	default:
+		if offset+2 > len(data) {
+			return "", -1
+		}
+		tl := int(int16(binary.BigEndian.Uint16(data[offset : offset+2])))
+		offset += 2
+		if tl < 0 || offset+tl > len(data) {
+			return "", -1
+		}
+		return string(data[offset : offset+tl]), offset + tl
+	}
+}
+
+// parseFetchPartition parses a single partition from a Fetch response.
+func parseFetchPartition(data []byte, offset int, apiVersion int16, flexible bool) (int32, []byte, int) {
+	// partition_index(4) + error_code(2) + high_watermark(8) = 14
+	if offset+14 > len(data) {
+		return 0, nil, -1
+	}
+	partitionID := int32(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 14
+
+	if apiVersion >= 4 {
+		offset += 8 // last_stable_offset
+	}
+	if apiVersion >= 5 {
+		offset += 8 // log_start_offset
+	}
+	if apiVersion >= 4 {
+		offset = skipAbortedTransactions(data, offset, flexible)
+		if offset < 0 {
+			return 0, nil, -1
+		}
+	}
+	if apiVersion >= 11 {
+		offset += 4 // preferred_read_replica
+	}
+	if offset > len(data) {
+		return 0, nil, -1
+	}
+
+	recordSetData, newOffset := readBytesField(data, offset, flexible)
+	if newOffset < 0 {
+		return 0, nil, -1
+	}
+	offset = newOffset
+
+	if flexible {
+		off := skipTaggedFields(data, offset)
+		if off < 0 {
+			return 0, nil, -1
+		}
+		offset = off
+	}
+
+	return partitionID, recordSetData, offset
+}
+
+// skipAbortedTransactions skips the aborted_transactions array.
+func skipAbortedTransactions(data []byte, offset int, flexible bool) int {
+	count, newOffset := readArrayLen(data, offset, flexible)
+	if newOffset < 0 {
+		return -1
+	}
+	offset = newOffset
+	for range count {
+		offset += 16 // producer_id(8) + first_offset(8)
+		if flexible {
+			off := skipTaggedFields(data, offset)
+			if off < 0 {
+				return -1
+			}
+			offset = off
+		}
+	}
+	return offset
+}
+
+// readBytesField reads a BYTES/COMPACT_BYTES field.
+func readBytesField(data []byte, offset int, flexible bool) ([]byte, int) {
+	if flexible {
+		rawLen, n := readUnsignedVarint(data, offset)
+		if n < 0 {
+			return nil, -1
+		}
+		offset += n
+		if rawLen == 0 {
+			return nil, offset // null
+		}
+		size := int(rawLen - 1)
+		if offset+size > len(data) {
+			return nil, -1
+		}
+		return data[offset : offset+size], offset + size
+	}
+	if offset+4 > len(data) {
+		return nil, -1
+	}
+	size := int(int32(binary.BigEndian.Uint32(data[offset : offset+4])))
+	offset += 4
+	if size <= 0 {
+		return nil, offset
+	}
+	if offset+size > len(data) {
+		return nil, -1
+	}
+	return data[offset : offset+size], offset + size
 }
 
 func min(a, b int) int {

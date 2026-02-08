@@ -14,24 +14,35 @@ const (
 	KafkaStatusStopIteration KafkaStatus = 1
 )
 
+// KafkaMessage represents a sampled message from Produce/Fetch
+type KafkaMessage struct {
+	Topic     string // Topic name
+	Partition int32  // Partition index
+	Key       string // Message key (may be empty)
+	Value     string // Message value (truncated at MaxValueSize)
+	Truncated bool   // Value was truncated
+}
+
 // KafkaCommand represents a Kafka request received from the client
 type KafkaCommand struct {
-	ApiKey        int16    // e.g., 0=Produce, 1=Fetch, 3=Metadata, 18=ApiVersions
-	ApiVersion    int16    // Protocol version
-	CorrelationID int32    // Correlation ID for request/response matching
-	ClientID      string   // Client identifier
-	Operation     string   // Human-readable operation name (e.g., "Produce", "Fetch")
-	Topics        []string // Topic names (from Produce/Fetch requests)
-	GroupID       string   // Consumer group ID (from JoinGroup/SyncGroup/OffsetCommit)
+	ApiKey        int16          // e.g., 0=Produce, 1=Fetch, 3=Metadata, 18=ApiVersions
+	ApiVersion    int16          // Protocol version
+	CorrelationID int32          // Correlation ID for request/response matching
+	ClientID      string         // Client identifier
+	Operation     string         // Human-readable operation name (e.g., "Produce", "Fetch")
+	Topics        []string       // Topic names (from Produce/Fetch requests)
+	GroupID       string         // Consumer group ID (from JoinGroup/SyncGroup/OffsetCommit)
+	Messages      []KafkaMessage // Sample messages from Produce requests
 	Timestamp     time.Time
 }
 
 // KafkaResult represents a Kafka response received from the server
 type KafkaResult struct {
-	CorrelationID int32  // Correlation ID for request/response matching
-	ErrorCode     int16  // Kafka error code (0 = no error)
-	ErrorMessage  string // Human-readable error message
-	IsError       bool   // Whether this response contains an error
+	CorrelationID int32          // Correlation ID for request/response matching
+	ErrorCode     int16          // Kafka error code (0 = no error)
+	ErrorMessage  string         // Human-readable error message
+	IsError       bool           // Whether this response contains an error
+	Messages      []KafkaMessage // Sample messages from Fetch responses
 }
 
 // KafkaPluginInstance handles Kafka traffic for a single connection

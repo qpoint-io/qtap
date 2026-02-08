@@ -188,9 +188,19 @@ type RequestHeader struct {
 type Request struct {
 	Header      RequestHeader
 	MessageSize int32
-	Topics      []string // Extracted topic names
-	GroupID     string   // Consumer group (for JoinGroup, SyncGroup, OffsetCommit, etc.)
-	TotalSize   int      // Total bytes consumed including length prefix
+	Topics      []string       // Extracted topic names
+	GroupID     string         // Consumer group (for JoinGroup, SyncGroup, OffsetCommit, etc.)
+	Messages    []KafkaMessage // Sampled messages from Produce requests
+	TotalSize   int            // Total bytes consumed including length prefix
+}
+
+// KafkaMessage represents a sampled message key/value from a record batch
+type KafkaMessage struct {
+	Topic     string
+	Partition int32
+	Key       string
+	Value     string
+	Truncated bool // Value was truncated
 }
 
 // ResponseHeader represents a Kafka response header
@@ -202,8 +212,9 @@ type ResponseHeader struct {
 type Response struct {
 	Header      ResponseHeader
 	MessageSize int32
-	ErrorCode   int16 // Top-level error code (if applicable)
-	TotalSize   int   // Total bytes consumed including length prefix
+	ErrorCode   int16  // Top-level error code (if applicable)
+	RawBody     []byte // Raw response body (after correlation ID) for post-correlation parsing
+	TotalSize   int    // Total bytes consumed including length prefix
 }
 
 // PendingRequest represents a request awaiting its response

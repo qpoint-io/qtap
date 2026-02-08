@@ -121,6 +121,16 @@ func (s *Stream) processRequests() {
 					GroupID:       req.GroupID,
 					Timestamp:     timestamp,
 				}
+				// Add Produce message samples
+				for _, m := range req.Messages {
+					pluginCmd.Messages = append(pluginCmd.Messages, plugins.KafkaMessage{
+						Topic:     m.Topic,
+						Partition: m.Partition,
+						Key:       m.Key,
+						Value:     m.Value,
+						Truncated: m.Truncated,
+					})
+				}
 				if err := pluginConn.OnKafkaCommand(pluginCmd); err != nil {
 					s.logger.Error("plugin kafka command", zap.Error(err))
 				}
@@ -207,10 +217,26 @@ func (s *Stream) processResponses() {
 
 		// Call plugin and teardown
 		if pending.PluginConn != nil {
+			// Extract Fetch response messages
+			var fetchMessages []plugins.KafkaMessage
+			if pending.Request.Header.ApiKey == ApiKeyFetch && resp.RawBody != nil {
+				msgs := ExtractFetchResponseMessages(resp.RawBody, pending.Request.Header.ApiVersion)
+				for _, m := range msgs {
+					fetchMessages = append(fetchMessages, plugins.KafkaMessage{
+						Topic:     m.Topic,
+						Partition: m.Partition,
+						Key:       m.Key,
+						Value:     m.Value,
+						Truncated: m.Truncated,
+					})
+				}
+			}
+
 			pluginResult := &plugins.KafkaResult{
 				CorrelationID: resp.Header.CorrelationID,
 				ErrorCode:     resp.ErrorCode,
 				IsError:       isError,
+				Messages:      fetchMessages,
 			}
 			if isError {
 				pluginResult.ErrorMessage = KafkaErrorName(resp.ErrorCode)

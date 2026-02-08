@@ -526,3 +526,37 @@ func TestRapidQuerySequence(t *testing.T) {
 		assert.Empty(t, stream.pendingCommands)
 	}
 }
+
+func TestStreamResultSetDeprecateEOF(t *testing.T) {
+	// Test CLIENT_DEPRECATE_EOF mode where no EOF packet separates column
+	// definitions from row data, and rows are terminated by an OK packet
+	// with 0xFE header (length >= 9).
+	stream, logs := createTestStream(t)
+
+	// Send a COM_QUERY
+	payload := append([]byte{ComQuery}, []byte("SELECT * FROM t1")...)
+	err := stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(0, payload)})
+	require.NoError(t, err)
+
+	// Build result set without EOF between columns and rows
+	var resp []byte
+	resp = append(resp, buildRawPacket(1, []byte{0x02})...)
+	resp = append(resp, buildRawPacket(2, buildColumnDefPayload("def", "testdb", "t1", "t1", "id", "id", 63, 11, 0x03, 0, 0))...)
+	resp = append(resp, buildRawPacket(3, buildColumnDefPayload("def", "testdb", "t1", "t1", "name", "name", 33, 80, 0xfd, 0, 0))...)
+	// NO EOF here - deprecate-EOF mode
+	resp = append(resp, buildRawPacket(4, buildRowPayload("1", "test"))...)
+	// OK terminator: 0xFE header with length >= 9
+	okTerminator := []byte{0xfe, 0x00, 0x00, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00}
+	resp = append(resp, buildRawPacket(5, okTerminator)...)
+
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: resp})
+	require.NoError(t, err)
+
+	assert.Empty(t, stream.pendingCommands)
+	logEntries := logs.FilterMessage("mysql request/response")
+	require.Equal(t, 1, logEntries.Len())
+	entry := logEntries.All()[0].ContextMap()
+	t.Logf("entry: %v", entry)
+	assert.Equal(t, uint64(2), entry["column_count"], "should capture 2 columns")
+	assert.Equal(t, int64(1), entry["row_count"], "should capture 1 row")
+}

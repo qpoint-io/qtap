@@ -75,6 +75,7 @@ type resultSetPhase int
 const (
 	phaseNone       resultSetPhase = iota
 	phaseColumnDefs                // reading column definition packets
+	phaseColumnsEOF                // expecting optional EOF after column defs (deprecate-EOF compat)
 	phaseRows                      // reading row data packets
 )
 
@@ -288,6 +289,30 @@ func (s *Stream) processResultSetPacket(pkt *Packet) {
 			return
 		}
 		s.activeResultSet.Columns = append(s.activeResultSet.Columns, *col)
+
+		// If we've received all expected column definitions, transition to
+		// phaseColumnsEOF which handles both EOF-terminated and deprecate-EOF
+		// protocols. The next packet is either an EOF (consumed and discarded)
+		// or the first row data packet.
+		if uint64(len(s.activeResultSet.Columns)) >= s.activeResultSet.ColumnCount {
+			s.resultSetState = phaseColumnsEOF
+			s.activeResultSet.Rows = make([][]Value, 0)
+			return
+		}
+
+	case phaseColumnsEOF:
+		// After all column definitions, we may receive an EOF packet (standard
+		// protocol) or jump straight to row data (CLIENT_DEPRECATE_EOF).
+		if IsEOF(pkt) {
+			// Standard protocol: consume the EOF and move to rows
+			s.resultSetState = phaseRows
+			return
+		}
+		// No EOF — this is deprecate-EOF mode, the packet is already a row
+		// (or ERR/OK terminator). Fall through to phaseRows handling.
+		s.resultSetState = phaseRows
+		s.processResultSetPacket(pkt)
+		return
 
 	case phaseRows:
 		// Check for EOF (end of rows in standard protocol) or OK terminator

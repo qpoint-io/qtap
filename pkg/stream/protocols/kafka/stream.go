@@ -162,7 +162,7 @@ func (s *Stream) processResponses() {
 		// Look up pending request by CorrelationID
 		pending, ok := s.pendingRequests[resp.Header.CorrelationID]
 		if !ok {
-			s.logger.Warn("kafka response without pending request",
+			s.logger.Debug("kafka response without pending request",
 				zap.Int32("correlation_id", resp.Header.CorrelationID))
 			continue
 		}

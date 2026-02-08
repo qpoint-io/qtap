@@ -47,6 +47,12 @@ type Stream struct {
 	handshakeComplete bool
 	authPacketSeen    bool // Track if we've skipped the auth packet
 
+	// Result set state machine
+	resultSetState  resultSetPhase
+	activeResultSet *ResultSet
+	activeCommand   *PendingCommand
+	resultSetBytes  int64 // track total response bytes for result sets
+
 	// Plugin integration
 	pluginManager *plugins.Manager
 	domain        string
@@ -62,6 +68,15 @@ type PendingCommand struct {
 	Timestamp   time.Time
 	PluginConn  *plugins.Connection
 }
+
+// resultSetPhase tracks where we are in multi-packet result set parsing
+type resultSetPhase int
+
+const (
+	phaseNone       resultSetPhase = iota
+	phaseColumnDefs                // reading column definition packets
+	phaseRows                      // reading row data packets
+)
 
 type StreamOpt func(*Stream)
 
@@ -206,10 +221,11 @@ func (s *Stream) processResponses() {
 			continue
 		}
 
-		// Only log response packets at trace level - very verbose
-		// s.logger.Debug("mysql response packet",
-		// 	zap.Int("length", int(pkt.Length)),
-		// 	zap.Uint8("seq_id", pkt.SequenceID))
+		// If we're in the middle of a multi-packet result set, handle it
+		if s.resultSetState != phaseNone {
+			s.processResultSetPacket(pkt)
+			continue
+		}
 
 		// Dequeue the oldest pending command for correlation
 		if len(s.pendingCommands) == 0 {
@@ -231,18 +247,111 @@ func (s *Stream) processResponses() {
 			continue
 		}
 
-		// Log the correlated pair
-		s.logCorrelatedPair(pending, pkt, resp)
-
-		// Call plugin and teardown
-		if pending.PluginConn != nil {
-			pluginResult := s.buildPluginResult(resp)
-			if err := pending.PluginConn.OnMySQLResult(pluginResult); err != nil {
-				s.logger.Error("plugin mysql result", zap.Error(err))
-			}
-			pending.PluginConn.Meta().SetWriteBytes(int64(pkt.Length + 4))
-			pending.PluginConn.Teardown()
+		// If this is a result set header (column count), start collecting packets
+		if rs, ok := resp.(*ResultSet); ok {
+			s.resultSetState = phaseColumnDefs
+			s.activeResultSet = rs
+			s.activeResultSet.Columns = make([]ColumnDefinition, 0, rs.ColumnCount)
+			s.activeResultSet.Rows = nil
+			s.activeCommand = pending
+			s.resultSetBytes = int64(pkt.Length + 4)
+			continue
 		}
+
+		// Simple single-packet response (OK, ERR, EOF)
+		s.completeResponse(pending, pkt, resp)
+	}
+}
+
+// processResultSetPacket handles a packet that's part of an in-progress result set
+func (s *Stream) processResultSetPacket(pkt *Packet) {
+	s.resultSetBytes += int64(pkt.Length + 4)
+
+	switch s.resultSetState {
+	case phaseColumnDefs:
+		// Check for EOF (end of column definitions)
+		if IsEOF(pkt) {
+			s.resultSetState = phaseRows
+			s.activeResultSet.Rows = make([][]Value, 0)
+			return
+		}
+		// Check for ERR
+		if IsError(pkt) {
+			s.finishResultSet()
+			return
+		}
+		// Parse column definition
+		col, err := parseColumnDefinition(pkt.Payload)
+		if err != nil {
+			s.logger.Debug("mysql parse column definition error", zap.Error(err))
+			s.finishResultSet()
+			return
+		}
+		s.activeResultSet.Columns = append(s.activeResultSet.Columns, *col)
+
+	case phaseRows:
+		// Check for EOF or OK (end of rows)
+		if IsEOF(pkt) || (len(pkt.Payload) > 0 && pkt.Payload[0] == OKPacket) {
+			s.finishResultSet()
+			return
+		}
+		// Check for ERR
+		if IsError(pkt) {
+			s.finishResultSet()
+			return
+		}
+		// Parse row (only if under the cap)
+		if len(s.activeResultSet.Rows) < MaxResultSetRows {
+			row, err := parseResultSetRow(pkt.Payload, int(s.activeResultSet.ColumnCount))
+			if err != nil {
+				s.logger.Debug("mysql parse row error", zap.Error(err))
+				// Skip this row but continue
+				return
+			}
+			s.activeResultSet.Rows = append(s.activeResultSet.Rows, row)
+		}
+		// If we've hit the cap, we still consume packets but don't store them
+		// The Truncated flag will be set in buildPluginResult based on RowCount vs len(Rows)
+	}
+}
+
+// finishResultSet completes result set collection and correlates with the pending command
+func (s *Stream) finishResultSet() {
+	rs := s.activeResultSet
+	pending := s.activeCommand
+	totalBytes := s.resultSetBytes
+
+	// Reset state
+	s.resultSetState = phaseNone
+	s.activeResultSet = nil
+	s.activeCommand = nil
+	s.resultSetBytes = 0
+
+	// Create a fake packet for logging (with aggregate size)
+	fakePkt := &Packet{Length: uint32(totalBytes)}
+	s.logCorrelatedPair(pending, fakePkt, rs)
+
+	if pending.PluginConn != nil {
+		pluginResult := s.buildPluginResult(rs)
+		if err := pending.PluginConn.OnMySQLResult(pluginResult); err != nil {
+			s.logger.Error("plugin mysql result", zap.Error(err))
+		}
+		pending.PluginConn.Meta().SetWriteBytes(totalBytes)
+		pending.PluginConn.Teardown()
+	}
+}
+
+// completeResponse handles a single-packet response correlation
+func (s *Stream) completeResponse(pending *PendingCommand, pkt *Packet, resp interface{}) {
+	s.logCorrelatedPair(pending, pkt, resp)
+
+	if pending.PluginConn != nil {
+		pluginResult := s.buildPluginResult(resp)
+		if err := pending.PluginConn.OnMySQLResult(pluginResult); err != nil {
+			s.logger.Error("plugin mysql result", zap.Error(err))
+		}
+		pending.PluginConn.Meta().SetWriteBytes(int64(pkt.Length + 4))
+		pending.PluginConn.Teardown()
 	}
 }
 
@@ -272,7 +381,8 @@ func (s *Stream) logCorrelatedPair(cmd *PendingCommand, pkt *Packet, resp interf
 	case *ResultSet:
 		fields = append(fields,
 			zap.String("response", "ResultSet"),
-			zap.Uint64("column_count", r.ColumnCount))
+			zap.Uint64("column_count", r.ColumnCount),
+			zap.Int("row_count", len(r.Rows)))
 	case string:
 		fields = append(fields, zap.String("response", r))
 	default:
@@ -331,8 +441,23 @@ func (s *Stream) buildPluginResult(resp interface{}) *plugins.MySQLResult {
 		result.ErrorMessage = r.ErrorMessage
 	case *ResultSet:
 		result.Type = "ResultSet"
-		// Note: We only get column count from first packet
-		// Full result set parsing would require more packets
+		result.RowCount = len(r.Rows)
+		result.Columns = make([]string, len(r.Columns))
+		for i, col := range r.Columns {
+			result.Columns[i] = col.Name
+		}
+		result.Rows = make([][]string, len(r.Rows))
+		for i, row := range r.Rows {
+			result.Rows[i] = make([]string, len(row))
+			for j, val := range row {
+				result.Rows[i][j] = val.String()
+			}
+		}
+		// If column count was higher than rows captured, it was truncated
+		// (rows beyond MaxResultSetRows were consumed but not stored)
+		if r.ColumnCount > 0 && len(r.Rows) >= MaxResultSetRows {
+			result.Truncated = true
+		}
 	case string:
 		result.Type = r
 	default:

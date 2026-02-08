@@ -359,6 +359,164 @@ func buildPacket(seqID byte, payload []byte) []byte {
 	return pkt
 }
 
+// Result set size limits
+const (
+	MaxResultSetRows = 100
+	MaxValueSize     = 64 * 1024 // 64KB
+)
+
+// readLengthEncodedString reads a length-encoded string from data.
+// Returns the string, bytes consumed, and any error.
+func readLengthEncodedString(data []byte) (string, int, error) {
+	if len(data) == 0 {
+		return "", 0, ErrIncomplete
+	}
+
+	// NULL indicator
+	if data[0] == 0xfb {
+		return "", 1, nil
+	}
+
+	length, n, err := readLengthEncodedInt(data)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if uint64(len(data)-n) < length {
+		return "", 0, ErrIncomplete
+	}
+
+	return string(data[n : n+int(length)]), n + int(length), nil
+}
+
+// parseColumnDefinition parses a column definition packet (COM_QUERY response).
+func parseColumnDefinition(data []byte) (*ColumnDefinition, error) {
+	col := &ColumnDefinition{}
+	pos := 0
+
+	// catalog (length-encoded string)
+	s, n, err := readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading catalog: %w", err)
+	}
+	col.Catalog = s
+	pos += n
+
+	// schema
+	s, n, err = readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading schema: %w", err)
+	}
+	col.Schema = s
+	pos += n
+
+	// table (virtual)
+	s, n, err = readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading table: %w", err)
+	}
+	col.Table = s
+	pos += n
+
+	// org_table (physical)
+	s, n, err = readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading org_table: %w", err)
+	}
+	col.OrgTable = s
+	pos += n
+
+	// name (virtual)
+	s, n, err = readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading name: %w", err)
+	}
+	col.Name = s
+	pos += n
+
+	// org_name (physical)
+	s, n, err = readLengthEncodedString(data[pos:])
+	if err != nil {
+		return nil, fmt.Errorf("reading org_name: %w", err)
+	}
+	col.OrgName = s
+	pos += n
+
+	// fixed-length fields marker (0x0c)
+	if pos >= len(data) {
+		return nil, ErrIncomplete
+	}
+	pos++ // skip 0x0c length marker
+
+	// Need at least 12 more bytes for fixed fields
+	if pos+12 > len(data) {
+		return nil, ErrIncomplete
+	}
+
+	col.CharacterSet = binary.LittleEndian.Uint16(data[pos:])
+	pos += 2
+	col.ColumnLength = binary.LittleEndian.Uint32(data[pos:])
+	pos += 4
+	col.ColumnType = data[pos]
+	pos++
+	col.Flags = binary.LittleEndian.Uint16(data[pos:])
+	pos += 2
+	col.Decimals = data[pos]
+	// pos++ + 2 filler bytes — we don't need them
+
+	return col, nil
+}
+
+// parseResultSetRow parses a text protocol result set row.
+// Each field is a length-encoded string, or 0xfb for NULL.
+func parseResultSetRow(data []byte, columnCount int) ([]Value, error) {
+	values := make([]Value, 0, columnCount)
+	pos := 0
+
+	for i := range columnCount {
+		if pos >= len(data) {
+			return nil, fmt.Errorf("unexpected end of row data at column %d", i)
+		}
+
+		if data[pos] == 0xfb {
+			// NULL
+			values = append(values, Value{IsNull: true})
+			pos++
+			continue
+		}
+
+		// Length-encoded string
+		length, n, err := readLengthEncodedInt(data[pos:])
+		if err != nil {
+			return nil, fmt.Errorf("reading row value length at column %d: %w", i, err)
+		}
+		pos += n
+
+		if uint64(len(data)-pos) < length {
+			return nil, fmt.Errorf("incomplete row value at column %d", i)
+		}
+
+		valData := data[pos : pos+int(length)]
+		// Truncate large values
+		if len(valData) > MaxValueSize {
+			marker := []byte("...[truncated]")
+			buf := make([]byte, 0, MaxValueSize+len(marker))
+			buf = append(buf, valData[:MaxValueSize]...)
+			buf = append(buf, marker...)
+			valData = buf
+		} else {
+			cp := make([]byte, len(valData))
+			copy(cp, valData)
+			valData = cp
+		}
+
+		values = append(values, Value{Data: valData})
+		pos += int(length)
+	}
+
+	return values, nil
+}
+
 // IsError checks if a packet is an error response
 func IsError(pkt *Packet) bool {
 	return len(pkt.Payload) > 0 && pkt.Payload[0] == ERRPacket

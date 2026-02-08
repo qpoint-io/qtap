@@ -30,8 +30,10 @@ type MySQLResult struct {
 	LastInsertID uint64
 	ErrorCode    uint16
 	ErrorMessage string
-	Columns      []string
-	RowCount     int
+	Columns      []string   // Column names
+	Rows         [][]string // Row values (string representation)
+	RowCount     int        // Total rows (may exceed len(Rows) if truncated)
+	Truncated    bool       // True if rows were capped at MaxResultSetRows
 }
 
 // MySQLPluginInstance handles MySQL traffic for a single connection

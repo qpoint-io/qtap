@@ -2,6 +2,7 @@ package kafka
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 )
 
@@ -75,11 +76,6 @@ func buildCompactString(s string) []byte {
 	n := putUnsignedVarint(buf, 0, lenVal)
 	copy(buf[n:], data)
 	return buf[:n+len(data)]
-}
-
-// buildCompactNullableString builds a COMPACT_NULLABLE_STRING that is null (encoded as varint 0).
-func buildCompactNullString() []byte {
-	return []byte{0x00}
 }
 
 // buildCompactArrayHeader builds the COMPACT_ARRAY length prefix (unsigned varint(count+1)).
@@ -228,7 +224,7 @@ func TestIncompleteMessage(t *testing.T) {
 	parser.Append(data[:6]) // Incomplete
 
 	_, err := parser.ParseRequest()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("expected ErrIncomplete, got %v", err)
 	}
 
@@ -277,12 +273,12 @@ func TestEmptyBuffer(t *testing.T) {
 	parser := NewParser()
 
 	_, err := parser.ParseRequest()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("expected ErrIncomplete for empty buffer, got %v", err)
 	}
 
 	_, err = parser.ParseResponse()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("expected ErrIncomplete for empty buffer, got %v", err)
 	}
 }

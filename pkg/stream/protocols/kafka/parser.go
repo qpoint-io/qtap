@@ -249,7 +249,8 @@ func (p *Parser) ParseRequest() (*Request, error) {
 			req.Header.ClientID = string(data[offset : offset+int(clientIDLen)])
 			offset += int(clientIDLen)
 		} else if clientIDLen == -1 {
-			// Null string - no client ID
+			// Null client ID: no data bytes to read, offset already past length prefix
+			_ = clientIDLen
 		}
 	}
 
@@ -448,21 +449,19 @@ func (p *Parser) extractTopicArrayLegacy(data []byte, offset int) []string {
 	}
 
 	topics := make([]string, 0, min(int(arrayLen), 32))
-	for i := int32(0); i < arrayLen; i++ {
+
+	// We can't easily skip the rest of each topic structure without
+	// knowing the exact schema version, so just collect the first topic.
+	if arrayLen > 0 {
 		if offset+2 > len(data) {
-			break
+			return topics
 		}
 		topicLen := int16(binary.BigEndian.Uint16(data[offset : offset+2]))
 		offset += 2
 		if topicLen <= 0 || offset+int(topicLen) > len(data) {
-			break
+			return topics
 		}
 		topics = append(topics, string(data[offset:offset+int(topicLen)]))
-		offset += int(topicLen)
-
-		// We can't easily skip the rest of the topic structure without
-		// knowing the exact schema version, so just collect the first topic.
-		break
 	}
 
 	return topics
@@ -481,18 +480,17 @@ func (p *Parser) extractTopicArrayCompact(data []byte, offset int) []string {
 	}
 
 	topics := make([]string, 0, min(arrayLen, 32))
-	for i := 0; i < arrayLen; i++ {
+
+	// We can't easily skip the rest of each topic structure without
+	// knowing the exact schema, so just collect the first topic.
+	if arrayLen > 0 {
 		topicName, newOff := readCompactString(data, offset)
 		if newOff < 0 {
-			break
+			return topics
 		}
-		offset = newOff
 		if topicName != "" {
 			topics = append(topics, topicName)
 		}
-		// We can't easily skip the rest of the topic structure without
-		// knowing the exact schema, so just collect the first topic.
-		break
 	}
 
 	return topics

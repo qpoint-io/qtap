@@ -80,8 +80,17 @@ func ParseCommand(pkt *Packet) (byte, interface{}, error) {
 
 	switch cmd {
 	case ComQuery:
+		query := pkt.Payload[1:]
+		// MySQL 8.0+ clients with CLIENT_QUERY_ATTRIBUTES prepend a
+		// parameter-count (lenenc int) and parameter-set-count (lenenc int, always 1)
+		// before the SQL text.  When no attributes are sent the prefix is
+		// [0x00, 0x01].  Detect and skip this so the query text is clean.
+		// Valid SQL never starts with a NUL byte, so this is safe.
+		if len(query) >= 2 && query[0] == 0x00 && query[1] == 0x01 {
+			query = query[2:]
+		}
 		return cmd, &QueryCommand{
-			Query: string(pkt.Payload[1:]),
+			Query: string(query),
 		}, nil
 	case ComQuit:
 		return cmd, nil, nil
@@ -530,6 +539,13 @@ func IsOK(pkt *Packet) bool {
 // IsEOF checks if a packet is an EOF packet
 func IsEOF(pkt *Packet) bool {
 	return len(pkt.Payload) > 0 && pkt.Payload[0] == EOFPacket && len(pkt.Payload) < 9
+}
+
+// isOKTerminator checks if a packet is an OK terminator used in
+// CLIENT_DEPRECATE_EOF mode. In this mode the server sends a packet
+// with 0xFE header and length >= 9 (an OK packet in EOF's clothing).
+func isOKTerminator(pkt *Packet) bool {
+	return len(pkt.Payload) >= 9 && pkt.Payload[0] == EOFPacket
 }
 
 // String returns a human-readable representation of the packet

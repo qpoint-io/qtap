@@ -295,6 +295,45 @@ func TestBuildPackets(t *testing.T) {
 	}
 }
 
+func TestParseCommandQueryAttributes(t *testing.T) {
+	// MySQL 8.0+ with CLIENT_QUERY_ATTRIBUTES prepends [param_count=0, param_set_count=1]
+	// before the SQL text, producing a \x00\x01 prefix that must be stripped.
+	query := "SELECT 1"
+	payload := append([]byte{ComQuery, 0x00, 0x01}, []byte(query)...)
+	pkt := &Packet{Length: uint32(len(payload)), Payload: payload}
+
+	cmd, data, err := ParseCommand(pkt)
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+	if cmd != ComQuery {
+		t.Fatalf("Expected COM_QUERY, got 0x%02x", cmd)
+	}
+	qc := data.(*QueryCommand)
+	if qc.Query != query {
+		t.Errorf("Expected query=%q, got %q (prefix bytes not stripped)", query, qc.Query)
+	}
+}
+
+func TestParseCommandQueryNoAttributes(t *testing.T) {
+	// Standard COM_QUERY without query attributes should still work
+	query := "SELECT 1"
+	payload := append([]byte{ComQuery}, []byte(query)...)
+	pkt := &Packet{Length: uint32(len(payload)), Payload: payload}
+
+	cmd, data, err := ParseCommand(pkt)
+	if err != nil {
+		t.Fatalf("ParseCommand failed: %v", err)
+	}
+	if cmd != ComQuery {
+		t.Fatalf("Expected COM_QUERY, got 0x%02x", cmd)
+	}
+	qc := data.(*QueryCommand)
+	if qc.Query != query {
+		t.Errorf("Expected query=%q, got %q", query, qc.Query)
+	}
+}
+
 func TestIsPacketType(t *testing.T) {
 	okPkt := &Packet{Payload: []byte{OKPacket, 0, 0, 0, 0}}
 	errPkt := &Packet{Payload: []byte{ERRPacket, 0, 0}}

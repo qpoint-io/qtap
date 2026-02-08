@@ -125,6 +125,7 @@ type ResultSet struct {
 	ColumnCount uint64
 	Columns     []ColumnDefinition
 	Rows        [][]Value
+	RowCount    int // Total rows seen (may exceed len(Rows) when capped at MaxResultSetRows)
 }
 
 // ColumnDefinition represents a column in a result set

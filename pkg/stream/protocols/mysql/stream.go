@@ -269,7 +269,7 @@ func (s *Stream) processResultSetPacket(pkt *Packet) {
 
 	switch s.resultSetState {
 	case phaseColumnDefs:
-		// Check for EOF (end of column definitions)
+		// Check for EOF (end of column definitions in non-deprecate-EOF mode)
 		if IsEOF(pkt) {
 			s.resultSetState = phaseRows
 			s.activeResultSet.Rows = make([][]Value, 0)
@@ -290,8 +290,10 @@ func (s *Stream) processResultSetPacket(pkt *Packet) {
 		s.activeResultSet.Columns = append(s.activeResultSet.Columns, *col)
 
 	case phaseRows:
-		// Check for EOF or OK (end of rows)
-		if IsEOF(pkt) || (len(pkt.Payload) > 0 && pkt.Payload[0] == OKPacket) {
+		// Check for EOF (end of rows in standard protocol) or OK terminator
+		// (CLIENT_DEPRECATE_EOF mode). In deprecate-EOF mode, the server
+		// sends an OK packet with 0xFE header (length >= 9) instead of EOF.
+		if IsEOF(pkt) || isOKTerminator(pkt) {
 			s.finishResultSet()
 			return
 		}
@@ -300,6 +302,8 @@ func (s *Stream) processResultSetPacket(pkt *Packet) {
 			s.finishResultSet()
 			return
 		}
+		// Count every row, even those we don't store
+		s.activeResultSet.RowCount++
 		// Parse row (only if under the cap)
 		if len(s.activeResultSet.Rows) < MaxResultSetRows {
 			row, err := parseResultSetRow(pkt.Payload, int(s.activeResultSet.ColumnCount))
@@ -382,7 +386,7 @@ func (s *Stream) logCorrelatedPair(cmd *PendingCommand, pkt *Packet, resp interf
 		fields = append(fields,
 			zap.String("response", "ResultSet"),
 			zap.Uint64("column_count", r.ColumnCount),
-			zap.Int("row_count", len(r.Rows)))
+			zap.Int("row_count", r.RowCount))
 	case string:
 		fields = append(fields, zap.String("response", r))
 	default:
@@ -441,7 +445,7 @@ func (s *Stream) buildPluginResult(resp interface{}) *plugins.MySQLResult {
 		result.ErrorMessage = r.ErrorMessage
 	case *ResultSet:
 		result.Type = "ResultSet"
-		result.RowCount = len(r.Rows)
+		result.RowCount = r.RowCount
 		result.Columns = make([]string, len(r.Columns))
 		for i, col := range r.Columns {
 			result.Columns[i] = col.Name
@@ -453,9 +457,8 @@ func (s *Stream) buildPluginResult(resp interface{}) *plugins.MySQLResult {
 				result.Rows[i][j] = val.String()
 			}
 		}
-		// If column count was higher than rows captured, it was truncated
-		// (rows beyond MaxResultSetRows were consumed but not stored)
-		if r.ColumnCount > 0 && len(r.Rows) >= MaxResultSetRows {
+		// If total rows exceeded the stored rows, it was truncated
+		if r.RowCount > len(r.Rows) {
 			result.Truncated = true
 		}
 	case string:

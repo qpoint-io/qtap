@@ -447,6 +447,64 @@ func TestPipelinedQueries(t *testing.T) {
 	assert.Empty(t, stream.pendingCommands)
 }
 
+// --- Result Set Row Counting Tests ---
+
+func TestStreamResultSetRowCount(t *testing.T) {
+	stream, logs := createTestStream(t)
+
+	// Send a COM_QUERY
+	payload := append([]byte{ComQuery}, []byte("SELECT id, name FROM users")...)
+	packet := buildPacket(0, payload)
+	err := stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: packet})
+	require.NoError(t, err)
+
+	// Build complete result set: 2 columns, 2 rows
+	var resp []byte
+	resp = append(resp, buildRawPacket(1, []byte{0x02})...) // column_count=2
+	resp = append(resp, buildRawPacket(2, buildColumnDefPayload("def", "test", "users", "users", "id", "id", 63, 11, 0x03, 0, 0))...)
+	resp = append(resp, buildRawPacket(3, buildColumnDefPayload("def", "test", "users", "users", "name", "name", 33, 255, 0xfd, 0, 0))...)
+	resp = append(resp, buildRawPacket(4, buildEOFPayload())...)
+	resp = append(resp, buildRawPacket(5, buildRowPayload("1", "Alice"))...)
+	resp = append(resp, buildRawPacket(6, buildRowPayload("2", "Bob"))...)
+	resp = append(resp, buildRawPacket(7, buildEOFPayload())...)
+
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: resp})
+	require.NoError(t, err)
+
+	assert.Empty(t, stream.pendingCommands)
+	logEntries := logs.FilterMessage("mysql request/response")
+	require.Equal(t, 1, logEntries.Len())
+	assert.Equal(t, int64(2), logEntries.All()[0].ContextMap()["row_count"])
+}
+
+func TestStreamResultSetEmptyFirstColumn(t *testing.T) {
+	// Regression: rows with empty string first column (0x00 length) must not
+	// be misidentified as OKPacket (also 0x00), which would terminate the
+	// result set prematurely with row_count=0.
+	stream, logs := createTestStream(t)
+
+	payload := append([]byte{ComQuery}, []byte("SELECT '' AS x, 'data' AS y")...)
+	err := stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(0, payload)})
+	require.NoError(t, err)
+
+	var resp []byte
+	resp = append(resp, buildRawPacket(1, []byte{0x02})...)
+	resp = append(resp, buildRawPacket(2, buildColumnDefPayload("def", "test", "", "", "x", "x", 33, 0, 0xfd, 0, 0))...)
+	resp = append(resp, buildRawPacket(3, buildColumnDefPayload("def", "test", "", "", "y", "y", 33, 255, 0xfd, 0, 0))...)
+	resp = append(resp, buildRawPacket(4, buildEOFPayload())...)
+	resp = append(resp, buildRawPacket(5, buildRowPayload("", "hello"))...)
+	resp = append(resp, buildRawPacket(6, buildRowPayload("", "world"))...)
+	resp = append(resp, buildRawPacket(7, buildEOFPayload())...)
+
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: resp})
+	require.NoError(t, err)
+
+	logEntries := logs.FilterMessage("mysql request/response")
+	require.Equal(t, 1, logEntries.Len())
+	assert.Equal(t, int64(2), logEntries.All()[0].ContextMap()["row_count"],
+		"rows with empty first column should not be mistaken for OK packets")
+}
+
 func TestRapidQuerySequence(t *testing.T) {
 	// Test rapid request-response pairs (traditional MySQL behavior)
 	stream, _ := createTestStream(t)

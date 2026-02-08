@@ -16,7 +16,7 @@ const (
 
 // PostgresCommand represents a PostgreSQL command received from the client
 type PostgresCommand struct {
-	Query     string    // SQL query text (from Query or Parse message)
+	Query     string // SQL query text (from Query or Parse message)
 	Timestamp time.Time
 }
 
@@ -26,7 +26,11 @@ type PostgresResult struct {
 	CommandTag   string // e.g., "SELECT 5", "INSERT 0 1"
 	ErrorCode    string // SQLSTATE code (5 chars)
 	ErrorMessage string
-	RowCount     int64  // parsed from command tag
+	RowCount     int64      // parsed from command tag
+	Columns      []string   // column names from RowDescription
+	Rows         [][]string // row values (NULL represented as nil entry via NullFlags)
+	NullFlags    [][]bool   // per-row, per-column NULL indicators
+	Truncated    bool       // true if rows or values were truncated
 }
 
 // PostgresPluginInstance handles PostgreSQL traffic for a single connection

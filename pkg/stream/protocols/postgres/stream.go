@@ -51,6 +51,12 @@ type PendingCommand struct {
 	Query      string
 	Timestamp  time.Time
 	PluginConn *plugins.Connection
+
+	// Result row accumulation
+	Columns   []ColumnInfo
+	Rows      [][]string
+	NullFlags [][]bool
+	Truncated bool
 }
 
 // Stream implements connection.StreamProcessor for PostgreSQL protocol
@@ -366,8 +372,11 @@ func (s *Stream) processResponses() {
 			case MsgReadyForQuery:
 				// End of a query cycle — already handled in completeCommand
 
-			case MsgRowDescription, MsgDataRow:
-				// Result set data, skip (we don't parse rows)
+			case MsgRowDescription:
+				s.handleRowDescription(msg.Payload)
+
+			case MsgDataRow:
+				s.handleDataRow(msg.Payload)
 
 			case MsgParseComplete, MsgBindComplete, MsgCloseComplete:
 				// Extended query confirmations, skip
@@ -396,6 +405,46 @@ func (s *Stream) processResponses() {
 			}
 		}
 	}
+}
+
+// handleRowDescription parses and stores column metadata on the current pending command
+func (s *Stream) handleRowDescription(payload []byte) {
+	if len(s.pendingCommands) == 0 {
+		return
+	}
+	cols, err := ParseRowDescription(payload)
+	if err != nil {
+		s.logger.Debug("postgres failed to parse RowDescription", zap.Error(err))
+		return
+	}
+	pending := s.pendingCommands[len(s.pendingCommands)-1]
+	pending.Columns = cols
+	pending.Rows = nil
+	pending.NullFlags = nil
+}
+
+// handleDataRow parses and accumulates a data row on the current pending command
+func (s *Stream) handleDataRow(payload []byte) {
+	if len(s.pendingCommands) == 0 {
+		return
+	}
+	pending := s.pendingCommands[len(s.pendingCommands)-1]
+
+	if len(pending.Rows) >= MaxRows {
+		pending.Truncated = true
+		return
+	}
+
+	values, nulls, valueTruncated, err := ParseDataRow(payload)
+	if err != nil {
+		s.logger.Debug("postgres failed to parse DataRow", zap.Error(err))
+		return
+	}
+	if valueTruncated {
+		pending.Truncated = true
+	}
+	pending.Rows = append(pending.Rows, values)
+	pending.NullFlags = append(pending.NullFlags, nulls)
 }
 
 // enqueueCommand creates a pending command for correlation
@@ -464,6 +513,16 @@ func (s *Stream) completeCommand(tag string, isEmpty bool) {
 			Type:       resultType,
 			CommandTag: tag,
 			RowCount:   parseRowCount(tag),
+			Rows:       pending.Rows,
+			NullFlags:  pending.NullFlags,
+			Truncated:  pending.Truncated,
+		}
+		// Extract column names
+		if len(pending.Columns) > 0 {
+			pluginResult.Columns = make([]string, len(pending.Columns))
+			for i, col := range pending.Columns {
+				pluginResult.Columns[i] = col.Name
+			}
 		}
 		if err := pending.PluginConn.OnPostgresResult(pluginResult); err != nil {
 			s.logger.Debug("plugin postgres result", zap.Error(err))

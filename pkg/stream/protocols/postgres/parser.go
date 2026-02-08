@@ -223,6 +223,101 @@ func ParseErrorResponse(payload []byte) (severity, code, message string) {
 	return severity, code, message
 }
 
+// Row capture limits (matching MySQL)
+const (
+	MaxRows      = 100
+	MaxValueSize = 64 * 1024 // 64KB
+)
+
+// ColumnInfo represents a column from a RowDescription message
+type ColumnInfo struct {
+	Name         string
+	TableOID     uint32
+	ColumnAttr   int16
+	TypeOID      uint32
+	TypeSize     int16
+	TypeModifier int32
+	FormatCode   int16
+}
+
+// ParseRowDescription parses a RowDescription ('T') message payload.
+// Returns column metadata.
+func ParseRowDescription(payload []byte) ([]ColumnInfo, error) {
+	if len(payload) < 2 {
+		return nil, ErrInvalidMessage
+	}
+	fieldCount := int(binary.BigEndian.Uint16(payload[0:2]))
+	cols := make([]ColumnInfo, 0, fieldCount)
+	pos := 2
+
+	for range fieldCount {
+		if pos >= len(payload) {
+			return cols, ErrInvalidMessage
+		}
+		name, newPos := ReadCString(payload, pos)
+		pos = newPos
+
+		// Need 18 bytes: table_oid(4) + col_attr(2) + type_oid(4) + type_size(2) + type_modifier(4) + format_code(2)
+		if pos+18 > len(payload) {
+			return cols, ErrInvalidMessage
+		}
+
+		col := ColumnInfo{
+			Name:         name,
+			TableOID:     binary.BigEndian.Uint32(payload[pos:]),
+			ColumnAttr:   int16(binary.BigEndian.Uint16(payload[pos+4:])),
+			TypeOID:      binary.BigEndian.Uint32(payload[pos+6:]),
+			TypeSize:     int16(binary.BigEndian.Uint16(payload[pos+10:])),
+			TypeModifier: int32(binary.BigEndian.Uint32(payload[pos+12:])),
+			FormatCode:   int16(binary.BigEndian.Uint16(payload[pos+16:])),
+		}
+		pos += 18
+		cols = append(cols, col)
+	}
+	return cols, nil
+}
+
+// ParseDataRow parses a DataRow ('D') message payload.
+// Returns column values as strings. NULL values are returned as empty string with the null flag.
+// Values exceeding MaxValueSize are truncated. Returns (values, nullFlags, wasTruncated).
+func ParseDataRow(payload []byte) ([]string, []bool, bool, error) {
+	if len(payload) < 2 {
+		return nil, nil, false, ErrInvalidMessage
+	}
+	colCount := int(binary.BigEndian.Uint16(payload[0:2]))
+	values := make([]string, colCount)
+	nulls := make([]bool, colCount)
+	truncated := false
+	pos := 2
+
+	for i := range colCount {
+		if pos+4 > len(payload) {
+			return values, nulls, truncated, ErrInvalidMessage
+		}
+		length := int32(binary.BigEndian.Uint32(payload[pos:]))
+		pos += 4
+
+		if length == -1 {
+			// NULL
+			nulls[i] = true
+			continue
+		}
+
+		if int(length) > len(payload)-pos {
+			return values, nulls, truncated, ErrInvalidMessage
+		}
+
+		if length > MaxValueSize {
+			values[i] = string(payload[pos : pos+MaxValueSize])
+			truncated = true
+		} else {
+			values[i] = string(payload[pos : pos+int(length)])
+		}
+		pos += int(length)
+	}
+	return values, nulls, truncated, nil
+}
+
 // ParseStartupPayload extracts version and parameters from a StartupMessage payload.
 // Payload starts after the 4-byte length (which was already consumed).
 // First 4 bytes of payload are the version number.

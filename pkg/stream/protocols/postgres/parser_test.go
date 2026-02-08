@@ -210,6 +210,126 @@ func TestParseRowCount(t *testing.T) {
 	}
 }
 
+func TestParseRowDescription(t *testing.T) {
+	// Build a RowDescription payload: 2 columns
+	// field_count(2) + [name\0 + table_oid(4) + col_attr(2) + type_oid(4) + type_size(2) + type_modifier(4) + format_code(2)] * 2
+	var payload []byte
+	// Field count = 2
+	payload = append(payload, 0, 2)
+
+	// Column 1: "id"
+	payload = append(payload, []byte("id\x00")...)
+	payload = append(payload, 0, 0, 0, 0)  // table_oid
+	payload = append(payload, 0, 1)        // col_attr
+	payload = append(payload, 0, 0, 0, 23) // type_oid (int4 = 23)
+	payload = append(payload, 0, 4)        // type_size
+	payload = appendInt32(payload, -1)     // type_modifier
+	payload = append(payload, 0, 0)        // format_code (text)
+
+	// Column 2: "name"
+	payload = append(payload, []byte("name\x00")...)
+	payload = append(payload, 0, 0, 0, 0)  // table_oid
+	payload = append(payload, 0, 2)        // col_attr
+	payload = append(payload, 0, 0, 0, 25) // type_oid (text = 25)
+	payload = append(payload, 0xFF, 0xFF)  // type_size (-1 = variable)
+	payload = appendInt32(payload, -1)     // type_modifier
+	payload = append(payload, 0, 0)        // format_code (text)
+
+	cols, err := ParseRowDescription(payload)
+	if err != nil {
+		t.Fatalf("ParseRowDescription failed: %v", err)
+	}
+	if len(cols) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(cols))
+	}
+	if cols[0].Name != "id" {
+		t.Errorf("expected column 0 name 'id', got %q", cols[0].Name)
+	}
+	if cols[1].Name != "name" {
+		t.Errorf("expected column 1 name 'name', got %q", cols[1].Name)
+	}
+	if cols[0].TypeOID != 23 {
+		t.Errorf("expected type OID 23, got %d", cols[0].TypeOID)
+	}
+}
+
+func appendInt32(buf []byte, v int32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, uint32(v))
+	return append(buf, b...)
+}
+
+func TestParseDataRow(t *testing.T) {
+	// Build a DataRow payload: 2 columns, values "1" and "alice"
+	var payload []byte
+	payload = append(payload, 0, 2) // column count
+
+	// Column 1: "1" (length=1)
+	binary.BigEndian.PutUint32(payload[len(payload):len(payload)+4], 0) // placeholder
+	payload = append(payload, 0, 0, 0, 1)                               // length = 1
+	payload = append(payload, '1')
+
+	// Column 2: "alice" (length=5)
+	payload = append(payload, 0, 0, 0, 5) // length = 5
+	payload = append(payload, []byte("alice")...)
+
+	values, nulls, truncated, err := ParseDataRow(payload)
+	if err != nil {
+		t.Fatalf("ParseDataRow failed: %v", err)
+	}
+	if truncated {
+		t.Error("unexpected truncation")
+	}
+	if len(values) != 2 {
+		t.Fatalf("expected 2 values, got %d", len(values))
+	}
+	if values[0] != "1" || values[1] != "alice" {
+		t.Errorf("expected [1, alice], got %v", values)
+	}
+	if nulls[0] || nulls[1] {
+		t.Error("unexpected nulls")
+	}
+}
+
+func TestParseDataRow_NullValues(t *testing.T) {
+	// 2 columns: NULL, "hello"
+	var payload []byte
+	payload = append(payload, 0, 2) // column count
+
+	// Column 1: NULL (length = -1)
+	payload = append(payload, 0xFF, 0xFF, 0xFF, 0xFF) // -1
+
+	// Column 2: "hello"
+	payload = append(payload, 0, 0, 0, 5)
+	payload = append(payload, []byte("hello")...)
+
+	values, nulls, _, err := ParseDataRow(payload)
+	if err != nil {
+		t.Fatalf("ParseDataRow failed: %v", err)
+	}
+	if !nulls[0] {
+		t.Error("expected column 0 to be NULL")
+	}
+	if nulls[1] {
+		t.Error("expected column 1 to not be NULL")
+	}
+	if values[1] != "hello" {
+		t.Errorf("expected 'hello', got %q", values[1])
+	}
+}
+
+func TestParseDataRow_EmptyResult(t *testing.T) {
+	// 0 columns
+	payload := []byte{0, 0}
+	values, nulls, _, err := ParseDataRow(payload)
+	if err != nil {
+		t.Fatalf("ParseDataRow failed: %v", err)
+	}
+	if len(values) != 0 || len(nulls) != 0 {
+		t.Errorf("expected empty result, got %d values", len(values))
+	}
+}
+
 func TestParseSSLResponse(t *testing.T) {
 	p := NewParser()
 	p.Append([]byte{'S'})

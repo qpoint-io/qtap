@@ -367,10 +367,10 @@ func TestCommandCorrelation(t *testing.T) {
 // TestParseCloseMessage tests the parser helper
 func TestParseCloseMessage(t *testing.T) {
 	tests := []struct {
-		name       string
-		payload    []byte
-		wantType   byte
-		wantName   string
+		name     string
+		payload  []byte
+		wantType byte
+		wantName string
 	}{
 		{
 			name:     "close statement",
@@ -454,5 +454,171 @@ func TestReParseNamedStatement(t *testing.T) {
 	}
 	if s.pendingCommands[0].Query != "SELECT 2" {
 		t.Errorf("expected updated SQL 'SELECT 2', got %q", s.pendingCommands[0].Query)
+	}
+}
+
+// buildRowDescriptionPayload builds a RowDescription payload with the given column names
+func buildRowDescriptionPayload(names ...string) []byte {
+	var buf []byte
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(len(names)))
+	buf = append(buf, b...)
+
+	for _, name := range names {
+		buf = append(buf, []byte(name)...)
+		buf = append(buf, 0)
+		// table_oid(4) + col_attr(2) + type_oid(4) + type_size(2) + type_modifier(4) + format_code(2) = 18 bytes
+		buf = append(buf, make([]byte, 18)...)
+	}
+	return buf
+}
+
+// buildDataRowPayload builds a DataRow payload. nil entries represent NULL.
+func buildDataRowPayload(values ...*string) []byte {
+	var buf []byte
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(len(values)))
+	buf = append(buf, b...)
+
+	for _, v := range values {
+		lb := make([]byte, 4)
+		if v == nil {
+			binary.BigEndian.PutUint32(lb, 0xFFFFFFFF) // -1 = NULL
+			buf = append(buf, lb...)
+		} else {
+			binary.BigEndian.PutUint32(lb, uint32(len(*v)))
+			buf = append(buf, lb...)
+			buf = append(buf, []byte(*v)...)
+		}
+	}
+	return buf
+}
+
+func strPtr(s string) *string { return &s }
+
+func TestSimpleQueryWithRows(t *testing.T) {
+	s := testStream()
+
+	// Send a simple query
+	sql := "SELECT id, name FROM users"
+	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte(sql), 0)))
+
+	if len(s.pendingCommands) != 1 {
+		t.Fatalf("expected 1 pending command, got %d", len(s.pendingCommands))
+	}
+
+	// Server sends RowDescription
+	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("id", "name")))
+
+	// Server sends DataRows
+	sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(strPtr("1"), strPtr("alice"))))
+	sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(strPtr("2"), strPtr("bob"))))
+
+	// Verify rows accumulated on pending command
+	pending := s.pendingCommands[0]
+	if len(pending.Columns) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(pending.Columns))
+	}
+	if pending.Columns[0].Name != "id" || pending.Columns[1].Name != "name" {
+		t.Errorf("unexpected column names: %v", pending.Columns)
+	}
+	if len(pending.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(pending.Rows))
+	}
+	if pending.Rows[0][0] != "1" || pending.Rows[0][1] != "alice" {
+		t.Errorf("unexpected row 0: %v", pending.Rows[0])
+	}
+	if pending.Rows[1][0] != "2" || pending.Rows[1][1] != "bob" {
+		t.Errorf("unexpected row 1: %v", pending.Rows[1])
+	}
+
+	// CommandComplete clears it
+	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 2")))
+	if len(s.pendingCommands) != 0 {
+		t.Errorf("expected 0 pending commands after completion")
+	}
+}
+
+func TestRowsWithNullValues(t *testing.T) {
+	s := testStream()
+
+	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte("SELECT a, b"), 0)))
+	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("a", "b")))
+	sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(nil, strPtr("val"))))
+
+	pending := s.pendingCommands[0]
+	if len(pending.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(pending.Rows))
+	}
+	if !pending.NullFlags[0][0] {
+		t.Error("expected column 0 to be NULL")
+	}
+	if pending.NullFlags[0][1] {
+		t.Error("expected column 1 to not be NULL")
+	}
+	if pending.Rows[0][1] != "val" {
+		t.Errorf("expected 'val', got %q", pending.Rows[0][1])
+	}
+
+	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 1")))
+}
+
+func TestEmptyResultSet(t *testing.T) {
+	s := testStream()
+
+	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte("SELECT id FROM empty"), 0)))
+	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("id")))
+	// No DataRow messages — straight to CommandComplete
+	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 0")))
+
+	if len(s.pendingCommands) != 0 {
+		t.Errorf("expected 0 pending commands")
+	}
+}
+
+func TestRowTruncationAtMaxRows(t *testing.T) {
+	s := testStream()
+
+	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte("SELECT x"), 0)))
+	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("x")))
+
+	// Send MaxRows + 10 rows
+	for range MaxRows + 10 {
+		v := "val"
+		sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(strPtr(v))))
+	}
+
+	pending := s.pendingCommands[0]
+	if len(pending.Rows) != MaxRows {
+		t.Errorf("expected %d rows, got %d", MaxRows, len(pending.Rows))
+	}
+	if !pending.Truncated {
+		t.Error("expected Truncated to be true")
+	}
+
+	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 110")))
+}
+
+func TestExtendedQueryWithRows(t *testing.T) {
+	s := testStream()
+
+	sql := "SELECT id FROM items"
+
+	// Parse → Bind → Execute
+	sendRequest(s, buildTypedMessage(MsgParse, buildParsePayload("", sql)))
+	sendRequest(s, buildTypedMessage(MsgBind, buildBindPayload("", "")))
+	sendRequest(s, buildTypedMessage(MsgExecute, buildExecutePayload("", 0)))
+
+	if len(s.pendingCommands) != 1 {
+		t.Fatalf("expected 1 pending command, got %d", len(s.pendingCommands))
+	}
+
+	// Server sends RowDescription + DataRow + CommandComplete
+	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("id")))
+	sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(strPtr("42"))))
+	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 1")))
+
+	if len(s.pendingCommands) != 0 {
+		t.Errorf("expected 0 pending commands after completion")
 	}
 }

@@ -9,26 +9,26 @@ import (
 
 // ApiKey constants for Kafka protocol
 const (
-	ApiKeyProduce         int16 = 0
-	ApiKeyFetch           int16 = 1
-	ApiKeyListOffsets     int16 = 2
-	ApiKeyMetadata        int16 = 3
-	ApiKeyLeaderAndIsr    int16 = 4
-	ApiKeyStopReplica     int16 = 5
-	ApiKeyOffsetCommit    int16 = 8
-	ApiKeyOffsetFetch     int16 = 9
-	ApiKeyFindCoordinator int16 = 10
-	ApiKeyJoinGroup       int16 = 11
-	ApiKeyHeartbeat       int16 = 12
-	ApiKeyLeaveGroup      int16 = 13
-	ApiKeySyncGroup       int16 = 14
-	ApiKeyDescribeGroups  int16 = 15
-	ApiKeyListGroups      int16 = 16
-	ApiKeySaslHandshake   int16 = 17
-	ApiKeyApiVersions     int16 = 18
-	ApiKeyCreateTopics    int16 = 19
-	ApiKeyDeleteTopics    int16 = 20
-	ApiKeyDeleteRecords   int16 = 21
+	ApiKeyProduce          int16 = 0
+	ApiKeyFetch            int16 = 1
+	ApiKeyListOffsets      int16 = 2
+	ApiKeyMetadata         int16 = 3
+	ApiKeyLeaderAndIsr     int16 = 4
+	ApiKeyStopReplica      int16 = 5
+	ApiKeyOffsetCommit     int16 = 8
+	ApiKeyOffsetFetch      int16 = 9
+	ApiKeyFindCoordinator  int16 = 10
+	ApiKeyJoinGroup        int16 = 11
+	ApiKeyHeartbeat        int16 = 12
+	ApiKeyLeaveGroup       int16 = 13
+	ApiKeySyncGroup        int16 = 14
+	ApiKeyDescribeGroups   int16 = 15
+	ApiKeyListGroups       int16 = 16
+	ApiKeySaslHandshake    int16 = 17
+	ApiKeyApiVersions      int16 = 18
+	ApiKeyCreateTopics     int16 = 19
+	ApiKeyDeleteTopics     int16 = 20
+	ApiKeyDeleteRecords    int16 = 21
 	ApiKeySaslAuthenticate int16 = 36
 	ApiKeyCreatePartitions int16 = 37
 	ApiKeyDescribeConfigs  int16 = 32
@@ -186,11 +186,11 @@ type RequestHeader struct {
 
 // Request represents a parsed Kafka request
 type Request struct {
-	Header       RequestHeader
-	MessageSize  int32
-	Topics       []string // Extracted topic names
-	GroupID      string   // Consumer group (for JoinGroup, SyncGroup, OffsetCommit, etc.)
-	TotalSize    int      // Total bytes consumed including length prefix
+	Header      RequestHeader
+	MessageSize int32
+	Topics      []string // Extracted topic names
+	GroupID     string   // Consumer group (for JoinGroup, SyncGroup, OffsetCommit, etc.)
+	TotalSize   int      // Total bytes consumed including length prefix
 }
 
 // ResponseHeader represents a Kafka response header
@@ -202,8 +202,8 @@ type ResponseHeader struct {
 type Response struct {
 	Header      ResponseHeader
 	MessageSize int32
-	ErrorCode   int16  // Top-level error code (if applicable)
-	TotalSize   int    // Total bytes consumed including length prefix
+	ErrorCode   int16 // Top-level error code (if applicable)
+	TotalSize   int   // Total bytes consumed including length prefix
 }
 
 // PendingRequest represents a request awaiting its response

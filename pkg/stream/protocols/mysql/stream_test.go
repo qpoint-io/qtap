@@ -193,7 +193,7 @@ func TestProcessResponseOK(t *testing.T) {
 	require.NoError(t, err)
 
 	// Command should be dequeued
-	assert.Len(t, stream.pendingCommands, 0)
+	assert.Empty(t, stream.pendingCommands)
 
 	// Check correlated log
 	logEntries := logs.FilterMessage("mysql request/response")
@@ -223,7 +223,7 @@ func TestProcessResponseERR(t *testing.T) {
 	require.NoError(t, err)
 
 	// Command should be dequeued
-	assert.Len(t, stream.pendingCommands, 0)
+	assert.Empty(t, stream.pendingCommands)
 
 	// Check warning log
 	logEntries := logs.FilterMessage("mysql request/response")
@@ -245,7 +245,7 @@ func TestProcessEmptyPacket(t *testing.T) {
 	require.NoError(t, err)
 
 	// No commands should be queued for empty packets
-	assert.Len(t, stream.pendingCommands, 0)
+	assert.Empty(t, stream.pendingCommands)
 }
 
 func TestProcessIncompletePacket(t *testing.T) {
@@ -261,7 +261,7 @@ func TestProcessIncompletePacket(t *testing.T) {
 	require.NoError(t, err)
 
 	// No commands should be queued yet (waiting for more data)
-	assert.Len(t, stream.pendingCommands, 0)
+	assert.Empty(t, stream.pendingCommands)
 }
 
 func TestProcessServerHandshake(t *testing.T) {
@@ -294,7 +294,7 @@ func TestCloseWithPendingCommands(t *testing.T) {
 	stream, logs := createTestStream(t)
 
 	// Send requests without responses
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		query := "SELECT 1"
 		payload := append([]byte{ComQuery}, []byte(query)...)
 		packet := buildPacket(0, payload)
@@ -317,7 +317,7 @@ func TestStreamThreadSafety(t *testing.T) {
 	// Concurrent processing
 	done := make(chan bool, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(idx int) {
 			query := "SELECT 1"
 			payload := append([]byte{ComQuery}, []byte(query)...)
@@ -328,7 +328,7 @@ func TestStreamThreadSafety(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 
@@ -357,7 +357,7 @@ func TestTruncateQuery(t *testing.T) {
 			result := stream.truncateQuery(tt.query)
 			assert.LessOrEqual(t, len(result), 100)
 			if !tt.wantTrim {
-				assert.Equal(t, tt.wantLen, len(result))
+				assert.Len(t, result, tt.wantLen)
 			}
 		})
 	}
@@ -379,13 +379,13 @@ func TestMultipleConcurrentStreams(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Create independent streams (simulating separate connections)
-	for i := 0; i < numStreams; i++ {
+	for i := range numStreams {
 		stream, _ := createTestStream(t)
 		streams[i] = stream
 	}
 
 	// Send queries concurrently to different streams
-	for i := 0; i < numStreams; i++ {
+	for i := range numStreams {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -407,7 +407,7 @@ func TestMultipleConcurrentStreams(t *testing.T) {
 
 	// Each stream should have correlated its own request/response
 	for i, stream := range streams {
-		assert.Equal(t, 0, len(stream.pendingCommands),
+		assert.Empty(t, stream.pendingCommands,
 			"stream %d should have no pending commands", i)
 	}
 }
@@ -428,7 +428,7 @@ func TestPipelinedQueries(t *testing.T) {
 	}
 
 	// All queries should be pending
-	assert.Equal(t, 3, len(stream.pendingCommands))
+	assert.Len(t, stream.pendingCommands, 3)
 	assert.Equal(t, "SELECT 1", stream.pendingCommands[0].Query)
 	assert.Equal(t, "SELECT 2", stream.pendingCommands[1].Query)
 	assert.Equal(t, "SELECT 3", stream.pendingCommands[2].Query)
@@ -440,18 +440,18 @@ func TestPipelinedQueries(t *testing.T) {
 		require.NoError(t, err)
 
 		// After each response, one fewer pending command
-		assert.Equal(t, 2-i, len(stream.pendingCommands))
+		assert.Len(t, stream.pendingCommands, 2-i)
 	}
 
 	// All correlated
-	assert.Equal(t, 0, len(stream.pendingCommands))
+	assert.Empty(t, stream.pendingCommands)
 }
 
 func TestRapidQuerySequence(t *testing.T) {
 	// Test rapid request-response pairs (traditional MySQL behavior)
 	stream, _ := createTestStream(t)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		// Send query
 		query := "SELECT " + string(rune('0'+i%10))
 		payload := append([]byte{ComQuery}, []byte(query)...)
@@ -465,6 +465,6 @@ func TestRapidQuerySequence(t *testing.T) {
 		require.NoError(t, err)
 
 		// Should always be correlated immediately
-		assert.Equal(t, 0, len(stream.pendingCommands))
+		assert.Empty(t, stream.pendingCommands)
 	}
 }

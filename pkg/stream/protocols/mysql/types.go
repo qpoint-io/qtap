@@ -93,10 +93,10 @@ func CommandName(cmd byte) string {
 
 // Response header bytes
 const (
-	OKPacket     byte = 0x00
-	EOFPacket    byte = 0xfe
-	ERRPacket    byte = 0xff
-	LocalInfile  byte = 0xfb
+	OKPacket    byte = 0x00
+	EOFPacket   byte = 0xfe
+	ERRPacket   byte = 0xff
+	LocalInfile byte = 0xfb
 )
 
 // QueryCommand represents a COM_QUERY command

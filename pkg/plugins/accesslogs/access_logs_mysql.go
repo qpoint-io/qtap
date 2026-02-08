@@ -3,6 +3,7 @@ package accesslogs
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -319,13 +320,13 @@ func buildMySQLResultContent(res *plugins.MySQLResult) string {
 	sb.WriteString(labelStyle.Render("  • Type: ") + valueStyle.Render(res.Type) + "\n")
 
 	if res.AffectedRows > 0 {
-		sb.WriteString(labelStyle.Render("  • Affected Rows: ") + valueStyle.Render(fmt.Sprintf("%d", res.AffectedRows)) + "\n")
+		sb.WriteString(labelStyle.Render("  • Affected Rows: ") + valueStyle.Render(strconv.FormatUint(res.AffectedRows, 10)) + "\n")
 	}
 	if res.LastInsertID > 0 {
-		sb.WriteString(labelStyle.Render("  • Last Insert ID: ") + valueStyle.Render(fmt.Sprintf("%d", res.LastInsertID)) + "\n")
+		sb.WriteString(labelStyle.Render("  • Last Insert ID: ") + valueStyle.Render(strconv.FormatUint(res.LastInsertID, 10)) + "\n")
 	}
 	if res.Type == "Error" {
-		sb.WriteString(labelStyle.Render("  • Error Code: ") + valueStyle.Render(fmt.Sprintf("%d", res.ErrorCode)) + "\n")
+		sb.WriteString(labelStyle.Render("  • Error Code: ") + valueStyle.Render(strconv.FormatUint(uint64(res.ErrorCode), 10)) + "\n")
 		sb.WriteString(labelStyle.Render("  • Error: ") + valueStyle.Render(res.ErrorMessage) + "\n")
 	}
 

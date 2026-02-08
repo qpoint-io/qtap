@@ -284,12 +284,13 @@ const (
 type L7Protocol string
 
 const (
-	L7Protocol_HTTP1   L7Protocol = "http1"
+L7Protocol_HTTP1   L7Protocol = "http1"
 	L7Protocol_HTTP2   L7Protocol = "http2"
 	L7Protocol_DNS     L7Protocol = "dns"
 	L7Protocol_GRPC    L7Protocol = "grpc"
 	L7Protocol_MYSQL   L7Protocol = "mysql"
 	L7Protocol_REDIS   L7Protocol = "redis"
+	L7Protocol_KAFKA   L7Protocol = "kafka"
 	L7Protocol_MONGODB L7Protocol = "mongodb"
 	L7Protocol_OTHER   L7Protocol = "other"
 )

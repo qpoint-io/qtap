@@ -38,6 +38,8 @@ func (f *EventStoreFactory) save(item any) {
 		topic = "issue.created"
 	case *eventstore.PIIEntity:
 		topic = "pii.created"
+	case *eventstore.DatabaseRequest:
+		topic = "database_request.created"
 	case *eventstore.Connection:
 		topic = "connection.opened"
 		if i.Finalized {

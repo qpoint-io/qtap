@@ -27,10 +27,10 @@ func createTestStreamWithSource(t *testing.T, source connection.Source) (*Stream
 }
 
 // createTestStream creates a stream with Client source (default for most tests)
-// Sets authPacketSeen=true to simulate post-handshake state for command tests
+// Sets handshakeComplete=true to simulate post-handshake state for command tests
 func createTestStream(t *testing.T) (*Stream, *observer.ObservedLogs) {
 	stream, logs := createTestStreamWithSource(t, connection.Client)
-	stream.authPacketSeen = true // Skip auth phase for command tests
+	stream.handshakeComplete = true // Skip auth phase for command tests
 	return stream, logs
 }
 
@@ -525,6 +525,92 @@ func TestRapidQuerySequence(t *testing.T) {
 		// Should always be correlated immediately
 		assert.Empty(t, stream.pendingCommands)
 	}
+}
+
+func TestStreamCachingSha2FullAuth(t *testing.T) {
+	// MySQL 8.0 caching_sha2_password with full auth involves multiple
+	// client↔server exchanges.  Previously the second+ client packets
+	// were parsed as commands, causing AuthMoreData (0x01) responses to be
+	// misidentified as result-set column-count packets. This broke column
+	// definition parsing and left row_count at 0.
+	stream, logs := createTestStreamWithSource(t, connection.Client)
+	// Do NOT set handshakeComplete — we start from connection setup.
+
+	// 1. Server greeting (seq 0)
+	greeting := []byte{
+		0x0a,                               // protocol version
+		'8', '.', '0', '.', '3', '6', 0x00, // server version
+		0x01, 0x00, 0x00, 0x00, // connection id
+		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', // auth data part 1
+		0x00,       // filler
+		0xff, 0xff, // capability flags lower
+		0xff,       // charset
+		0x02, 0x00, // status
+		0xff, 0x7f, // capability flags upper
+		0x15,                         // auth data length
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // reserved
+		'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 0x00, // auth data part 2
+		'c', 'a', 'c', 'h', 'i', 'n', 'g', '_', 's', 'h', 'a', '2', '_', 'p', 'a', // auth plugin
+		's', 's', 'w', 'o', 'r', 'd', 0x00,
+	}
+	err := stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: buildPacket(0, greeting)})
+	require.NoError(t, err)
+
+	// 2. Client auth response (seq 1) — should be skipped
+	clientAuth := make([]byte, 32) // dummy auth payload
+	err = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(1, clientAuth)})
+	require.NoError(t, err)
+	assert.Empty(t, stream.pendingCommands, "auth packet should not create pending command")
+
+	// 3. Server AuthMoreData: perform full auth (0x01 0x04)
+	authMore := []byte{0x01, 0x04}
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: buildPacket(2, authMore)})
+	require.NoError(t, err)
+	assert.Equal(t, phaseNone, stream.resultSetState, "AuthMoreData must not trigger result set mode")
+
+	// 4. Client sends public key request (0x02)
+	err = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(3, []byte{0x02})})
+	require.NoError(t, err)
+	assert.Empty(t, stream.pendingCommands, "auth-phase packet should not create pending command")
+
+	// 5. Server sends public key (AuthMoreData 0x01 + PEM data)
+	pubKey := append([]byte{0x01}, []byte("-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----\n")...)
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: buildPacket(4, pubKey)})
+	require.NoError(t, err)
+	assert.Equal(t, phaseNone, stream.resultSetState, "public key must not trigger result set mode")
+
+	// 6. Client sends encrypted password
+	err = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(5, make([]byte, 256))})
+	require.NoError(t, err)
+
+	// 7. Server sends OK — handshake complete
+	okPayload := []byte{0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00}
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: buildPacket(6, okPayload)})
+	require.NoError(t, err)
+	assert.True(t, stream.handshakeComplete, "handshake should be complete after OK")
+
+	// 8. Now send a real query — should work correctly
+	query := append([]byte{ComQuery}, []byte("SELECT id FROM users")...)
+	err = stream.Process(&connection.DataEvent{Direction: connection.Egress, Data: buildPacket(0, query)})
+	require.NoError(t, err)
+	assert.Len(t, stream.pendingCommands, 1, "post-handshake query should create pending command")
+
+	// 9. Server sends result set (1 column, 2 rows)
+	var resp []byte
+	resp = append(resp, buildRawPacket(1, []byte{0x01})...) // column_count=1
+	resp = append(resp, buildRawPacket(2, buildColumnDefPayload("def", "testdb", "users", "users", "id", "id", 63, 11, 0x03, 0, 0))...)
+	resp = append(resp, buildRawPacket(3, buildEOFPayload())...)
+	resp = append(resp, buildRawPacket(4, buildRowPayload("1"))...)
+	resp = append(resp, buildRawPacket(5, buildRowPayload("2"))...)
+	resp = append(resp, buildRawPacket(6, buildEOFPayload())...)
+
+	err = stream.Process(&connection.DataEvent{Direction: connection.Ingress, Data: resp})
+	require.NoError(t, err)
+
+	logEntries := logs.FilterMessage("mysql request/response")
+	require.Equal(t, 1, logEntries.Len())
+	assert.Equal(t, int64(2), logEntries.All()[0].ContextMap()["row_count"],
+		"row_count should be 2 after caching_sha2 full auth handshake")
 }
 
 func TestStreamResultSetDeprecateEOF(t *testing.T) {

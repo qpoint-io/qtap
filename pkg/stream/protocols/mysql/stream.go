@@ -45,7 +45,6 @@ type Stream struct {
 
 	// Handshake state
 	handshakeComplete bool
-	authPacketSeen    bool // Track if we've skipped the auth packet
 
 	// Result set state machine
 	resultSetState  resultSetPhase
@@ -147,11 +146,14 @@ func (s *Stream) processRequests() {
 			continue
 		}
 
-		// Skip only the first request packet (auth response)
-		// Commands can arrive before we see the auth OK (pipelining)
-		if !s.authPacketSeen {
-			s.authPacketSeen = true
-			s.logger.Debug("mysql skipping auth packet",
+		// Skip all request packets during the auth/handshake phase.
+		// MySQL 8.0 caching_sha2_password can involve multiple
+		// client→server exchanges (auth response, public key request,
+		// encrypted password) before the server sends the final OK.
+		// If we parse these as commands, their responses (AuthMoreData
+		// packets starting with 0x01) get misidentified as result sets.
+		if !s.handshakeComplete {
+			s.logger.Debug("mysql skipping auth-phase packet",
 				zap.Int("length", int(pkt.Length)))
 			continue
 		}

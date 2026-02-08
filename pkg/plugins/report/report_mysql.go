@@ -71,6 +71,9 @@ func (m *mysqlFilterInstance) buildDatabaseRequest(cmd *plugins.MySQLCommand, re
 		}
 		req.AffectedCount = int64(res.AffectedRows)
 		req.ResultCount = int64(res.RowCount)
+		req.Columns = res.Columns
+		req.Rows = res.Rows
+		req.Truncated = res.Truncated
 	}
 
 	req.SetRequestID(meta.RequestID())

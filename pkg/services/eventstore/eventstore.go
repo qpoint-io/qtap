@@ -103,6 +103,12 @@ type DatabaseRequest struct {
 	AffectedCount int64  `json:"affectedCount,omitempty"`
 	ResultCount   int64  `json:"resultCount,omitempty"`
 
+	// Response payload (bounded)
+	Columns         []string   `json:"columns,omitempty"`         // Column names (SQL protocols)
+	Rows            [][]string `json:"rows,omitempty"`            // Result rows (capped at MaxRows)
+	Truncated       bool       `json:"truncated,omitempty"`       // True if rows were capped
+	ResponseSummary string     `json:"responseSummary,omitempty"` // For non-tabular: Redis values, Kafka messages
+
 	// Timing and bytes
 	Duration int64 `json:"duration"`
 	WrBytes  int64 `json:"bytesSent"`

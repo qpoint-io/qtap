@@ -2,7 +2,9 @@ package report
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +12,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
 )
+
+const maxResponseSummaryBytes = 64 * 1024 // 64KB
 
 // redisFilterInstance handles Redis traffic for reporting
 type redisFilterInstance struct {
@@ -75,6 +79,9 @@ func (r *redisFilterInstance) buildDatabaseRequest(cmd *plugins.RedisCommand, re
 				req.ErrorMsg = fmt.Sprintf("%v", res.Value)
 			}
 		}
+		if !res.IsError && res.Value != nil {
+			req.ResponseSummary = formatRedisValue(res.Value)
+		}
 	}
 
 	req.SetRequestID(meta.RequestID())
@@ -109,4 +116,28 @@ func (r *redisFilterInstance) redactArgs(command string, args []string) []string
 	}
 
 	return args
+}
+
+// formatRedisValue converts a Redis response value to a human-readable summary, bounded to 64KB.
+func formatRedisValue(v any) string {
+	var s string
+	switch val := v.(type) {
+	case string:
+		s = val
+	case []any:
+		b, err := json.Marshal(val)
+		if err != nil {
+			s = fmt.Sprintf("%v", val)
+		} else {
+			s = string(b)
+		}
+	case int64:
+		s = strconv.FormatInt(val, 10)
+	default:
+		s = fmt.Sprintf("%v", val)
+	}
+	if len(s) > maxResponseSummaryBytes {
+		s = s[:maxResponseSummaryBytes]
+	}
+	return s
 }

@@ -99,7 +99,7 @@ func isFlexibleVersion(apiKey, apiVersion int16) bool {
 func readUnsignedVarint(data []byte, offset int) (uint32, int) {
 	var result uint32
 	shift := uint(0)
-	for i := 0; i < 5; i++ { // max 5 bytes for uint32
+	for i := range 5 { // max 5 bytes for uint32
 		if offset+i >= len(data) {
 			return 0, -1
 		}
@@ -123,7 +123,7 @@ func skipTaggedFields(data []byte, offset int) int {
 		return -1
 	}
 	offset += n
-	for i := uint32(0); i < numTags; i++ {
+	for range numTags {
 		// tag type
 		_, n = readUnsignedVarint(data, offset)
 		if n < 0 {

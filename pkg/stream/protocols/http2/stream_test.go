@@ -640,3 +640,119 @@ func TestManyStreamsWithSamePath(t *testing.T) {
 		require.NoError(t, err, "stream %d response should not fail", streamID)
 	}
 }
+
+// TestBadHPACKFailOpen verifies that a bad HPACK frame on one stream
+// does not kill the entire connection — other streams continue to be parsed.
+func TestBadHPACKFailOpen(t *testing.T) {
+	stream, logs := createTestStream(t)
+
+	clientWriter := newFrameWriter()
+	serverWriter := newFrameWriter()
+
+	// 1. Client connection preface + SETTINGS
+	preface := []byte(http2.ClientPreface)
+	clientWriter.writeSettings()
+
+	egressData := make([]byte, 0, len(preface)+64)
+	egressData = append(egressData, preface...)
+	egressData = append(egressData, clientWriter.bytes()...)
+
+	err := stream.Process(&connection.DataEvent{
+		Direction: connection.Egress,
+		Data:      egressData,
+	})
+	require.NoError(t, err)
+
+	// Server SETTINGS + ACK
+	serverWriter.writeSettings()
+	serverWriter.writeSettingsAck()
+	err = stream.Process(&connection.DataEvent{
+		Direction: connection.Ingress,
+		Data:      serverWriter.bytes(),
+	})
+	require.NoError(t, err)
+
+	// 2. Send a valid HEADERS frame on stream 5 (request)
+	clientWriter.writeHeaders(5, true, []hpack.HeaderField{
+		{Name: ":method", Value: "GET"},
+		{Name: ":path", Value: "/good"},
+		{Name: ":scheme", Value: "https"},
+		{Name: ":authority", Value: "test.example.com"},
+	})
+	err = stream.Process(&connection.DataEvent{
+		Direction: connection.Egress,
+		Data:      clientWriter.bytes(),
+	})
+	require.NoError(t, err)
+
+	// 3. Inject a raw HEADERS frame with garbage HPACK on stream 3.
+	// We construct a valid HTTP/2 frame header but with invalid HPACK payload.
+	badHPACK := []byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}
+	rawFrame := buildRawHeadersFrame(3, true, true, badHPACK)
+
+	// Use a separate encoder for egress so we don't corrupt the clientWriter's HPACK state
+	err = stream.Process(&connection.DataEvent{
+		Direction: connection.Egress,
+		Data:      rawFrame,
+	})
+	// Should NOT return an error — fail-open means we skip the bad stream
+	require.NoError(t, err, "bad HPACK on stream 3 should not kill the connection")
+
+	// 4. Verify stream 3 was cleaned up (skipped)
+	_, stream3Exists := stream.sessions[3]
+	assert.False(t, stream3Exists, "stream 3 should be cleaned up after HPACK error")
+
+	// 5. Verify the debug log was emitted
+	failOpenLogs := logs.FilterMessage("Skipping stream due to HPACK decode error (fail-open)")
+	assert.Equal(t, 1, failOpenLogs.Len(), "should have logged a fail-open skip message")
+
+	// 6. Verify stream 5 is still alive and was parsed correctly
+	session5, stream5Exists := stream.sessions[5]
+	require.True(t, stream5Exists, "stream 5 should still exist after stream 3 failed")
+	assert.Equal(t, "/good", session5.req.URL.Path, "stream 5 should have correct path")
+	assert.Equal(t, "GET", session5.req.Method, "stream 5 should have correct method")
+
+	// 7. Server responds to stream 5 — connection still works
+	serverWriter.writeHeaders(5, true, []hpack.HeaderField{
+		{Name: ":status", Value: "200"},
+	})
+	err = stream.Process(&connection.DataEvent{
+		Direction: connection.Ingress,
+		Data:      serverWriter.bytes(),
+	})
+	require.NoError(t, err, "stream 5 response should succeed after stream 3 failure")
+
+	// Stream 5 should be cleaned up after completing
+	_, stream5StillExists := stream.sessions[5]
+	assert.False(t, stream5StillExists, "stream 5 should be cleaned up after response")
+}
+
+// buildRawHeadersFrame constructs a raw HTTP/2 HEADERS frame with the given payload.
+// This bypasses HPACK encoding to allow injecting invalid data.
+func buildRawHeadersFrame(streamID uint32, endStream, endHeaders bool, payload []byte) []byte {
+	length := len(payload)
+	frame := make([]byte, 9+length)
+	// Length (24 bits)
+	frame[0] = byte(length >> 16)
+	frame[1] = byte(length >> 8)
+	frame[2] = byte(length)
+	// Type: HEADERS = 0x1
+	frame[3] = 0x1
+	// Flags
+	var flags byte
+	if endStream {
+		flags |= 0x1 // END_STREAM
+	}
+	if endHeaders {
+		flags |= 0x4 // END_HEADERS
+	}
+	frame[4] = flags
+	// Stream ID (31 bits, R bit = 0)
+	frame[5] = byte(streamID >> 24)
+	frame[6] = byte(streamID >> 16)
+	frame[7] = byte(streamID >> 8)
+	frame[8] = byte(streamID)
+	// Payload
+	copy(frame[9:], payload)
+	return frame
+}

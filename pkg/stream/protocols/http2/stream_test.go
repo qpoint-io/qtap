@@ -2,7 +2,6 @@ package http2
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -239,14 +238,14 @@ func createTestStream(t *testing.T) (*HTTPStream, *observer.ObservedLogs) {
 	logger := zap.New(core)
 
 	conn := connection.NewConnection(
-		context.Background(),
+		t.Context(),
 		logger,
 		&connection.OpenEvent{
 			Source: connection.Client,
 		},
 	)
 
-	stream := NewHTTPStream(context.Background(), "test.example.com", logger, conn)
+	stream := NewHTTPStream(t.Context(), "test.example.com", logger, conn)
 	return stream, logs
 }
 
@@ -604,8 +603,9 @@ func TestManyStreamsWithSamePath(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Send 10 streams all with the same path (like repeated health checks)
 	for i := range 10 {
-		streamID := uint32(2*i + 1)
+		streamID := uint32(2*i + 1) // 1, 3, 5, 7, ...
 
 		clientWriter.writeHeaders(streamID, true, []hpack.HeaderField{
 			{Name: ":method", Value: "POST"},

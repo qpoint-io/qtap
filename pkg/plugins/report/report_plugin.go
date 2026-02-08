@@ -59,6 +59,23 @@ func (f *Factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.Ser
 	return ri
 }
 
+func (f *Factory) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
+	f.logger.Debug("new Kafka plugin instance created")
+	ki := &kafkaFilterInstance{
+		logger: f.logger,
+		ctx:    ctx,
+	}
+
+	if es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, ""); err != nil {
+		f.logger.Error("failed to get event store", zap.Error(err))
+		return nil
+	} else {
+		ki.eventstore = es
+	}
+
+	return ki
+}
+
 func (f *Factory) Destroy() {
 	f.logger.Debug("plugin destroyed")
 }

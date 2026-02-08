@@ -171,10 +171,16 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			))
 			// stop if the protocol is unrecognized
 			if errors.Is(err, http2.ConnectionError(http2.ErrCodeProtocol)) {
-				s.conn.Protocol = connection.Protocol_UNKNOWN
+				// If we've already identified this as a gRPC connection, skip
+				// unparseable frames (e.g. DATA with protobuf payloads) and let
+				// the stream continue so the plugin chain can still extract
+				// method paths, grpc-status trailers, and per-RPC latency.
+				if s.conn.Protocol == connection.Protocol_GRPC {
+					*buf = (*buf)[totalFrameSize:]
+					continue
+				}
 
-				// we want to drop data frames for GRPC streams
-				// since plugins do not support it
+				s.conn.Protocol = connection.Protocol_UNKNOWN
 				return connection.ErrStreamUnrecoverable(fmt.Errorf("http2 unknown protocol format; likely gRPC or a custom HTTP/2 implementation: %w", err))
 			}
 

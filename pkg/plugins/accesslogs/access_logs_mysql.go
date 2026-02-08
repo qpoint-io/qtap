@@ -142,15 +142,22 @@ func (p *mysqlJSONPrinter) PrintDetails() {
 			"type":     p.res.Type,
 			"is_error": p.res.Type == "Error",
 		}
-		if p.res.AffectedRows > 0 {
+		switch p.res.Type {
+		case "OK":
 			result["affected_rows"] = p.res.AffectedRows
-		}
-		if p.res.LastInsertID > 0 {
-			result["last_insert_id"] = p.res.LastInsertID
-		}
-		if p.res.ErrorCode > 0 {
+			if p.res.LastInsertID > 0 {
+				result["last_insert_id"] = p.res.LastInsertID
+			}
+		case "Error":
 			result["error_code"] = p.res.ErrorCode
 			result["error_message"] = p.res.ErrorMessage
+		case "ResultSet":
+			result["row_count"] = p.res.RowCount
+			result["columns"] = p.res.Columns
+			if len(p.res.Rows) > 0 {
+				result["rows"] = p.res.Rows
+			}
+			result["truncated"] = p.res.Truncated
 		}
 	}
 
@@ -282,9 +289,17 @@ func buildMySQLSummary(cmd, direction string, mysqlCmd *plugins.MySQLCommand, re
 
 	var status string
 	if res != nil {
-		if res.Type == "Error" {
+		switch res.Type {
+		case "Error":
 			status = fn("ERR")
-		} else {
+		case "ResultSet":
+			status = fn("OK") + " " + valueStyle.Render(strconv.Itoa(res.RowCount)+" rows")
+		case "OK":
+			status = fn("OK")
+			if res.AffectedRows > 0 {
+				status += " " + valueStyle.Render(strconv.FormatUint(res.AffectedRows, 10)+" affected")
+			}
+		default:
 			status = fn("OK")
 		}
 	}
@@ -319,18 +334,102 @@ func buildMySQLResultContent(res *plugins.MySQLResult) string {
 	sb.WriteString(subsectionStyle.Render("Result") + "\n")
 	sb.WriteString(labelStyle.Render("  • Type: ") + valueStyle.Render(res.Type) + "\n")
 
-	if res.AffectedRows > 0 {
+	switch res.Type {
+	case "OK":
 		sb.WriteString(labelStyle.Render("  • Affected Rows: ") + valueStyle.Render(strconv.FormatUint(res.AffectedRows, 10)) + "\n")
-	}
-	if res.LastInsertID > 0 {
-		sb.WriteString(labelStyle.Render("  • Last Insert ID: ") + valueStyle.Render(strconv.FormatUint(res.LastInsertID, 10)) + "\n")
-	}
-	if res.Type == "Error" {
+		if res.LastInsertID > 0 {
+			sb.WriteString(labelStyle.Render("  • Last Insert ID: ") + valueStyle.Render(strconv.FormatUint(res.LastInsertID, 10)) + "\n")
+		}
+	case "Error":
 		sb.WriteString(labelStyle.Render("  • Error Code: ") + valueStyle.Render(strconv.FormatUint(uint64(res.ErrorCode), 10)) + "\n")
 		sb.WriteString(labelStyle.Render("  • Error: ") + valueStyle.Render(res.ErrorMessage) + "\n")
+	case "ResultSet":
+		sb.WriteString(labelStyle.Render("  • Row Count: ") + valueStyle.Render(strconv.Itoa(res.RowCount)) + "\n")
+		if res.Truncated {
+			sb.WriteString(labelStyle.Render("  • (showing first ") + valueStyle.Render(strconv.Itoa(len(res.Rows))) + labelStyle.Render(" rows)") + "\n")
+		}
+		if len(res.Columns) > 0 && len(res.Rows) > 0 {
+			sb.WriteString("\n")
+			sb.WriteString(formatResultTable(res.Columns, res.Rows))
+		}
 	}
 
 	return sb.String()
+}
+
+// formatResultTable formats columns and rows as an aligned text table
+func formatResultTable(columns []string, rows [][]string) string {
+	// Calculate column widths
+	widths := make([]int, len(columns))
+	for i, col := range columns {
+		widths[i] = len(col)
+	}
+	for _, row := range rows {
+		for i, val := range row {
+			if i < len(widths) && len(val) > widths[i] {
+				widths[i] = len(val)
+			}
+		}
+	}
+
+	// Cap column widths
+	for i := range widths {
+		if widths[i] > 30 {
+			widths[i] = 30
+		}
+	}
+
+	var sb strings.Builder
+	pad := "  "
+
+	// Header
+	sb.WriteString(pad)
+	for i, col := range columns {
+		if i > 0 {
+			sb.WriteString(labelStyle.Render(" │ "))
+		}
+		sb.WriteString(subsectionStyle.Render(padRight(col, widths[i])))
+	}
+	sb.WriteString("\n")
+
+	// Separator
+	sb.WriteString(pad)
+	for i, w := range widths {
+		if i > 0 {
+			sb.WriteString(labelStyle.Render("─┼─"))
+		}
+		sb.WriteString(labelStyle.Render(strings.Repeat("─", w)))
+	}
+	sb.WriteString("\n")
+
+	// Rows
+	for _, row := range rows {
+		sb.WriteString(pad)
+		for i := range columns {
+			if i > 0 {
+				sb.WriteString(labelStyle.Render(" │ "))
+			}
+			val := "NULL"
+			if i < len(row) {
+				val = row[i]
+			}
+			if len(val) > 30 {
+				val = val[:27] + "..."
+			}
+			sb.WriteString(valueStyle.Render(padRight(val, widths[i])))
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// padRight pads a string to the given width with spaces
+func padRight(s string, width int) string {
+	if len(s) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(s))
 }
 
 // getMySQLStatusColor returns lipgloss color based on MySQL result

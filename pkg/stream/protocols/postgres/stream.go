@@ -219,8 +219,14 @@ func (s *Stream) processRequests() {
 			switch msg.Type {
 			case MsgQuery:
 				// Simple Query Protocol
+				// A single Query message can contain multiple SQL statements
+				// separated by semicolons. The server sends one CommandComplete
+				// per statement, so we enqueue one PendingCommand per statement.
 				sql := ParseQueryMessage(msg.Payload)
-				s.enqueueCommand(sql)
+				statements := splitStatements(sql)
+				for _, stmt := range statements {
+					s.enqueueCommand(stmt)
+				}
 
 			case MsgParse:
 				// Extended Query Protocol: Parse contains the SQL
@@ -370,7 +376,9 @@ func (s *Stream) processResponses() {
 				s.completeCommand("", true)
 
 			case MsgReadyForQuery:
-				// End of a query cycle — already handled in completeCommand
+				// End of a query cycle. Drain any leftover pending commands
+				// from aborted multi-statement batches.
+				s.drainAbortedCommands()
 
 			case MsgRowDescription:
 				s.handleRowDescription(msg.Payload)
@@ -417,7 +425,7 @@ func (s *Stream) handleRowDescription(payload []byte) {
 		s.logger.Debug("postgres failed to parse RowDescription", zap.Error(err))
 		return
 	}
-	pending := s.pendingCommands[len(s.pendingCommands)-1]
+	pending := s.pendingCommands[0]
 	pending.Columns = cols
 	pending.Rows = nil
 	pending.NullFlags = nil
@@ -428,7 +436,7 @@ func (s *Stream) handleDataRow(payload []byte) {
 	if len(s.pendingCommands) == 0 {
 		return
 	}
-	pending := s.pendingCommands[len(s.pendingCommands)-1]
+	pending := s.pendingCommands[0]
 
 	if len(pending.Rows) >= MaxRows {
 		pending.Truncated = true
@@ -605,6 +613,45 @@ func (s *Stream) Closed() bool {
 // Helper functions
 
 // truncateQuery truncates long queries for logging
+// drainAbortedCommands cleans up pending commands that will never receive
+// a response (e.g., remaining statements in a multi-statement simple query
+// after the server hit an error and skipped them).
+func (s *Stream) drainAbortedCommands() {
+	for _, pending := range s.pendingCommands {
+		s.logger.Debug("postgres draining aborted command",
+			zap.String("query", truncateQuery(pending.Query)))
+		if pending.PluginConn != nil {
+			pluginResult := &plugins.PostgresResult{
+				Type:         "Aborted",
+				ErrorMessage: "statement skipped (earlier statement in batch failed)",
+			}
+			if err := pending.PluginConn.OnPostgresResult(pluginResult); err != nil {
+				s.logger.Debug("plugin postgres result", zap.Error(err))
+			}
+			pending.PluginConn.Teardown()
+		}
+	}
+	s.pendingCommands = s.pendingCommands[:0]
+}
+
+// splitStatements splits a multi-statement SQL string by semicolons,
+// trimming whitespace and dropping empty segments. If no non-empty
+// statements remain, returns the original query as a single element.
+func splitStatements(sql string) []string {
+	parts := strings.Split(sql, ";")
+	var stmts []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			stmts = append(stmts, p)
+		}
+	}
+	if len(stmts) == 0 {
+		return []string{sql}
+	}
+	return stmts
+}
+
 func truncateQuery(query string) string {
 	query = strings.TrimSpace(query)
 	if len(query) > 100 {

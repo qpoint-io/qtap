@@ -309,12 +309,8 @@ func (p *Parser) ParseResponse() (*Response, error) {
 		TotalSize:   totalSize,
 	}
 
-	// Try to extract error code from the response body
-	// The error code position varies by API, but for many responses
-	// it's at offset 4 (after correlation_id) as a top-level field
-	if len(data) >= 6 {
-		resp.ErrorCode = int16(binary.BigEndian.Uint16(data[4:6]))
-	}
+	// Error code extraction is API/version-aware and done post-correlation
+	// in stream processing (where we know api key/version). Keep default 0 here.
 
 	// Save raw body after correlation ID for post-correlation parsing (e.g., Fetch messages)
 	if len(data) > 4 {
@@ -325,6 +321,78 @@ func (p *Parser) ParseResponse() (*Response, error) {
 	// Consume the message from the buffer
 	p.buffer = p.buffer[totalSize:]
 	return resp, nil
+}
+
+// ExtractResponseErrorCode extracts an API/version-aware error code from a response body.
+// body is the raw response data after the 4-byte correlation ID.
+func ExtractResponseErrorCode(body []byte, apiKey, apiVersion int16) (int16, bool) {
+	switch apiKey {
+	case ApiKeyProduce:
+		return extractProduceResponseErrorCode(body, apiVersion)
+	default:
+		return 0, false
+	}
+}
+
+// extractProduceResponseErrorCode extracts the first partition error code from a Produce response.
+func extractProduceResponseErrorCode(body []byte, apiVersion int16) (int16, bool) {
+	flexible := isFlexibleVersion(ApiKeyProduce, apiVersion)
+	offset := 0
+
+	// Flexible response header fields
+	if flexible {
+		newOffset := skipTaggedFields(body, offset)
+		if newOffset < 0 {
+			return 0, false
+		}
+		offset = newOffset
+	}
+
+	// throttle_time_ms exists in Produce response v1+
+	if apiVersion >= 1 {
+		if offset+4 > len(body) {
+			return 0, false
+		}
+		offset += 4
+	}
+
+	topicCount, newOffset := readArrayLen(body, offset, flexible)
+	if topicCount <= 0 || newOffset < 0 {
+		return 0, false
+	}
+	offset = newOffset
+
+	// Parse first topic response entry
+	if flexible {
+		_, newOffset = readCompactString(body, offset)
+		if newOffset < 0 {
+			return 0, false
+		}
+		offset = newOffset
+	} else {
+		if offset+2 > len(body) {
+			return 0, false
+		}
+		tl := int(int16(binary.BigEndian.Uint16(body[offset : offset+2])))
+		offset += 2
+		if tl < 0 || offset+tl > len(body) {
+			return 0, false
+		}
+		offset += tl
+	}
+
+	partCount, newOffset := readArrayLen(body, offset, flexible)
+	if partCount <= 0 || newOffset < 0 {
+		return 0, false
+	}
+	offset = newOffset
+
+	// partition_index(4) + error_code(2)
+	if offset+6 > len(body) {
+		return 0, false
+	}
+	errCode := int16(binary.BigEndian.Uint16(body[offset+4 : offset+6]))
+	return errCode, true
 }
 
 // extractRequestDetails extracts topic names, group IDs, etc. from specific request types

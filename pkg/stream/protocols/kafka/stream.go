@@ -183,8 +183,13 @@ func (s *Stream) processResponses() {
 		// Calculate latency
 		latency := time.Since(pending.Timestamp)
 
-		// Determine error status
-		isError := resp.ErrorCode != 0
+		// Determine error status with API/version-aware extraction
+		errorCode := resp.ErrorCode
+		if code, ok := ExtractResponseErrorCode(resp.RawBody, pending.Request.Header.ApiKey, pending.Request.Header.ApiVersion); ok {
+			errorCode = code
+		}
+		resp.ErrorCode = errorCode
+		isError := errorCode != 0
 		operation := ApiKeyName(pending.Request.Header.ApiKey)
 
 		// Build log fields

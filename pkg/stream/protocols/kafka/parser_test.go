@@ -211,8 +211,30 @@ func TestParseResponseWithError(t *testing.T) {
 	if resp.Header.CorrelationID != 5 {
 		t.Errorf("expected CorrelationID 5, got %d", resp.Header.CorrelationID)
 	}
-	if resp.ErrorCode != 3 {
-		t.Errorf("expected ErrorCode 3, got %d", resp.ErrorCode)
+	if resp.ErrorCode != 0 {
+		t.Errorf("expected ErrorCode 0 (deferred extraction), got %d", resp.ErrorCode)
+	}
+}
+
+func TestExtractResponseErrorCodeProduceV12(t *testing.T) {
+	// Raw body after correlation_id for Produce v12 (flexible):
+	// tagged_fields(0), throttle_time_ms(4), responses[1], topic "t", partitions[1], partition=0, error_code=2
+	body := []byte{
+		0x00,                         // tagged fields (header v1)
+		0x00, 0x00, 0x00, 0x00,       // throttle_time_ms
+		0x02,                         // compact array len=1
+		0x02, 't',                    // compact string "t"
+		0x02,                         // compact array len=1
+		0x00, 0x00, 0x00, 0x00,       // partition index
+		0x00, 0x02,                   // error_code = CORRUPT_MESSAGE
+	}
+
+	code, ok := ExtractResponseErrorCode(body, ApiKeyProduce, 12)
+	if !ok {
+		t.Fatalf("expected produce v12 error extraction to succeed")
+	}
+	if code != 2 {
+		t.Fatalf("expected error code 2, got %d", code)
 	}
 }
 
@@ -495,7 +517,7 @@ func TestMultipleResponseCorrelation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error parsing resp2: %v", err)
 	}
-	if r2.Header.CorrelationID != 200 || r2.ErrorCode != 7 {
+	if r2.Header.CorrelationID != 200 || r2.ErrorCode != 0 {
 		t.Errorf("resp2: corrID=%d errCode=%d", r2.Header.CorrelationID, r2.ErrorCode)
 	}
 

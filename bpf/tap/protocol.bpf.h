@@ -35,5 +35,8 @@ static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, s
 // given a buffer and connection information, detect if the connection is DNS
 static bool is_dns(const struct conn_info *conn_info);
 
-// given a buffer and connection information, extract the tls handshake
+// given a buffer and connection information, extract the tls client hello handshake
 static bool capture_tls_client_hello(struct socket_tls_client_hello_event *handshake, struct buf_info *buf_info, size_t count);
+
+// given a buffer and connection information, extract the tls server hello handshake
+static bool capture_tls_server_hello(struct socket_tls_server_hello_event *handshake, struct buf_info *buf_info, size_t count);

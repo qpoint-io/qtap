@@ -112,6 +112,8 @@ func (c *Connection) processEvent(event any) {
 		c.processDoneEvent(e)
 	case TLSClientHelloEvent:
 		c.processTLSClientHelloEvent(e)
+	case TLSServerHelloEvent:
+		c.processTLSServerHelloEvent(e)
 	}
 }
 
@@ -237,7 +239,7 @@ func (c *Connection) processDoneEvent(event DoneEvent) {
 }
 
 func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {
-	c.logger.Debug("processing tls handshake event",
+	c.logger.Debug("processing tls client hello event",
 		zap.Any("cookie", event.Cookie),
 		zap.Any("msg", event.Msg))
 
@@ -250,4 +252,12 @@ func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {
 	connTLSHandshakeTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction(), event.Msg.SNI, event.Msg.Version.String()).Inc()
 
 	c.TLSClientHello = event.Msg
+}
+
+func (c *Connection) processTLSServerHelloEvent(event TLSServerHelloEvent) {
+	c.logger.Debug("processing tls server hello event",
+		zap.Any("cookie", event.Cookie),
+		zap.Any("msg", event.Msg))
+
+	c.TLSServerHello = event.Msg
 }

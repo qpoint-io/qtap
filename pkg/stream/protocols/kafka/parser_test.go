@@ -220,13 +220,13 @@ func TestExtractResponseErrorCodeProduceV12(t *testing.T) {
 	// Raw body after correlation_id for Produce v12 (flexible):
 	// tagged_fields(0), throttle_time_ms(4), responses[1], topic "t", partitions[1], partition=0, error_code=2
 	body := []byte{
-		0x00,                         // tagged fields (header v1)
-		0x00, 0x00, 0x00, 0x00,       // throttle_time_ms
-		0x02,                         // compact array len=1
-		0x02, 't',                    // compact string "t"
-		0x02,                         // compact array len=1
-		0x00, 0x00, 0x00, 0x00,       // partition index
-		0x00, 0x02,                   // error_code = CORRUPT_MESSAGE
+		0x00,                   // tagged fields (header v1)
+		0x00, 0x00, 0x00, 0x00, // throttle_time_ms
+		0x02,      // compact array len=1
+		0x02, 't', // compact string "t"
+		0x02,                   // compact array len=1
+		0x00, 0x00, 0x00, 0x00, // partition index
+		0x00, 0x02, // error_code = CORRUPT_MESSAGE
 	}
 
 	code, ok := ExtractResponseErrorCode(body, ApiKeyProduce, 12)

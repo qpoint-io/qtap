@@ -216,6 +216,56 @@ func TestParseResponseWithError(t *testing.T) {
 	}
 }
 
+func TestExtractResponseErrorCodeProduceV0(t *testing.T) {
+	// Produce v0 (legacy, non-flexible): no throttle_time_ms
+	// responses: array_len(4) + topic_name_len(2) + "t" + partition_count(4) + partition_index(4) + error_code(2)
+	body := []byte{
+		0x00, 0x00, 0x00, 0x01, // array len=1
+		0x00, 0x01, 't', // topic name "t"
+		0x00, 0x00, 0x00, 0x01, // partition count=1
+		0x00, 0x00, 0x00, 0x00, // partition index=0
+		0x00, 0x00, // error_code = NONE
+	}
+
+	code, ok := ExtractResponseErrorCode(body, ApiKeyProduce, 0)
+	if !ok {
+		t.Fatalf("expected produce v0 error extraction to succeed")
+	}
+	if code != 0 {
+		t.Fatalf("expected error code 0, got %d", code)
+	}
+}
+
+func TestExtractResponseErrorCodeProduceV9NoError(t *testing.T) {
+	// Produce v9 (flexible) with no error
+	body := []byte{
+		0x00,                   // tagged fields
+		0x00, 0x00, 0x00, 0x00, // throttle_time_ms
+		0x02,      // compact array len=1
+		0x02, 't', // compact string "t"
+		0x02,                   // compact array len=1
+		0x00, 0x00, 0x00, 0x00, // partition index
+		0x00, 0x00, // error_code = NONE
+	}
+
+	code, ok := ExtractResponseErrorCode(body, ApiKeyProduce, 9)
+	if !ok {
+		t.Fatalf("expected produce v9 error extraction to succeed")
+	}
+	if code != 0 {
+		t.Fatalf("expected error code 0, got %d", code)
+	}
+}
+
+func TestExtractResponseErrorCodeUnknownAPI(t *testing.T) {
+	// Unknown API should return false
+	body := []byte{0x00, 0x07}
+	_, ok := ExtractResponseErrorCode(body, ApiKeyFetch, 12)
+	if ok {
+		t.Fatalf("expected unknown API extraction to return false")
+	}
+}
+
 func TestExtractResponseErrorCodeProduceV12(t *testing.T) {
 	// Raw body after correlation_id for Produce v12 (flexible):
 	// tagged_fields(0), throttle_time_ms(4), responses[1], topic "t", partitions[1], partition=0, error_code=2

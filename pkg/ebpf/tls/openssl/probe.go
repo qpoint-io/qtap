@@ -19,7 +19,7 @@ var _ tls.Probe = (*Probe)(nil)
 const (
 	Name = "openssl"
 	// LibSSL is the shared library name for OpenSSL
-	LibSSL = "libssl"
+	LibSSL = "libssl.so"
 )
 
 var tracer = telemetry.Tracer()

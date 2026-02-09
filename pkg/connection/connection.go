@@ -72,6 +72,7 @@ type Connection struct {
 	// TLS
 	IsTLS          bool
 	TLSClientHello *tlsutils.ClientHello
+	TLSServerHello *tlsutils.ServerHello
 
 	// eventQueue handles events coming from the socket reader
 	eventQueue          *synq.Queue

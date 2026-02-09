@@ -47,6 +47,12 @@ var tlsClientHelloAttrPool = sync.Pool{
 	},
 }
 
+var tlsServerHelloAttrPool = sync.Pool{
+	New: func() interface{} {
+		return new(socketTLSServerHelloAttr)
+	},
+}
+
 func (m *SocketEventManager) readEvent(record *ringbuf.Record) error {
 	// get our reader from the pool
 	r := readerEventPool.Get().(*bytes.Reader)
@@ -78,6 +84,8 @@ func (m *SocketEventManager) readEvent(record *ringbuf.Record) error {
 		m.handleSocketHostnameEvent(r)
 	case socketEvents_TLS_CLIENT_HELLO:
 		m.handleSocketTLSClientHelloEvent(r)
+	case socketEvents_TLS_SERVER_HELLO:
+		m.handleSocketTLSServerHelloEvent(r)
 	}
 
 	return nil
@@ -204,6 +212,35 @@ func (m *SocketEventManager) handleSocketTLSClientHelloEvent(r *bytes.Reader) {
 	}
 
 	m.eventHandler.HandleEvent(connection.TLSClientHelloEvent{
+		Cookie: connection.Cookie(attr.Cookie),
+		Msg:    h,
+	})
+}
+
+func (m *SocketEventManager) handleSocketTLSServerHelloEvent(r *bytes.Reader) {
+	attr := tlsServerHelloAttrPool.Get().(*socketTLSServerHelloAttr)
+	defer tlsServerHelloAttrPool.Put(attr)
+
+	if err := binary.Read(r, binary.NativeEndian, attr); err != nil {
+		m.logger.Error("failed to parse event (attr)", zap.Error(err))
+		return
+	}
+
+	// Read the message content
+	msg := make([]byte, attr.Size)
+
+	if _, err := r.Read(msg); err != nil {
+		m.logger.Error("failed to parse event (tls server hello)", zap.Error(err))
+		return
+	}
+
+	h, err := tlsutils.ParseServerHello(msg)
+	if err != nil {
+		m.logger.Error("failed to parse event (tls server hello)", zap.Any("attr", attr), zap.Error(err))
+		return
+	}
+
+	m.eventHandler.HandleEvent(connection.TLSServerHelloEvent{
 		Cookie: connection.Cookie(attr.Cookie),
 		Msg:    h,
 	})

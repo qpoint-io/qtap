@@ -34,13 +34,23 @@ type TlsManager struct {
 
 	// containers tracks scanned containers by ID.
 	// These should be closed when the manager is stopped.
-	containers *synq.Map[string, io.Closer]
+	containers *synq.Map[string, *containerState]
 	// containerGroup ensures that we don't scan the same container multiple times concurrently.
 	containerGroup synq.SingleFlight[string, any]
 
 	// ctx is canceled when the manager is stopped
 	ctx    context.Context
 	cancel context.CancelFunc
+}
+
+// maxContainerScanAttempts is the maximum number of times a container scan will be attempted.
+const maxContainerScanAttempts = 3
+
+// containerState tracks a scanned container and its scan state.
+type containerState struct {
+	closer   io.Closer
+	scanned  bool
+	attempts int
 }
 
 // procAttachment tracks a process that has been attached to.
@@ -94,7 +104,7 @@ func newTlsManager(logger *zap.Logger, scanner TargetScanner) *TlsManager {
 
 		procAttachments: synq.NewMap[int, *procAttachment](),
 		procCoordinator: NewKeyedCoordinator[int](),
-		containers:      synq.NewMap[string, io.Closer](),
+		containers:      synq.NewMap[string, *containerState](),
 	}
 
 	return m
@@ -120,12 +130,12 @@ func (m *TlsManager) Close() error {
 		return true
 	})
 
-	m.containers.Iter(func(id string, closer io.Closer) bool {
-		if closer == nil {
+	m.containers.Iter(func(id string, entry *containerState) bool {
+		if entry.closer == nil {
 			return true
 		}
 		eg.Go(func() error {
-			if err := closer.Close(); err != nil {
+			if err := entry.closer.Close(); err != nil {
 				return fmt.Errorf("closing container attachment for id %s: %w", id, err)
 			}
 			return nil
@@ -354,18 +364,22 @@ func (m *TlsManager) detachProcess(ctx context.Context, pid int, attachment *pro
 }
 
 func (m *TlsManager) containerStarted(ctx context.Context, id, root string) {
-	if _, scanned := m.containers.Load(id); scanned {
-		// already scanned
-		return
+	if state, exists := m.containers.Load(id); exists {
+		if state.scanned || state.attempts >= maxContainerScanAttempts {
+			return
+		}
 	}
 
 	// queue a scan. containerGroup ensures that we don't scan the same container multiple times concurrently.
 	_, _ = m.containerGroup.Do(id, func() (any, error) {
 		// the cache may have been updated by the time our scan is executed.
 		// check again:
-		if _, scanned := m.containers.Load(id); scanned {
-			// already scanned
-			return nil, nil
+		var prevAttempts int
+		if state, exists := m.containers.Load(id); exists {
+			if state.scanned || state.attempts >= maxContainerScanAttempts {
+				return nil, nil
+			}
+			prevAttempts = state.attempts
 		}
 
 		if m.observer != nil {
@@ -374,12 +388,20 @@ func (m *TlsManager) containerStarted(ctx context.Context, id, root string) {
 			}
 		}
 
+		attempt := prevAttempts + 1
 		closer, err := m.scanAndAttachContainer(ctx, id, root)
-		// mark container as scanned
-		m.containers.Store(id, closer)
 		if err != nil && !errors.Is(err, context.Canceled) {
-			// NOTE: perhaps we should track the number of failed attempts and allow one retry before giving up.
-			m.logger.Info("failed to scan container", zap.String("container_id", id), zap.Error(err))
+			// scan failed — store updated attempts, allow future retry
+			m.containers.Store(id, &containerState{attempts: attempt})
+			m.logger.Info("failed to scan container",
+				zap.String("container_id", id),
+				zap.Int("attempt", attempt),
+				zap.Int("max_attempts", maxContainerScanAttempts),
+				zap.Error(err),
+			)
+		} else {
+			// scan succeeded (closer may be nil if no attachable libraries found)
+			m.containers.Store(id, &containerState{closer: closer, scanned: true, attempts: attempt})
 		}
 
 		if m.observer != nil {

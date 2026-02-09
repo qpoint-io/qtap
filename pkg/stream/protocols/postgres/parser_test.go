@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"encoding/binary"
+	"errors"
 	"testing"
 )
 
@@ -46,7 +47,7 @@ func TestParseMessage_Incomplete(t *testing.T) {
 	p.Append([]byte{'Q', 0, 0})
 
 	_, err := p.ParseMessage()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("expected ErrIncomplete, got %v", err)
 	}
 }
@@ -78,7 +79,7 @@ func TestParseMessage_MultipleMessages(t *testing.T) {
 
 	// Should be incomplete now
 	_, err := p.ParseMessage()
-	if err != ErrIncomplete {
+	if !errors.Is(err, ErrIncomplete) {
 		t.Errorf("expected ErrIncomplete after consuming all messages")
 	}
 }

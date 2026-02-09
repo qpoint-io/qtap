@@ -101,7 +101,7 @@ func sendRequest(s *Stream, data []byte) {
 		Direction: connection.Egress,
 		Data:      data,
 	}
-	s.Process(event)
+	_ = s.Process(event)
 }
 
 // sendResponse sends server→client data through the stream
@@ -110,7 +110,7 @@ func sendResponse(s *Stream, data []byte) {
 		Direction: connection.Ingress,
 		Data:      data,
 	}
-	s.Process(event)
+	_ = s.Process(event)
 }
 
 // TestUnnamedPreparedStatement tests the basic unnamed prepared statement flow

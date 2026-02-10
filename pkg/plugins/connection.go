@@ -25,6 +25,7 @@ const (
 	ConnectionType_HTTP    ConnectionType = "http"
 	ConnectionType_GRPC    ConnectionType = "grpc"
 	ConnectionType_REDIS   ConnectionType = "redis"
+	ConnectionType_MYSQL   ConnectionType = "mysql"
 )
 
 const (
@@ -414,6 +415,42 @@ func (c *Connection) OnRedisResult(res *RedisResult) error {
 			}
 			status := redisP.OnRedisResult(res)
 			if status == RedisStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// OnMySQLCommand processes a MySQL command through the MySQL plugin stack
+func (c *Connection) OnMySQLCommand(cmd *MySQLCommand) error {
+	return c.enqueue("mysql_command", func() error {
+		for _, p := range c.stack {
+			mysqlP, ok := p.(MySQLPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement MySQLPluginInstance - this indicates a bug")
+				continue
+			}
+			status := mysqlP.OnMySQLCommand(cmd)
+			if status == MySQLStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// OnMySQLResult processes a MySQL result through the MySQL plugin stack
+func (c *Connection) OnMySQLResult(res *MySQLResult) error {
+	return c.enqueue("mysql_result", func() error {
+		for _, p := range c.stack {
+			mysqlP, ok := p.(MySQLPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement MySQLPluginInstance - this indicates a bug")
+				continue
+			}
+			status := mysqlP.OnMySQLResult(res)
+			if status == MySQLStatusStopIteration {
 				return nil
 			}
 		}

@@ -31,6 +31,7 @@ public class App {
         } else {
             System.out.println("[Java] TLS disabled");
             props.setProperty("useSSL", "false");
+            props.setProperty("allowPublicKeyRetrieval", "true");
         }
 
         int iteration = 0;

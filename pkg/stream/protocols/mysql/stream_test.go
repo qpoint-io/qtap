@@ -269,16 +269,16 @@ func TestProcessServerHandshake(t *testing.T) {
 
 	// Build a server handshake packet (protocol version 10)
 	handshakePayload := []byte{
-		0x0a,                                   // protocol version
-		'5', '.', '7', '.', '0', 0x00,          // server version
-		0x01, 0x00, 0x00, 0x00,                 // connection id
+		0x0a,                          // protocol version
+		'5', '.', '7', '.', '0', 0x00, // server version
+		0x01, 0x00, 0x00, 0x00, // connection id
 		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', // auth data
 		0x00,       // filler
 		0xff, 0xff, // capability flags
 		0x08,       // charset
 		0x02, 0x00, // status
 		0xff, 0xff, // capability upper
-		0x15,       // auth length
+		0x15, // auth length
 	}
 	packet := buildPacket(0, handshakePayload)
 

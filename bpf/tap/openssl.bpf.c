@@ -173,6 +173,25 @@ int BPF_UPROBE(openssl_probe_entry_SSL_free) {
 	return 0;
 }
 
+// Hook SSL_set_fd to pre-populate ssl_to_fd_map
+// This fixes STARTTLS protocols (MySQL, Postgres, SMTP) where
+// SSL_read fires before the ssl→fd mapping is established
+SEC("uprobe/SSL_set_fd")
+int BPF_UPROBE(openssl__probe_entry_SSL_set_fd, void *ssl, int fd) {
+	// extract the pid
+	uint32_t pid = bpf_get_current_pid_tgid() >> 32;
+
+	uintptr_t ssl_ptr = (uintptr_t)ssl;
+	int32_t fd32 = (int32_t)fd;
+
+	if (fd32 >= 3) {
+		bpf_map_update_elem(&ssl_to_fd_map, &ssl_ptr, &fd32, BPF_ANY);
+		TRACE_OPENSSL(pid, "openssl/set_fd", TRACE_INT("fd", fd32), TRACE_POINTER("ssl", (void *)ssl_ptr));
+	}
+
+	return 0;
+}
+
 SEC("uprobe/SSL_read")
 int BPF_UPROBE(openssl__probe_entry_SSL_read, void *ssl, void *buf, int num) {
 	// get the pid_tgid

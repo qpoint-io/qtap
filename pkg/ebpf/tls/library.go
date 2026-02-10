@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-var commonLibDirs = []string{"/lib", "/usr/lib", "/usr/local/lib", "/nix/store", "/snap"}
+var commonLibDirs = []string{"/lib", "/lib64", "/usr/lib", "/usr/lib64", "/usr/local/lib", "/nix/store", "/opt", "/snap"}
 
 // SharedLibrary represents a shared library that a probe can attach to.
 type SharedLibrary struct {

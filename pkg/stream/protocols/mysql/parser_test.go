@@ -11,7 +11,7 @@ func TestParsePacket(t *testing.T) {
 	pktData := BuildQueryPacket(0, query)
 
 	p := NewParser()
-	p.Append(pktData)
+	_ = p.Append(pktData)
 
 	pkt, err := p.ParsePacket()
 	if err != nil {
@@ -49,7 +49,7 @@ func TestParseIncomplete(t *testing.T) {
 	p := NewParser()
 
 	// Only add partial header
-	p.Append([]byte{0x09, 0x00, 0x00})
+	_ = p.Append([]byte{0x09, 0x00, 0x00})
 
 	_, err := p.ParsePacket()
 	if !errors.Is(err, ErrIncomplete) {
@@ -57,7 +57,7 @@ func TestParseIncomplete(t *testing.T) {
 	}
 
 	// Add sequence ID but no payload
-	p.Append([]byte{0x00})
+	_ = p.Append([]byte{0x00})
 
 	_, err = p.ParsePacket()
 	if !errors.Is(err, ErrIncomplete) {
@@ -69,8 +69,8 @@ func TestParseMultiplePackets(t *testing.T) {
 	p := NewParser()
 
 	// Add two packets
-	p.Append(BuildQueryPacket(0, "SELECT 1"))
-	p.Append(BuildQueryPacket(1, "SELECT 2"))
+	_ = p.Append(BuildQueryPacket(0, "SELECT 1"))
+	_ = p.Append(BuildQueryPacket(1, "SELECT 2"))
 
 	// Parse first
 	pkt1, err := p.ParsePacket()

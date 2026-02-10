@@ -20,6 +20,7 @@ package mysql
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"time"
@@ -123,10 +124,16 @@ func (s *Stream) Process(event *connection.DataEvent) error {
 	dir := event.Direction
 
 	if isRequest(source, dir) {
-		s.requestParser.Append(event.Data)
+		if err := s.requestParser.Append(event.Data); err != nil {
+			s.logger.Warn("mysql request buffer overflow, resetting", zap.Error(err))
+			return nil
+		}
 		s.processRequests()
 	} else if isResponse(source, dir) {
-		s.responseParser.Append(event.Data)
+		if err := s.responseParser.Append(event.Data); err != nil {
+			s.logger.Warn("mysql response buffer overflow, resetting", zap.Error(err))
+			return nil
+		}
 		s.processResponses()
 	}
 
@@ -138,7 +145,12 @@ func (s *Stream) processRequests() {
 	for {
 		pkt, err := s.requestParser.ParsePacket()
 		if err != nil {
-			return // Incomplete or error, wait for more data
+			if errors.Is(err, ErrIncomplete) {
+				return // Wait for more data
+			}
+			s.logger.Warn("mysql request parse error, resetting parser", zap.Error(err))
+			s.requestParser.Reset()
+			return
 		}
 
 		// Skip empty packets
@@ -202,6 +214,19 @@ func (s *Stream) processRequests() {
 			}
 		}
 
+		const maxPendingCommands = 1000
+		if len(s.pendingCommands) >= maxPendingCommands {
+			// Drop oldest command to make room
+			dropped := s.pendingCommands[0]
+			s.logger.Warn("mysql pending commands queue full, dropping oldest",
+				zap.String("dropped_command", CommandName(dropped.CommandType)),
+				zap.String("dropped_query", s.truncateQuery(dropped.Query)))
+			if dropped.PluginConn != nil {
+				dropped.PluginConn.Teardown()
+			}
+			copy(s.pendingCommands, s.pendingCommands[1:])
+			s.pendingCommands = s.pendingCommands[:len(s.pendingCommands)-1]
+		}
 		s.pendingCommands = append(s.pendingCommands, pending)
 
 		s.logger.Debug("mysql command queued",
@@ -216,7 +241,12 @@ func (s *Stream) processResponses() {
 	for {
 		pkt, err := s.responseParser.ParsePacket()
 		if err != nil {
-			return // Incomplete or error, wait for more data
+			if errors.Is(err, ErrIncomplete) {
+				return // Wait for more data
+			}
+			s.logger.Warn("mysql response parse error, resetting parser", zap.Error(err))
+			s.responseParser.Reset()
+			return
 		}
 
 		// Skip empty packets
@@ -238,6 +268,7 @@ func (s *Stream) processResponses() {
 		}
 
 		pending := s.pendingCommands[0]
+		s.pendingCommands[0] = nil // avoid memory pinning
 		s.pendingCommands = s.pendingCommands[1:]
 
 		// Parse the response
@@ -373,7 +404,7 @@ func (s *Stream) finishResultSet() {
 }
 
 // completeResponse handles a single-packet response correlation
-func (s *Stream) completeResponse(pending *PendingCommand, pkt *Packet, resp interface{}) {
+func (s *Stream) completeResponse(pending *PendingCommand, pkt *Packet, resp any) {
 	s.logCorrelatedPair(pending, pkt, resp)
 
 	if pending.PluginConn != nil {
@@ -387,7 +418,7 @@ func (s *Stream) completeResponse(pending *PendingCommand, pkt *Packet, resp int
 }
 
 // logCorrelatedPair logs a correlated command and response pair
-func (s *Stream) logCorrelatedPair(cmd *PendingCommand, pkt *Packet, resp interface{}) {
+func (s *Stream) logCorrelatedPair(cmd *PendingCommand, pkt *Packet, resp any) {
 	latency := time.Since(cmd.Timestamp)
 
 	fields := []zap.Field{
@@ -433,7 +464,9 @@ func (s *Stream) logUncorrelatedResponse(pkt *Packet) {
 		return
 	}
 
-	// Check if it's a handshake
+	// Check if it's a handshake.
+	// Note: protocol version 9 (0x09) exists for very old MySQL servers (pre-3.22)
+	// but is not supported. We only handle protocol version 10 (0x0a).
 	if pkt.SequenceID == 0 && pkt.Payload[0] == 0x0a {
 		hs, err := ParseServerHandshake(pkt)
 		if err == nil {
@@ -458,7 +491,7 @@ func (s *Stream) logUncorrelatedResponse(pkt *Packet) {
 }
 
 // buildPluginResult converts parsed response to plugin result
-func (s *Stream) buildPluginResult(resp interface{}) *plugins.MySQLResult {
+func (s *Stream) buildPluginResult(resp any) *plugins.MySQLResult {
 	result := &plugins.MySQLResult{}
 
 	switch r := resp.(type) {

@@ -18,8 +18,6 @@ const (
 type MySQLCommand struct {
 	Type      byte   // Command type (e.g., 0x03 for COM_QUERY)
 	Query     string // SQL query text (for COM_QUERY, COM_STMT_PREPARE)
-	StmtID    uint32 // Statement ID (for COM_STMT_EXECUTE)
-	Params    []any  // Bound parameters (for prepared statements)
 	Timestamp time.Time
 }
 

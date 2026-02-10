@@ -331,7 +331,7 @@ func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]inter
 	seq := byte(1)
 
 	// 1. Column count packet
-	parser.Append(buildRawPacket(seq, encodeLenEncInt(uint64(colCount))))
+	_ = parser.Append(buildRawPacket(seq, encodeLenEncInt(uint64(colCount))))
 	seq++
 
 	// Parse column count
@@ -352,7 +352,7 @@ func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]inter
 	// 2. Column definition packets
 	for _, col := range cols {
 		payload := buildColumnDefPayload("def", "test", "t", "t", col.name, col.name, 33, 255, col.colType, 0, 0)
-		parser.Append(buildRawPacket(seq, payload))
+		_ = parser.Append(buildRawPacket(seq, payload))
 		seq++
 
 		pkt, err := parser.ParsePacket()
@@ -367,7 +367,7 @@ func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]inter
 	}
 
 	// 3. EOF after column defs
-	parser.Append(buildRawPacket(seq, buildEOFPayload()))
+	_ = parser.Append(buildRawPacket(seq, buildEOFPayload()))
 	seq++
 	_, err = parser.ParsePacket() // consume EOF
 	if err != nil {
@@ -378,7 +378,7 @@ func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]inter
 	rs.Rows = make([][]Value, 0)
 	for _, row := range rows {
 		payload := buildRowPayload(row...)
-		parser.Append(buildRawPacket(seq, payload))
+		_ = parser.Append(buildRawPacket(seq, payload))
 		seq++
 
 		pkt, err := parser.ParsePacket()
@@ -395,7 +395,7 @@ func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]inter
 	}
 
 	// 5. EOF after rows
-	parser.Append(buildRawPacket(seq, buildEOFPayload()))
+	_ = parser.Append(buildRawPacket(seq, buildEOFPayload()))
 	_, err = parser.ParsePacket() // consume EOF
 	if err != nil {
 		t.Fatalf("Failed to parse final EOF packet: %v", err)

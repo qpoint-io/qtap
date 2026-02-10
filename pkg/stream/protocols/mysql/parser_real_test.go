@@ -51,7 +51,7 @@ func TestParseRealPackets(t *testing.T) {
 			}
 
 			p := NewParser()
-			p.Append(data)
+			_ = p.Append(data)
 
 			pkt, err := p.ParsePacket()
 			if err != nil {
@@ -89,7 +89,7 @@ func TestParseRealHandshake(t *testing.T) {
 	}
 
 	p := NewParser()
-	p.Append(data)
+	_ = p.Append(data)
 
 	pkt, err := p.ParsePacket()
 	if err != nil {
@@ -124,7 +124,7 @@ func TestParseRealStream(t *testing.T) {
 	}
 
 	p := NewParser()
-	p.Append(allData)
+	_ = p.Append(allData)
 
 	count := 0
 	for {

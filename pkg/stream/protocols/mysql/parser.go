@@ -11,6 +11,13 @@ var (
 	ErrIncomplete = errors.New("incomplete packet")
 	// ErrInvalidPacket indicates the packet format is invalid
 	ErrInvalidPacket = errors.New("invalid packet format")
+	// ErrBufferFull indicates the buffer exceeded the maximum size
+	ErrBufferFull = errors.New("buffer exceeded maximum size")
+)
+
+const (
+	// MaxBufferSize is the maximum parser buffer size: MySQL max packet (16MB) + 4-byte header.
+	MaxBufferSize = 16*1024*1024 + 4
 )
 
 // Parser handles MySQL protocol parsing
@@ -25,9 +32,15 @@ func NewParser() *Parser {
 	}
 }
 
-// Append adds data to the parser buffer
-func (p *Parser) Append(data []byte) {
+// Append adds data to the parser buffer.
+// Returns ErrBufferFull if the buffer would exceed MaxBufferSize.
+func (p *Parser) Append(data []byte) error {
+	if len(p.buffer)+len(data) > MaxBufferSize {
+		p.buffer = p.buffer[:0]
+		return ErrBufferFull
+	}
 	p.buffer = append(p.buffer, data...)
+	return nil
 }
 
 // BufferLen returns the current buffer length
@@ -71,7 +84,7 @@ func (p *Parser) ParsePacket() (*Packet, error) {
 }
 
 // ParseCommand parses a command packet from the client
-func ParseCommand(pkt *Packet) (byte, interface{}, error) {
+func ParseCommand(pkt *Packet) (byte, any, error) {
 	if len(pkt.Payload) < 1 {
 		return 0, nil, ErrInvalidPacket
 	}
@@ -108,7 +121,7 @@ func ParseCommand(pkt *Packet) (byte, interface{}, error) {
 }
 
 // ParseResponse parses a response packet from the server
-func ParseResponse(pkt *Packet) (interface{}, error) {
+func ParseResponse(pkt *Packet) (any, error) {
 	if len(pkt.Payload) < 1 {
 		return nil, ErrInvalidPacket
 	}

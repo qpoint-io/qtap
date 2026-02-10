@@ -292,6 +292,45 @@ static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, s
 
 // Redis RESP protocol detection
 // Redis commands are sent as RESP arrays: *<count>\r\n$<len>\r\n<cmd>...
+static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	// MySQL Server Greeting (handshake) detection
+	// The server sends this as the first packet on a new connection (ingress)
+	// Format: 4-byte header (3 bytes length + 1 byte sequence number) + payload
+	// For the initial greeting: sequence number = 0x00, payload[0] = 0x0a (protocol version 10)
+	if (count < 5 || !buf_info->buf) {
+		return false;
+	}
+
+	char header[5] = {0};
+	if (buf_read(header, sizeof(header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// Sequence number must be 0 (first packet from server)
+	if (header[3] != 0x00) {
+		return false;
+	}
+
+	// Protocol version must be 10 (0x0a)
+	if (header[4] != 0x0a) {
+		return false;
+	}
+
+	// Validate length field: 3 little-endian bytes
+	// MySQL greeting packets are typically 60-120 bytes, payload length > 0
+	uint32_t payload_len = (uint32_t)(unsigned char)header[0] |
+	                       ((uint32_t)(unsigned char)header[1] << 8) |
+	                       ((uint32_t)(unsigned char)header[2] << 16);
+
+	// Payload length should be reasonable for a greeting (at least 1, typically > 50)
+	if (payload_len < 1 || payload_len > 0xFFFFFF) {
+		return false;
+	}
+
+	conn_info->protocol = P_MYSQL;
+	return true;
+}
+
 static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	if (count < 4 || !buf_info->buf) {
 		return false;
@@ -330,6 +369,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect redis - check before HTTP as Redis RESP commands start with *
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_redis(conn_info, buf_info, count);
+
+	// detect mysql - server greeting on ingress
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_mysql(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

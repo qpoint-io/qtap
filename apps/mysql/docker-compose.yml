@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # MySQL server
   mysql:
@@ -8,19 +6,22 @@ services:
       - "3306:3306"
     volumes:
       - ./certs:/certs:ro
-      - ./mysql-tls.cnf:/etc/mysql/conf.d/tls.cnf:ro
     environment:
       - MYSQL_ROOT_PASSWORD=testpassword
       - MYSQL_DATABASE=testdb
       - MYSQL_TLS_ENABLED=${MYSQL_TLS_ENABLED:-false}
     command: >
       sh -c '
-        if [ "$MYSQL_TLS_ENABLED" = "true" ]; then
-          echo "Starting MySQL with TLS enabled"
-          exec docker-entrypoint.sh mysqld
+        if [ "$$MYSQL_TLS_ENABLED" = "true" ] && [ -f /certs/server.crt ]; then
+          echo "Starting MySQL with TLS enabled (custom certs)"
+          cp /certs/ca.crt /certs/server.crt /certs/server.key /tmp/
+          chmod 644 /tmp/ca.crt /tmp/server.crt
+          chmod 600 /tmp/server.key
+          chown mysql:mysql /tmp/ca.crt /tmp/server.crt /tmp/server.key
+          exec docker-entrypoint.sh mysqld --ssl-ca=/tmp/ca.crt --ssl-cert=/tmp/server.crt --ssl-key=/tmp/server.key
         else
-          echo "Starting MySQL without TLS"
-          exec docker-entrypoint.sh mysqld --skip-ssl
+          echo "Starting MySQL without custom TLS"
+          exec docker-entrypoint.sh mysqld
         fi
       '
     healthcheck:

@@ -59,6 +59,7 @@ const (
 	Protocol_DNS
 	Protocol_MONGODB
 	Protocol_REDIS
+	Protocol_MYSQL
 	Protocol_GRPC
 )
 
@@ -76,6 +77,8 @@ func (p Protocol) String() string {
 		return "MONGODB"
 	case Protocol_REDIS:
 		return "REDIS"
+	case Protocol_MYSQL:
+		return "MYSQL"
 	case Protocol_GRPC:
 		return "GRPC"
 	default:
@@ -297,6 +300,8 @@ func (e socketProtoEvent) buildConnectionProtocolEvent() connection.ProtocolEven
 		p = connection.Protocol_MONGODB
 	case Protocol_REDIS:
 		p = connection.Protocol_REDIS
+	case Protocol_MYSQL:
+		p = connection.Protocol_MYSQL
 	case Protocol_GRPC:
 		p = connection.Protocol_GRPC
 	}

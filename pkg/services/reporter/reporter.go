@@ -229,6 +229,8 @@ func toEventStoreL7Protocol(protocol connection.Protocol) eventstore.L7Protocol 
 		return eventstore.L7Protocol_DNS
 	case connection.Protocol_GRPC:
 		return eventstore.L7Protocol_GRPC
+	case connection.Protocol_MYSQL:
+		return eventstore.L7Protocol_MYSQL
 	default:
 		return eventstore.L7Protocol_OTHER
 	}

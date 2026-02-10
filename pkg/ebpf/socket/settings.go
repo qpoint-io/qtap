@@ -21,6 +21,7 @@ const (
 const (
 	streamProtocolHTTP  uint32 = 1 << 0
 	streamProtocolRedis uint32 = 1 << 1
+	streamProtocolMySQL uint32 = 1 << 2
 )
 
 // possible traffic directions (maps to DIRECTION enum)
@@ -111,6 +112,18 @@ func (m *SettingsManager) updateSocketSettingStreamProtocols() error {
 		for _, e := range m.config.Tap.Endpoints {
 			if e.Redis.HasStack() {
 				protocols |= streamProtocolRedis
+				break
+			}
+		}
+	}
+
+	// check top-level and endpoint-level MySQL configs
+	if m.config.Tap.MySQL.HasStack() {
+		protocols |= streamProtocolMySQL
+	} else {
+		for _, e := range m.config.Tap.Endpoints {
+			if e.MySQL.HasStack() {
+				protocols |= streamProtocolMySQL
 				break
 			}
 		}

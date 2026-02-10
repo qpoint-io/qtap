@@ -105,6 +105,7 @@ const (
 	Protocol_MONGODB Protocol = "mongodb"
 	Protocol_REDIS   Protocol = "redis"
 	Protocol_GRPC    Protocol = "grpc"
+	Protocol_MYSQL   Protocol = "mysql"
 )
 
 func (c Protocol) String() string {

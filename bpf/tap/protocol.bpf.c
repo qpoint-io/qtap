@@ -321,15 +321,15 @@ static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info,
 		return false;
 	}
 
-	unsigned char header[5] = {0};
+	char header[5] = {0};
 	if (buf_read(header, sizeof(header), buf_info, 0) == 0) {
 		return false;
 	}
 
 	// MySQL packet structure: [len_lo][len_mid][len_hi][seq_id][payload...]
-	uint32_t payload_len = header[0] | (header[1] << 8) | (header[2] << 16);
-	unsigned char seq_id = header[3];
-	unsigned char first_payload_byte = header[4];
+	uint32_t payload_len = (unsigned char)header[0] | ((unsigned char)header[1] << 8) | ((unsigned char)header[2] << 16);
+	unsigned char seq_id = (unsigned char)header[3];
+	unsigned char first_payload_byte = (unsigned char)header[4];
 
 	// Sanity check: payload length should be reasonable (< 16MB MySQL max packet)
 	if (payload_len == 0 || payload_len > 0xFFFFFF) {

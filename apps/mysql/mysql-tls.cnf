@@ -1,0 +1,8 @@
+[mysqld]
+# TLS/SSL configuration
+ssl-ca=/certs/ca.crt
+ssl-cert=/certs/server.crt
+ssl-key=/certs/server.key
+
+# Require TLS for all connections (optional, can be relaxed)
+# require_secure_transport=ON

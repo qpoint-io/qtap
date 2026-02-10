@@ -21,3 +21,5 @@ tap:
     stack: basic_reporting
   redis:
     stack: basic_reporting
+  mysql:
+    stack: basic_reporting

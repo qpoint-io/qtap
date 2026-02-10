@@ -650,6 +650,7 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 			common.NewUprobe("SSL_write", objs.TapPrograms.OpensslProbeEntrySSL_write),
 			common.NewUprobe("SSL_write_ex", objs.TapPrograms.OpensslProbeEntrySSL_writeEx),
 			common.NewUprobe("SSL_free", objs.TapPrograms.OpensslProbeEntrySSL_free),
+			common.NewUprobe("SSL_set_fd", objs.TapPrograms.OpensslProbeEntrySSL_setFd),
 
 			// ssl return uprobes
 			common.NewUretprobe("SSL_read", objs.TapPrograms.OpensslProbeRetSSL_read),

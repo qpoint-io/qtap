@@ -615,8 +615,12 @@ static void init_conn(struct socket_ctx *ctx, enum DIRECTION direction, const st
 	detect_tls(conn_info, &buf_info, bytes);
 
 	// clear the pending flag once TLS is detected
-	if (conn_info->is_ssl && conn_info->tls_upgrade_pending)
+	// Re-emit protocol event so userspace gets IsTLS=true for STARTTLS protocols
+	if (conn_info->is_ssl && conn_info->tls_upgrade_pending) {
 		conn_info->tls_upgrade_pending = false;
+		if (conn_info->protocol != P_UNKNOWN)
+			submit_proto_event(ctx, conn_info);
+	}
 
 	if (!conn_info->is_ssl)
 		return;

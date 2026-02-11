@@ -36,6 +36,7 @@ func init() {
 		"SSL_free",
 		"SSL_new",
 		"SSL_set_cert_cb",
+		"SSL_set_fd",
 	} {
 		symbolSearch = append(symbolSearch, binutils.SymbolSearch{
 			Name:          sym,

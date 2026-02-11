@@ -120,6 +120,18 @@ func (c *Connection) processEvent(event any) {
 func (c *Connection) processProtocolEvent(event ProtocolEvent) {
 	c.logger.Debug("processing protocol event", zap.Any("event", event))
 
+	// If the protocol is already set and matches the event, this is a
+	// TLS upgrade notification (STARTTLS). Update IsTLS but preserve
+	// the existing stream processor to maintain parser state.
+	if c.Protocol == event.Protocol && c.Protocol != Protocol_UNKNOWN {
+		if event.IsTLS && !c.IsTLS {
+			c.IsTLS = true
+			c.logger = c.logger.With(zap.Bool("tls_upgraded", true))
+			c.logger.Debug("TLS upgrade detected on existing protocol connection")
+		}
+		return
+	}
+
 	c.Protocol = event.Protocol
 	c.IsTLS = event.IsTLS
 

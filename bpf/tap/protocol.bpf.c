@@ -328,6 +328,8 @@ static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info,
 	}
 
 	conn_info->protocol = P_MYSQL;
+	// Watch for STARTTLS upgrade on MySQL connections
+	conn_info->tls_upgrade_pending = true;
 	return true;
 }
 

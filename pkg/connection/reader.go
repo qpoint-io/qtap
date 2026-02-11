@@ -126,7 +126,7 @@ func (c *Connection) processProtocolEvent(event ProtocolEvent) {
 	if c.Protocol == event.Protocol && c.Protocol != Protocol_UNKNOWN {
 		if event.IsTLS && !c.IsTLS {
 			c.IsTLS = true
-			c.logger = c.logger.With(zap.Bool("is_tls", c.IsTLS))
+			c.logger = c.logger.With(zap.Bool("tls_upgraded", true))
 			c.logger.Debug("TLS upgrade detected on existing protocol connection")
 		}
 		return

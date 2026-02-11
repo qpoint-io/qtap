@@ -433,11 +433,19 @@ static void process_syscall_addr(struct socket_ctx *ctx, struct addr_args *addr,
 		bpf_probe_read_user(&conn_info.addr.port, sizeof(conn_info.addr.port), &sa->sin6_port);
 	}
 
-	// submit the open event
-	submit_open_event(ctx, &conn_info);
-
-	// persist
+	// Insert into map EARLY so that process_data() on another CPU
+	// can find this connection immediately (fixes race with server-speaks-first
+	// protocols like MySQL where the greeting arrives before we finish here).
 	bpf_map_update_elem(&conn_info_map, ctx->id, &conn_info, BPF_ANY);
+
+	// Now work with the map copy directly so submit_open_event's mutations
+	// (cookie, is_open, etc.) are persisted automatically.
+	struct conn_info *map_conn_info = bpf_map_lookup_elem(&conn_info_map, ctx->id);
+	if (map_conn_info == NULL)
+		return; // should never happen, we just inserted
+
+	// submit the open event (may set is_open=true, cookie, addresses)
+	submit_open_event(ctx, map_conn_info);
 }
 
 // common close handler for multiple syscall probes
@@ -678,6 +686,18 @@ static __noinline void process_data(struct socket_ctx *ctx, enum DIRECTION direc
 		TRACE_IF_ENABLED(ctx->trace_mod, ctx->id->pid, "process_data (conn_info->is_open = false)", TRACE_STRING("caller", ctx->trace_id),
 			TRACE_INT("pid", ctx->id->pid), TRACE_INT("fd", ctx->id->fd), TRACE_INT("direction", direction), TRACE_INT("bytes", bytes),
 			TRACE_BOOL("ssl", ssl), TRACE_BOOL("open", false));
+
+		// Even though the open event hasn't been submitted yet, still allow
+		// protocol detection on the first packet. This is critical for
+		// server-speaks-first protocols (MySQL, PostgreSQL) where the greeting
+		// arrives before the accept handler finishes submitting the open event.
+		if (conn_info->protocol == P_UNKNOWN) {
+			struct buf_info buf_info = {
+				.buf    = (const void *)(uintptr_t)args->buf,
+				.iovcnt = args->iovcnt,
+			};
+			detect_protocol(conn_info, &buf_info, bytes);
+		}
 		return;
 	}
 

@@ -47,8 +47,10 @@ type Manager struct {
 	// domain -> stack mapping
 	domainStacks *synq.Map[stackKey, config.TapProtocolConfig]
 
-	// default stack
-	defaultStackConfig config.TapProtocolConfig
+	// default stack configs per protocol
+	defaultStackConfig      config.TapProtocolConfig
+	defaultRedisStackConfig config.TapProtocolConfig
+	defaultMySQLStackConfig config.TapProtocolConfig
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -136,9 +138,11 @@ func (m *Manager) SetConfig(conf *config.Config) {
 		)
 	}
 
-	// set the default stack
+	// set the default stacks per protocol
 	m.mu.Lock()
 	m.defaultStackConfig = conf.Tap.Http
+	m.defaultRedisStackConfig = conf.Tap.Redis
+	m.defaultMySQLStackConfig = conf.Tap.MySQL
 	m.mu.Unlock()
 
 	// generate a snapshot of the incoming config
@@ -173,7 +177,14 @@ func (m *Manager) registerDomainToStack(domain, protocol string) (*StackDeployme
 	// fetch the endpointConfig
 	endpointConfig, exists := m.domainStacks.Load(key)
 	if !exists {
-		endpointConfig = m.defaultStackConfig
+		switch protocol {
+		case "redis":
+			endpointConfig = m.defaultRedisStackConfig
+		case "mysql":
+			endpointConfig = m.defaultMySQLStackConfig
+		default:
+			endpointConfig = m.defaultStackConfig
+		}
 	}
 
 	// unlock the manager
@@ -204,8 +215,15 @@ func (m *Manager) GetDomainStack(domain, protocol string) (string, bool) {
 		return stackID.Stack, stackID.HasStack()
 	}
 
-	// return the default stack
-	return m.defaultStackConfig.Stack, m.defaultStackConfig.HasStack()
+	// return the protocol-specific default stack
+	switch protocol {
+	case "redis":
+		return m.defaultRedisStackConfig.Stack, m.defaultRedisStackConfig.HasStack()
+	case "mysql":
+		return m.defaultMySQLStackConfig.Stack, m.defaultMySQLStackConfig.HasStack()
+	default:
+		return m.defaultStackConfig.Stack, m.defaultStackConfig.HasStack()
+	}
 }
 
 func (m *Manager) Stop() {

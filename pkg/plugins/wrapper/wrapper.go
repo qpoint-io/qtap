@@ -9,7 +9,7 @@ import (
 
 // PanicCatcher is a wrapper struct that implements Plugin interface
 // and provides panic recovery and logging. It conditionally implements
-// HttpPlugin and RedisPlugin based on what the wrapped plugin supports.
+// HttpPlugin, RedisPlugin, and MySQLPlugin based on what the wrapped plugin supports.
 type PanicCatcher struct {
 	logger *zap.Logger
 	p      plugins.Plugin
@@ -218,6 +218,84 @@ func (s *SafeRedisFilterInstance) Destroy() {
 	defer func() {
 		if r := recover(); r != nil {
 			s.logger.Error("Panic in Destroy (RedisFilterInstance)",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	s.instance.Destroy()
+}
+
+// NewMySQLInstance implements the MySQLPlugin interface
+func (s *PanicCatcher) NewMySQLInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.MySQLPluginInstance {
+	mysqlP, ok := s.p.(plugins.MySQLPlugin)
+	if !ok {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in NewMySQLInstance",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	i := mysqlP.NewMySQLInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafeMySQLFilterInstance(s.logger, i)
+}
+
+// SafeMySQLFilterInstance is a wrapper struct that implements MySQLPluginInstance interface
+// and provides panic recovery and logging
+type SafeMySQLFilterInstance struct {
+	instance plugins.MySQLPluginInstance
+	logger   *zap.Logger
+}
+
+// NewSafeMySQLFilterInstance creates a new SafeMySQLFilterInstance
+func NewSafeMySQLFilterInstance(logger *zap.Logger, instance plugins.MySQLPluginInstance) *SafeMySQLFilterInstance {
+	return &SafeMySQLFilterInstance{
+		logger:   logger,
+		instance: instance,
+	}
+}
+
+// OnMySQLCommand implements the MySQLPluginInstance interface
+func (s *SafeMySQLFilterInstance) OnMySQLCommand(cmd *plugins.MySQLCommand) (status plugins.MySQLStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnMySQLCommand",
+				zap.Any("panic", r),
+			)
+			status = plugins.MySQLStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnMySQLCommand(cmd)
+}
+
+// OnMySQLResult implements the MySQLPluginInstance interface
+func (s *SafeMySQLFilterInstance) OnMySQLResult(res *plugins.MySQLResult) (status plugins.MySQLStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnMySQLResult",
+				zap.Any("panic", r),
+			)
+			status = plugins.MySQLStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnMySQLResult(res)
+}
+
+// Destroy implements the MySQLPluginInstance interface
+func (s *SafeMySQLFilterInstance) Destroy() {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in Destroy (MySQLFilterInstance)",
 				zap.Any("panic", r),
 			)
 		}

@@ -59,6 +59,40 @@ func (f *Factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.Ser
 	return ri
 }
 
+func (f *Factory) NewMySQLInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.MySQLPluginInstance {
+	f.logger.Debug("new MySQL plugin instance created")
+	mi := &mysqlFilterInstance{
+		logger: f.logger,
+		ctx:    ctx,
+	}
+
+	if es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, ""); err != nil {
+		f.logger.Error("failed to get event store", zap.Error(err))
+		return nil
+	} else {
+		mi.eventstore = es
+	}
+
+	return mi
+}
+
+func (f *Factory) NewPostgresInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.PostgresPluginInstance {
+	f.logger.Debug("new Postgres plugin instance created")
+	pi := &postgresFilterInstance{
+		logger: f.logger,
+		ctx:    ctx,
+	}
+
+	if es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, ""); err != nil {
+		f.logger.Error("failed to get event store", zap.Error(err))
+		return nil
+	} else {
+		pi.eventstore = es
+	}
+
+	return pi
+}
+
 func (f *Factory) Destroy() {
 	f.logger.Debug("plugin destroyed")
 }

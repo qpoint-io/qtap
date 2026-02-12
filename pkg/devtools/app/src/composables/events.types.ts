@@ -1,6 +1,7 @@
 import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
+import type { DatabaseRequest } from '@/stores/redis'
 
 /**
  * Message types for Web Worker communication
@@ -12,7 +13,7 @@ import type { Process } from '@/stores/processes'
 // Messages from main thread -> worker
 export type WorkerInboundMessage =
   | { type: 'init'; endpoint: string }
-  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean } }
+  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean; database: boolean } }
   | { type: 'close' }
 
 // Messages from worker -> main thread  
@@ -29,4 +30,5 @@ export type ParsedEventData =
   | { type: 'connection_closed'; connection: Connection; duration: number }
   | { type: 'process_started'; process: Process }
   | { type: 'process_stopped'; pid: number }
+  | { type: 'database_request'; request: DatabaseRequest }
 

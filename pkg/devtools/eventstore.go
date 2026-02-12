@@ -45,6 +45,8 @@ func (f *EventStoreFactory) save(item any) {
 		} else if i.Part > 0 {
 			topic = "connection.updated"
 		}
+	case *eventstore.DatabaseRequest:
+		topic = "request.database"
 	default:
 		f.logger.Error("unknown event type", zap.String("type", fmt.Sprintf("%T", item)))
 		return

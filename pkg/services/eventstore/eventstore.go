@@ -107,6 +107,18 @@ type DatabaseRequest struct {
 	Duration int64 `json:"duration"`
 	WrBytes  int64 `json:"bytesSent"`
 	RdBytes  int64 `json:"bytesReceived"`
+
+	// Process metadata
+	Process *DatabaseRequestProcess `json:"process,omitempty"`
+}
+
+type DatabaseRequestProcess struct {
+	Exe            string `json:"exe,omitempty"`
+	Pid            int    `json:"pid,omitempty"`
+	ContainerName  string `json:"containerName,omitempty"`
+	ContainerImage string `json:"containerImage,omitempty"`
+	PodName        string `json:"podName,omitempty"`
+	PodNamespace   string `json:"podNamespace,omitempty"`
 }
 
 type RequestAuthToken struct {

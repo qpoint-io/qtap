@@ -3,6 +3,7 @@ import { useConfig } from '@/composables/config'
 import { useHttpStore } from '@/stores/http'
 import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
+import { useRedisStore } from '@/stores/redis'
 import type { WorkerOutboundMessage } from './events.types'
 
 /**
@@ -19,6 +20,7 @@ export function useEvents() {
   const httpStore = useHttpStore()
   const connectionsStore = useConnectionsStore()
   const processesStore = useProcessesStore()
+  const redisStore = useRedisStore()
 
   // reactive state for connection status and errors
   const status = ref<'CONNECTING' | 'OPEN' | 'CLOSED'>('CONNECTING')
@@ -78,11 +80,12 @@ export function useEvents() {
       () => httpStore.paused,
       () => connectionsStore.paused,
       () => processesStore.paused,
+      () => redisStore.paused,
     ],
-    ([http, connections, processes]) => {
+    ([http, connections, processes, database]) => {
       worker.postMessage({
         type: 'pause',
-        paused: { http, connections, processes },
+        paused: { http, connections, processes, database },
       })
     },
     { immediate: true }
@@ -114,10 +117,15 @@ function handleParsedEvent(eventType: string, data: any) {
   const httpStore = useHttpStore()
   const connectionsStore = useConnectionsStore()
   const processesStore = useProcessesStore()
+  const redisStore = useRedisStore()
 
   switch (data.type) {
     case 'http_transaction':
       httpStore.addRequest(data.transaction)
+      break
+
+    case 'database_request':
+      redisStore.addRequest(data.request)
       break
 
     case 'connection_opened':

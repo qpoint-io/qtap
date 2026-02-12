@@ -219,14 +219,10 @@ func (s *Stream) processRequests() {
 			switch msg.Type {
 			case MsgQuery:
 				// Simple Query Protocol
-				// A single Query message can contain multiple SQL statements
-				// separated by semicolons. The server sends one CommandComplete
-				// per statement, so we enqueue one PendingCommand per statement.
+				// Keep the full multi-statement SQL together. Each CommandComplete
+				// from the server will correlate with this pending command.
 				sql := ParseQueryMessage(msg.Payload)
-				statements := splitStatements(sql)
-				for _, stmt := range statements {
-					s.enqueueCommand(stmt)
-				}
+				s.enqueueCommand(sql)
 
 			case MsgParse:
 				// Extended Query Protocol: Parse contains the SQL
@@ -481,6 +477,18 @@ func (s *Stream) enqueueCommand(sql string) {
 		}
 	}
 
+	const maxPendingCommands = 1000
+	if len(s.pendingCommands) >= maxPendingCommands {
+		dropped := s.pendingCommands[0]
+		s.logger.Warn("postgres pending commands queue full, dropping oldest",
+			zap.String("dropped_query", truncateQuery(dropped.Query)))
+		if dropped.PluginConn != nil {
+			dropped.PluginConn.Teardown()
+		}
+		copy(s.pendingCommands, s.pendingCommands[1:])
+		s.pendingCommands = s.pendingCommands[:len(s.pendingCommands)-1]
+	}
+
 	s.pendingCommands = append(s.pendingCommands, pending)
 
 	s.logger.Debug("postgres command queued",
@@ -632,24 +640,6 @@ func (s *Stream) drainAbortedCommands() {
 		}
 	}
 	s.pendingCommands = s.pendingCommands[:0]
-}
-
-// splitStatements splits a multi-statement SQL string by semicolons,
-// trimming whitespace and dropping empty segments. If no non-empty
-// statements remain, returns the original query as a single element.
-func splitStatements(sql string) []string {
-	parts := strings.Split(sql, ";")
-	var stmts []string
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			stmts = append(stmts, p)
-		}
-	}
-	if len(stmts) == 0 {
-		return []string{sql}
-	}
-	return stmts
 }
 
 func truncateQuery(query string) string {

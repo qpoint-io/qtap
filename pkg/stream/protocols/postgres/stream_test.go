@@ -599,42 +599,32 @@ func TestRowTruncationAtMaxRows(t *testing.T) {
 	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 110")))
 }
 
-// TestSimpleQueryMultiStatement tests multi-statement Simple Query batches
+// TestSimpleQueryMultiStatement tests multi-statement Simple Query batches.
+// The full SQL is kept as a single pending command; each CommandComplete
+// correlates with it without splitting.
 func TestSimpleQueryMultiStatement(t *testing.T) {
 	s := testStream()
 
 	sql := "CREATE TABLE t (id int); INSERT INTO t VALUES (1); SELECT * FROM t"
 	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte(sql), 0)))
 
-	if len(s.pendingCommands) != 3 {
-		t.Fatalf("expected 3 pending commands, got %d", len(s.pendingCommands))
+	if len(s.pendingCommands) != 1 {
+		t.Fatalf("expected 1 pending command, got %d", len(s.pendingCommands))
 	}
-	if s.pendingCommands[0].Query != "CREATE TABLE t (id int)" {
+	if s.pendingCommands[0].Query != sql {
 		t.Errorf("cmd 0: got %q", s.pendingCommands[0].Query)
 	}
-	if s.pendingCommands[1].Query != "INSERT INTO t VALUES (1)" {
-		t.Errorf("cmd 1: got %q", s.pendingCommands[1].Query)
-	}
-	if s.pendingCommands[2].Query != "SELECT * FROM t" {
-		t.Errorf("cmd 2: got %q", s.pendingCommands[2].Query)
-	}
 
-	// Server responds with 3 CommandComplete messages
+	// Server responds with 3 CommandComplete messages — all correlate with the single pending command
 	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("CREATE TABLE")))
-	if len(s.pendingCommands) != 2 {
-		t.Fatalf("expected 2 pending after first complete, got %d", len(s.pendingCommands))
-	}
 	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("INSERT 0 1")))
-	if len(s.pendingCommands) != 1 {
-		t.Fatalf("expected 1 pending after second complete, got %d", len(s.pendingCommands))
-	}
 	sendResponse(s, buildTypedMessage(MsgRowDescription, buildRowDescriptionPayload("id")))
 	sendResponse(s, buildTypedMessage(MsgDataRow, buildDataRowPayload(strPtr("1"))))
 	sendResponse(s, buildTypedMessage(MsgCommandComplete, buildCommandCompletePayload("SELECT 1")))
-	if len(s.pendingCommands) != 0 {
-		t.Fatalf("expected 0 pending after third complete, got %d", len(s.pendingCommands))
-	}
 	sendResponse(s, buildTypedMessage(MsgReadyForQuery, buildReadyForQueryPayload(TxStatusIdle)))
+	if len(s.pendingCommands) != 0 {
+		t.Fatalf("expected 0 pending after ReadyForQuery, got %d", len(s.pendingCommands))
+	}
 }
 
 // TestSimpleQueryMultiStatementWithError tests error mid-batch drains remaining
@@ -643,8 +633,8 @@ func TestSimpleQueryMultiStatementWithError(t *testing.T) {
 
 	sql := "SELECT 1; SELECT invalid; SELECT 3"
 	sendRequest(s, buildTypedMessage(MsgQuery, append([]byte(sql), 0)))
-	if len(s.pendingCommands) != 3 {
-		t.Fatalf("expected 3 pending commands, got %d", len(s.pendingCommands))
+	if len(s.pendingCommands) != 1 {
+		t.Fatalf("expected 1 pending command, got %d", len(s.pendingCommands))
 	}
 
 	// First succeeds
@@ -659,7 +649,7 @@ func TestSimpleQueryMultiStatementWithError(t *testing.T) {
 	errPayload = append(errPayload, 0, 0)
 	sendResponse(s, buildTypedMessage(MsgErrorResponse, errPayload))
 
-	// ReadyForQuery should drain the remaining command
+	// ReadyForQuery should drain remaining
 	sendResponse(s, buildTypedMessage(MsgReadyForQuery, buildReadyForQueryPayload(TxStatusIdle)))
 	if len(s.pendingCommands) != 0 {
 		t.Fatalf("expected 0 pending after ReadyForQuery drain, got %d", len(s.pendingCommands))

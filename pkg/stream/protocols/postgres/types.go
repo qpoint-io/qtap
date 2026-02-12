@@ -88,9 +88,3 @@ type Message struct {
 	Length  uint32 // Length including itself (from wire format)
 	Payload []byte // Raw payload bytes (after the length field)
 }
-
-// PendingQuery represents a query awaiting its response
-type PendingQuery struct {
-	SQL      string
-	IsSimple bool // true for Simple Query Protocol, false for Extended
-}

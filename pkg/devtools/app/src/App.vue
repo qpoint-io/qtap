@@ -46,6 +46,7 @@
       <Requests v-if="activeTab === 'requests'" />
       <Connections v-else-if="activeTab === 'connections'" />
       <Processes v-else-if="activeTab === 'processes'" />
+      <Redis v-else-if="activeTab === 'redis'" />
       <Welcome v-else-if="activeTab === 'welcome'" :connectionStatus="status" @selectTab="selectTab" />
     </div>
   </div>
@@ -59,9 +60,11 @@ import { useTheme } from '@/composables/theme'
 import { useHttpStore } from '@/stores/http'
 import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
+import { useRedisStore } from '@/stores/redis'
 import Requests from '@/components/pages/Requests.vue'
 import Connections from '@/components/pages/Connections.vue'
 import Processes from '@/components/pages/Processes.vue'
+import Redis from '@/components/pages/Redis.vue'
 import Welcome from '@/components/pages/Welcome.vue'
 import ThemeToggle from '@/components/ux/ThemeToggle.vue'
 import logoSmallBlack from '@/assets/logo-small-black.svg'
@@ -74,16 +77,19 @@ const { isDark } = useTheme()
 const httpStore = useHttpStore()
 const connectionsStore = useConnectionsStore()
 const processesStore = useProcessesStore()
+const redisStore = useRedisStore()
 
 onMounted(() => {
   httpStore.restoreFromStorage()
   connectionsStore.restoreFromStorage()
   processesStore.restoreFromStorage()
+  redisStore.restoreFromStorage()
   
   // Start periodic persistence for all stores
   httpStore.startPeriodicPersistence()
   connectionsStore.startPeriodicPersistence()
   processesStore.startPeriodicPersistence()
+  redisStore.startPeriodicPersistence()
 })
 
 const params = useUrlParams()
@@ -92,6 +98,7 @@ const tabs: { id: string; label: string }[] = [
   { id: 'processes', label: 'Processes' },
   { id: 'connections', label: 'Connections' },
   { id: 'requests', label: 'Requests' },
+  { id: 'redis', label: 'Redis' },
 ]
 
 // get active tab from URL, default to 'requests'
@@ -104,6 +111,7 @@ const selectTab = (tabId: string) => {
   if (tabId !== 'requests') delete params.request_id
   if (tabId !== 'connections') delete params.connection_id
   if (tabId !== 'processes') delete params.process_id
+  if (tabId !== 'redis') delete params.redis_id
 }
 
 // connect to the SSE endpoint

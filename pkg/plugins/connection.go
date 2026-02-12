@@ -458,3 +458,39 @@ func (c *Connection) OnMySQLResult(res *MySQLResult) error {
 		return nil
 	})
 }
+
+// OnPostgresCommand processes a PostgreSQL command through the Postgres plugin stack
+func (c *Connection) OnPostgresCommand(cmd *PostgresCommand) error {
+	return c.enqueue("postgres_command", func() error {
+		for _, p := range c.stack {
+			pgP, ok := p.(PostgresPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement PostgresPluginInstance - this indicates a bug")
+				continue
+			}
+			status := pgP.OnPostgresCommand(cmd)
+			if status == PostgresStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// OnPostgresResult processes a PostgreSQL result through the Postgres plugin stack
+func (c *Connection) OnPostgresResult(res *PostgresResult) error {
+	return c.enqueue("postgres_result", func() error {
+		for _, p := range c.stack {
+			pgP, ok := p.(PostgresPluginInstance)
+			if !ok {
+				c.logger.DPanic("plugin instance does not implement PostgresPluginInstance - this indicates a bug")
+				continue
+			}
+			status := pgP.OnPostgresResult(res)
+			if status == PostgresStatusStopIteration {
+				return nil
+			}
+		}
+		return nil
+	})
+}

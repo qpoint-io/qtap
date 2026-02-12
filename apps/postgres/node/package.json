@@ -1,0 +1,8 @@
+{
+  "name": "postgres-client",
+  "version": "1.0.0",
+  "main": "app.js",
+  "dependencies": {
+    "pg": "^8.12.0"
+  }
+}

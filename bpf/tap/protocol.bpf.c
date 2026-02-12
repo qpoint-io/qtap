@@ -353,6 +353,57 @@ static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info,
 	return false;
 }
 
+// SSLRequest: fixed 8 bytes [length=8][code=80877103]
+// StartupMessage: [length][version=3.0/3.2][params...]
+static bool detect_postgres(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
+	if (count < 8 || !buf_info->buf) {
+		return false;
+	}
+
+	unsigned char header[8] = {0};
+	if (buf_read((char *)header, sizeof(header), buf_info, 0) == 0) {
+		return false;
+	}
+
+	// Check 1: SSLRequest — fixed 8 bytes
+	// Length=8, Code=80877103 (0x04D2162F)
+	if (header[0] == 0x00 && header[1] == 0x00 &&
+		header[2] == 0x00 && header[3] == 0x08 &&
+		header[4] == 0x04 && header[5] == 0xD2 &&
+		header[6] == 0x16 && header[7] == 0x2F) {
+		conn_info->protocol = P_POSTGRES;
+		conn_info->tls_upgrade_pending = true;
+		return true;
+	}
+
+	// Check 2: GSSENCRequest — fixed 8 bytes
+	// Length=8, Code=80877104 (0x04D21630)
+	if (header[0] == 0x00 && header[1] == 0x00 &&
+		header[2] == 0x00 && header[3] == 0x08 &&
+		header[4] == 0x04 && header[5] == 0xD2 &&
+		header[6] == 0x16 && header[7] == 0x30) {
+		conn_info->protocol = P_POSTGRES;
+		return true;
+	}
+
+	// Check 3: StartupMessage — version 3.0 or 3.2
+	// Length varies (typically 30-200), version at bytes 4-7
+	uint32_t msg_len = (header[0] << 24) | (header[1] << 16) |
+	                   (header[2] << 8) | header[3];
+	uint32_t version = (header[4] << 24) | (header[5] << 16) |
+	                   (header[6] << 8) | header[7];
+
+	// Version 3.0 = 196608 (0x00030000)
+	// Version 3.2 = 196610 (0x00030002)
+	if ((version == 0x00030000 || version == 0x00030002) &&
+		msg_len >= 16 && msg_len <= 10000) {
+		conn_info->protocol = P_POSTGRES;
+		return true;
+	}
+
+	return false;
+}
+
 static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// set the default protocol to unknown
 	conn_info->protocol = P_UNKNOWN;
@@ -375,6 +426,10 @@ static bool detect_protocol(struct conn_info *conn_info, struct buf_info *buf_in
 	// detect mysql - server greeting on ingress
 	if (conn_info->protocol == P_UNKNOWN)
 		detected = detect_mysql(conn_info, buf_info, count);
+
+	// detect postgres - check before HTTP as Postgres binary protocol might be misdetected
+	if (conn_info->protocol == P_UNKNOWN)
+		detected = detect_postgres(conn_info, buf_info, count);
 
 	// detect http
 	if (conn_info->protocol == P_UNKNOWN)

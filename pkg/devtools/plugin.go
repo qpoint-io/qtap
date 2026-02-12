@@ -1,10 +1,16 @@
 package devtools
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -52,8 +58,88 @@ func (f *PluginFactory) NewHttpInstance(conn plugins.PluginContext, svcs *servic
 	return f.httpCapture.NewHttpInstance(conn, svcs)
 }
 
+func (f *PluginFactory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
+	f.logger.Debug("new devtools Redis plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for Redis", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsRedisInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
 	return PluginTypeDevTools
+}
+
+// devtoolsRedisInstance captures Redis commands and saves them as DatabaseRequests
+// to the devtools eventstore, which broadcasts them via SSE.
+type devtoolsRedisInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.RedisCommand
+	result  *plugins.RedisResult
+}
+
+func (r *devtoolsRedisInstance) OnRedisCommand(cmd *plugins.RedisCommand) plugins.RedisStatus {
+	r.command = cmd
+	return plugins.RedisStatusContinue
+}
+
+func (r *devtoolsRedisInstance) OnRedisResult(res *plugins.RedisResult) plugins.RedisStatus {
+	r.result = res
+	return plugins.RedisStatusContinue
+}
+
+func (r *devtoolsRedisInstance) Destroy() {
+	if r.command == nil {
+		return
+	}
+
+	meta := r.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "redis",
+		Statement:    r.buildStatement(r.command),
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !r.command.Timestamp.IsZero() {
+		duration := time.Since(r.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if r.result != nil {
+		req.ResultType = r.result.Type
+		req.IsError = r.result.IsError
+		if r.result.IsError {
+			req.ErrorMsg = fmt.Sprintf("%v", r.result.Value)
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	r.eventstore.Save(context.TODO(), req)
+}
+
+func (r *devtoolsRedisInstance) buildStatement(cmd *plugins.RedisCommand) string {
+	if len(cmd.Args) == 0 {
+		return cmd.Name
+	}
+	return fmt.Sprintf("%s %s", cmd.Name, strings.Join(cmd.Args, " "))
 }

@@ -90,6 +90,22 @@ func (f *PluginFactory) NewMySQLInstance(ctx plugins.PluginContext, svcs *servic
 	}
 }
 
+func (f *PluginFactory) NewPostgresInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.PostgresPluginInstance {
+	f.logger.Debug("new devtools Postgres plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for Postgres", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsPostgresInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
@@ -216,4 +232,65 @@ func (m *devtoolsMySQLInstance) Destroy() {
 	req.SetRequestID(meta.RequestID())
 
 	m.eventstore.Save(context.TODO(), req)
+}
+
+// devtoolsPostgresInstance captures Postgres commands and saves them as DatabaseRequests
+type devtoolsPostgresInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.PostgresCommand
+	result  *plugins.PostgresResult
+}
+
+func (p *devtoolsPostgresInstance) OnPostgresCommand(cmd *plugins.PostgresCommand) plugins.PostgresStatus {
+	p.command = cmd
+	return plugins.PostgresStatusContinue
+}
+
+func (p *devtoolsPostgresInstance) OnPostgresResult(res *plugins.PostgresResult) plugins.PostgresStatus {
+	p.result = res
+	return plugins.PostgresStatusContinue
+}
+
+func (p *devtoolsPostgresInstance) Destroy() {
+	if p.command == nil {
+		return
+	}
+
+	meta := p.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "postgresql",
+		Statement:    p.command.Query,
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !p.command.Timestamp.IsZero() {
+		duration := time.Since(p.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if p.result != nil {
+		req.IsError = p.result.Type == "Error"
+		if p.result.Type == "CommandComplete" && p.result.CommandTag != "" {
+			req.ResultType = p.result.CommandTag
+		} else {
+			req.ResultType = p.result.Type
+		}
+		req.ResultCount = p.result.RowCount
+		if p.result.ErrorMessage != "" {
+			req.ErrorMsg = p.result.ErrorMessage
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	p.eventstore.Save(context.TODO(), req)
 }

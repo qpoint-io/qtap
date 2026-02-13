@@ -74,6 +74,22 @@ func (f *PluginFactory) NewRedisInstance(ctx plugins.PluginContext, svcs *servic
 	}
 }
 
+func (f *PluginFactory) NewMySQLInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.MySQLPluginInstance {
+	f.logger.Debug("new devtools MySQL plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for MySQL", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsMySQLInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
@@ -143,3 +159,62 @@ func (r *devtoolsRedisInstance) buildStatement(cmd *plugins.RedisCommand) string
 	}
 	return fmt.Sprintf("%s %s", cmd.Name, strings.Join(cmd.Args, " "))
 }
+
+// devtoolsMySQLInstance captures MySQL commands and saves them as DatabaseRequests
+type devtoolsMySQLInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.MySQLCommand
+	result  *plugins.MySQLResult
+}
+
+func (m *devtoolsMySQLInstance) OnMySQLCommand(cmd *plugins.MySQLCommand) plugins.MySQLStatus {
+	m.command = cmd
+	return plugins.MySQLStatusContinue
+}
+
+func (m *devtoolsMySQLInstance) OnMySQLResult(res *plugins.MySQLResult) plugins.MySQLStatus {
+	m.result = res
+	return plugins.MySQLStatusContinue
+}
+
+func (m *devtoolsMySQLInstance) Destroy() {
+	if m.command == nil {
+		return
+	}
+
+	meta := m.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "mysql",
+		Statement:    m.command.Query,
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !m.command.Timestamp.IsZero() {
+		duration := time.Since(m.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if m.result != nil {
+		req.ResultType = m.result.Type
+		req.IsError = m.result.Type == "Error"
+		req.AffectedCount = int64(m.result.AffectedRows) //nolint:gosec
+		req.ResultCount = int64(m.result.RowCount)
+		if m.result.ErrorMessage != "" {
+			req.ErrorMsg = m.result.ErrorMessage
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	m.eventstore.Save(context.TODO(), req)
+}
+

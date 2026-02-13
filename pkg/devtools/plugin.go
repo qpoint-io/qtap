@@ -217,4 +217,3 @@ func (m *devtoolsMySQLInstance) Destroy() {
 
 	m.eventstore.Save(context.TODO(), req)
 }
-

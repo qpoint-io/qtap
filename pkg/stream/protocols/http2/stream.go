@@ -152,6 +152,7 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			span.AddEvent("http2.frame[error]", trace.WithAttributes(
 				attribute.String("error", err.Error()),
 				attribute.Int("length", frameLength),
+				attribute.String("direction", string(event.Direction)),
 			))
 			// stop if the protocol is unrecognized
 			if errors.Is(err, http2.ConnectionError(http2.ErrCodeProtocol)) {
@@ -171,6 +172,7 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 		span.AddEvent(fmt.Sprintf("http2.frame[%s]", frameType), trace.WithAttributes(
 			attribute.Int64("stream_id", int64(frame.Header().StreamID)),
 			attribute.Int("length", frameLength),
+			attribute.String("direction", string(event.Direction)),
 		))
 
 		// session

@@ -172,7 +172,11 @@ func (m *Manager) routeAPIEvents(w http.ResponseWriter, r *http.Request) {
 				)
 			}
 			return
-		case e := <-events:
+		case e, ok := <-events:
+			if !ok {
+				// events channel closed (unsubscribed); stop streaming
+				return
+			}
 			writeEvent(ll, w, e)
 		}
 	}

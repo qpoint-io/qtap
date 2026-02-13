@@ -129,11 +129,14 @@ function handleParsedEvent(eventType: string, data: any) {
 
     case 'database_request':
       switch (data.request?.databaseType) {
+        case 'redis':
+          redisStore.addRequest(data.request)
+          break
         case 'mysql':
           mysqlStore.addRequest(data.request)
           break
         default:
-          redisStore.addRequest(data.request)
+          console.warn('DevTools: Unknown databaseType for database_request:', data.request?.databaseType)
           break
       }
       break

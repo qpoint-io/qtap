@@ -367,6 +367,7 @@ func (c *Connection) Close() {
 	connBytesRecvTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
 
 	span := trace.SpanFromContext(c.ctx)
+	span.SetAttributes(attribute.String("direction", c.Direction()))
 	defer span.End()
 
 	c.logger.Debug("closing connection")

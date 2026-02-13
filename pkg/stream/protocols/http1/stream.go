@@ -6,6 +6,8 @@ import (
 
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/plugins"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -46,6 +48,9 @@ func SetPluginManager(manager *plugins.Manager) HTTPStreamOpt {
 }
 
 func NewHTTPStream(ctx context.Context, domain string, logger *zap.Logger, conn *connection.Connection, opts ...HTTPStreamOpt) *HTTPStream {
+	ctx, span := tracer.Start(ctx, "http1.Stream")
+	span.SetAttributes(attribute.String("stream.type", "http1"))
+
 	// init a stream
 	s := &HTTPStream{
 		ctx:    ctx,
@@ -82,6 +87,12 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 		phase = PhaseResponse
 	}
 
+	span := trace.SpanFromContext(t.ctx)
+	span.AddEvent("http1.data", trace.WithAttributes(
+		attribute.String("direction", string(event.Direction)),
+		attribute.Int("size", len(event.Data)),
+	))
+
 	if t.session == nil || t.session.Closed() {
 		t.session = NewSession(t.ctx, t.logger, t.domain, t.conn, t.pluginManager)
 	}
@@ -96,6 +107,9 @@ func (t *HTTPStream) Process(event *connection.DataEvent) error {
 
 func (t *HTTPStream) Close() {
 	t.logger.Debug("closing http/1 stream")
+	span := trace.SpanFromContext(t.ctx)
+	defer span.End()
+
 	if err := t.session.Close(); err != nil {
 		t.logger.Error("closing session", zap.Error(err))
 	}

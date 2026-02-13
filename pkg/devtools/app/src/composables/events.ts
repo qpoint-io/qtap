@@ -5,6 +5,7 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
 import { useMySQLStore } from '@/stores/mysql'
+import { usePostgresStore } from '@/stores/postgres'
 import type { WorkerOutboundMessage } from './events.types'
 
 /**
@@ -23,6 +24,7 @@ export function useEvents() {
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
+  const postgresStore = usePostgresStore()
 
   // reactive state for connection status and errors
   const status = ref<'CONNECTING' | 'OPEN' | 'CLOSED'>('CONNECTING')
@@ -82,7 +84,7 @@ export function useEvents() {
       () => httpStore.paused,
       () => connectionsStore.paused,
       () => processesStore.paused,
-      () => redisStore.paused || mysqlStore.paused,
+      () => redisStore.paused || mysqlStore.paused || postgresStore.paused,
     ],
     ([http, connections, processes, database]) => {
       worker.postMessage({
@@ -121,6 +123,7 @@ function handleParsedEvent(eventType: string, data: any) {
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
+  const postgresStore = usePostgresStore()
 
   switch (data.type) {
     case 'http_transaction':
@@ -134,6 +137,9 @@ function handleParsedEvent(eventType: string, data: any) {
           break
         case 'mysql':
           mysqlStore.addRequest(data.request)
+          break
+        case 'postgresql':
+          postgresStore.addRequest(data.request)
           break
         default:
           console.warn('DevTools: Unknown databaseType for database_request:', data.request?.databaseType)

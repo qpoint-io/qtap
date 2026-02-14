@@ -231,10 +231,6 @@ func toEventStoreL7Protocol(protocol connection.Protocol) eventstore.L7Protocol 
 		return eventstore.L7Protocol_GRPC
 	case connection.Protocol_MYSQL:
 		return eventstore.L7Protocol_MYSQL
-	case connection.Protocol_REDIS:
-		return eventstore.L7Protocol_REDIS
-	case connection.Protocol_POSTGRES:
-		return eventstore.L7Protocol_POSTGRES
 	default:
 		return eventstore.L7Protocol_OTHER
 	}

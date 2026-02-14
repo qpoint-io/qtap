@@ -23,5 +23,3 @@ tap:
     stack: basic_reporting
   mysql:
     stack: basic_reporting
-  postgres:
-    stack: basic_reporting

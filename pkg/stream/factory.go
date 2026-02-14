@@ -8,7 +8,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http1"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http2"
 	mysqlStream "github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
-	postgresStream "github.com/qpoint-io/qtap/pkg/stream/protocols/postgres"
 	redisStream "github.com/qpoint-io/qtap/pkg/stream/protocols/redis"
 	"go.uber.org/zap"
 )
@@ -91,21 +90,6 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		return mysqlStream.NewStream(conn.Context(), logger, conn,
 			mysqlStream.SetDomain(domain),
 			mysqlStream.SetPluginManager(m.pluginManager),
-		)
-	}
-
-	// parse postgres streams
-	if conn.Protocol == connection.Protocol_POSTGRES {
-		domain := conn.Domain()
-
-		// if the domain does not have a stack and no default stack is set, skip it
-		if _, exists := m.pluginManager.GetDomainStack(domain, "postgres"); !exists {
-			return nil
-		}
-
-		return postgresStream.NewStream(conn.Context(), logger, conn,
-			postgresStream.SetDomain(domain),
-			postgresStream.SetPluginManager(m.pluginManager),
 		)
 	}
 

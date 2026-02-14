@@ -48,9 +48,10 @@ type Manager struct {
 	domainStacks *synq.Map[stackKey, config.TapProtocolConfig]
 
 	// default stack configs per protocol
-	defaultStackConfig      config.TapProtocolConfig
-	defaultRedisStackConfig config.TapProtocolConfig
-	defaultMySQLStackConfig config.TapProtocolConfig
+	defaultStackConfig         config.TapProtocolConfig
+	defaultRedisStackConfig    config.TapProtocolConfig
+	defaultMySQLStackConfig    config.TapProtocolConfig
+	defaultPostgresStackConfig config.TapProtocolConfig
 
 	// plugin registry
 	pluginRegistry *PluginRegistry
@@ -136,6 +137,10 @@ func (m *Manager) SetConfig(conf *config.Config) {
 			stackKey{Domain: endpoint.Domain, Protocol: "mysql"},
 			endpoint.MySQL,
 		)
+		m.domainStacks.Store(
+			stackKey{Domain: endpoint.Domain, Protocol: "postgres"},
+			endpoint.Postgres,
+		)
 	}
 
 	// set the default stacks per protocol
@@ -143,6 +148,7 @@ func (m *Manager) SetConfig(conf *config.Config) {
 	m.defaultStackConfig = conf.Tap.Http
 	m.defaultRedisStackConfig = conf.Tap.Redis
 	m.defaultMySQLStackConfig = conf.Tap.MySQL
+	m.defaultPostgresStackConfig = conf.Tap.Postgres
 	m.mu.Unlock()
 
 	// generate a snapshot of the incoming config
@@ -182,6 +188,8 @@ func (m *Manager) registerDomainToStack(domain, protocol string) (*StackDeployme
 			endpointConfig = m.defaultRedisStackConfig
 		case "mysql":
 			endpointConfig = m.defaultMySQLStackConfig
+		case "postgres":
+			endpointConfig = m.defaultPostgresStackConfig
 		default:
 			endpointConfig = m.defaultStackConfig
 		}
@@ -221,6 +229,8 @@ func (m *Manager) GetDomainStack(domain, protocol string) (string, bool) {
 		return m.defaultRedisStackConfig.Stack, m.defaultRedisStackConfig.HasStack()
 	case "mysql":
 		return m.defaultMySQLStackConfig.Stack, m.defaultMySQLStackConfig.HasStack()
+	case "postgres":
+		return m.defaultPostgresStackConfig.Stack, m.defaultPostgresStackConfig.HasStack()
 	default:
 		return m.defaultStackConfig.Stack, m.defaultStackConfig.HasStack()
 	}

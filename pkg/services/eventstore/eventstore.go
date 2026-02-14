@@ -276,7 +276,8 @@ const (
 	L7Protocol_HTTP2 L7Protocol = "http2"
 	L7Protocol_DNS   L7Protocol = "dns"
 	L7Protocol_GRPC  L7Protocol = "grpc"
-	L7Protocol_MYSQL L7Protocol = "mysql"
+	L7Protocol_MYSQL  L7Protocol = "mysql"
+	L7Protocol_REDIS  L7Protocol = "redis"
 	L7Protocol_OTHER L7Protocol = "other"
 )
 

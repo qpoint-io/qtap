@@ -1,10 +1,16 @@
 package devtools
 
 import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/services"
+	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -52,8 +58,239 @@ func (f *PluginFactory) NewHttpInstance(conn plugins.PluginContext, svcs *servic
 	return f.httpCapture.NewHttpInstance(conn, svcs)
 }
 
+func (f *PluginFactory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
+	f.logger.Debug("new devtools Redis plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for Redis", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsRedisInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
+func (f *PluginFactory) NewMySQLInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.MySQLPluginInstance {
+	f.logger.Debug("new devtools MySQL plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for MySQL", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsMySQLInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
+func (f *PluginFactory) NewPostgresInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.PostgresPluginInstance {
+	f.logger.Debug("new devtools Postgres plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for Postgres", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsPostgresInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
 	return PluginTypeDevTools
+}
+
+// devtoolsRedisInstance captures Redis commands and saves them as DatabaseRequests
+// to the devtools eventstore, which broadcasts them via SSE.
+type devtoolsRedisInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.RedisCommand
+	result  *plugins.RedisResult
+}
+
+func (r *devtoolsRedisInstance) OnRedisCommand(cmd *plugins.RedisCommand) plugins.RedisStatus {
+	r.command = cmd
+	return plugins.RedisStatusContinue
+}
+
+func (r *devtoolsRedisInstance) OnRedisResult(res *plugins.RedisResult) plugins.RedisStatus {
+	r.result = res
+	return plugins.RedisStatusContinue
+}
+
+func (r *devtoolsRedisInstance) Destroy() {
+	if r.command == nil {
+		return
+	}
+
+	meta := r.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "redis",
+		Statement:    r.buildStatement(r.command),
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !r.command.Timestamp.IsZero() {
+		duration := time.Since(r.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if r.result != nil {
+		req.ResultType = r.result.Type
+		req.IsError = r.result.IsError
+		if r.result.IsError {
+			req.ErrorMsg = fmt.Sprintf("%v", r.result.Value)
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	r.eventstore.Save(context.TODO(), req)
+}
+
+func (r *devtoolsRedisInstance) buildStatement(cmd *plugins.RedisCommand) string {
+	if len(cmd.Args) == 0 {
+		return cmd.Name
+	}
+	return fmt.Sprintf("%s %s", cmd.Name, strings.Join(cmd.Args, " "))
+}
+
+// devtoolsMySQLInstance captures MySQL commands and saves them as DatabaseRequests
+type devtoolsMySQLInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.MySQLCommand
+	result  *plugins.MySQLResult
+}
+
+func (m *devtoolsMySQLInstance) OnMySQLCommand(cmd *plugins.MySQLCommand) plugins.MySQLStatus {
+	m.command = cmd
+	return plugins.MySQLStatusContinue
+}
+
+func (m *devtoolsMySQLInstance) OnMySQLResult(res *plugins.MySQLResult) plugins.MySQLStatus {
+	m.result = res
+	return plugins.MySQLStatusContinue
+}
+
+func (m *devtoolsMySQLInstance) Destroy() {
+	if m.command == nil {
+		return
+	}
+
+	meta := m.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "mysql",
+		Statement:    m.command.Query,
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !m.command.Timestamp.IsZero() {
+		duration := time.Since(m.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if m.result != nil {
+		req.ResultType = m.result.Type
+		req.IsError = m.result.Type == "Error"
+		req.AffectedCount = int64(m.result.AffectedRows) //nolint:gosec
+		req.ResultCount = int64(m.result.RowCount)
+		if m.result.ErrorMessage != "" {
+			req.ErrorMsg = m.result.ErrorMessage
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	m.eventstore.Save(context.TODO(), req)
+}
+
+// devtoolsPostgresInstance captures Postgres commands and saves them as DatabaseRequests
+type devtoolsPostgresInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.PostgresCommand
+	result  *plugins.PostgresResult
+}
+
+func (p *devtoolsPostgresInstance) OnPostgresCommand(cmd *plugins.PostgresCommand) plugins.PostgresStatus {
+	p.command = cmd
+	return plugins.PostgresStatusContinue
+}
+
+func (p *devtoolsPostgresInstance) OnPostgresResult(res *plugins.PostgresResult) plugins.PostgresStatus {
+	p.result = res
+	return plugins.PostgresStatusContinue
+}
+
+func (p *devtoolsPostgresInstance) Destroy() {
+	if p.command == nil {
+		return
+	}
+
+	meta := p.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "postgresql",
+		Statement:    p.command.Query,
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	if !p.command.Timestamp.IsZero() {
+		duration := time.Since(p.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	if p.result != nil {
+		req.IsError = p.result.Type == "Error"
+		if p.result.Type == "CommandComplete" && p.result.CommandTag != "" {
+			req.ResultType = p.result.CommandTag
+		} else {
+			req.ResultType = p.result.Type
+		}
+		req.ResultCount = p.result.RowCount
+		if p.result.ErrorMessage != "" {
+			req.ErrorMsg = p.result.ErrorMessage
+		}
+	}
+
+	req.SetRequestID(meta.RequestID())
+
+	p.eventstore.Save(context.TODO(), req)
 }

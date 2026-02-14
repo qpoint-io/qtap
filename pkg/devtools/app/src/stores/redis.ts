@@ -1,0 +1,103 @@
+import { defineStore } from 'pinia'
+import type { Filter } from './filter'
+import { usePersistedBuffer } from '@/composables/persistedBuffer'
+
+// Storage configuration
+const bufferManager = usePersistedBuffer<DatabaseRequest>({
+  storageKey: 'devtools_redis_buffer',
+  maxItems: 500,
+  maxBytes: 5 * 1024 * 1024, // 5 MiB
+  idKey: 'requestId',
+})
+
+// Database Request Types
+export interface DatabaseRequest {
+  requestId: string
+  timestamp: string
+  direction: string
+  databaseType: string  // "redis"
+  statement: string     // The Redis command (e.g., "GET mykey", "SET foo bar")
+  resultType?: string
+  isError: boolean
+  errorMsg?: string
+  affectedCount?: number
+  resultCount?: number
+  duration: number      // milliseconds
+  bytesSent: number
+  bytesReceived: number
+  // Process metadata (from tags/meta)
+  process?: {
+    exe?: string
+    pid?: number
+    containerName?: string
+    containerImage?: string
+    podName?: string
+    podNamespace?: string
+  }
+}
+
+// Redis Store
+export const useRedisStore = defineStore('redis', {
+  state: () => ({
+    requestsBuffer: [] as DatabaseRequest[],
+    paused: false,
+    filters: [] as Filter[],
+  }),
+  getters: {
+    getRequestById: (state) => (id: string) => {
+      return state.requestsBuffer.find((req) => req.requestId === id)
+    },
+    getBufferLimits: () => () => {
+      return bufferManager.getLimits()
+    },
+  },
+  actions: {
+    restoreFromStorage() {
+      const restored = bufferManager.restore()
+      if (restored) {
+        this.requestsBuffer = restored
+      }
+    },
+
+    addRequest(request: DatabaseRequest) {
+      bufferManager.addAndPersist(this.requestsBuffer, request)
+    },
+
+    updateRequest(id: string, request: DatabaseRequest) {
+      const index = this.requestsBuffer.findIndex((req) =>
+        req.requestId === id
+      )
+      if (index !== -1) {
+        this.requestsBuffer[index] = request
+        bufferManager.updateAndPersist(this.requestsBuffer)
+      }
+    },
+
+    removeRequest(id: string) {
+      bufferManager.removeAndPersist(
+        this.requestsBuffer,
+        (req) => req.requestId === id
+      )
+    },
+
+    clearRequests() {
+      bufferManager.clearAll(this.requestsBuffer)
+    },
+
+    startPeriodicPersistence() {
+      bufferManager.startPeriodicPersistence(() => this.requestsBuffer)
+    },
+
+    stopPeriodicPersistence() {
+      bufferManager.stopPeriodicPersistence()
+    },
+
+    setSelectedId(id: string | null) {
+      bufferManager.setSelectedItemId(id)
+    },
+
+    updateBufferLimits(maxItems: number, maxBytes: number) {
+      bufferManager.updateLimits(maxItems, maxBytes)
+    },
+  },
+})

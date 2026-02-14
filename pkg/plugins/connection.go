@@ -21,12 +21,11 @@ import (
 type ConnectionType string
 
 const (
-	ConnectionType_UNKNOWN  ConnectionType = "unknown"
-	ConnectionType_HTTP     ConnectionType = "http"
-	ConnectionType_GRPC     ConnectionType = "grpc"
-	ConnectionType_REDIS    ConnectionType = "redis"
-	ConnectionType_MYSQL    ConnectionType = "mysql"
-	ConnectionType_POSTGRES ConnectionType = "postgres"
+	ConnectionType_UNKNOWN ConnectionType = "unknown"
+	ConnectionType_HTTP    ConnectionType = "http"
+	ConnectionType_GRPC    ConnectionType = "grpc"
+	ConnectionType_REDIS   ConnectionType = "redis"
+	ConnectionType_MYSQL   ConnectionType = "mysql"
 )
 
 const (

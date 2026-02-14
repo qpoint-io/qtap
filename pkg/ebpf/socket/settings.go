@@ -19,10 +19,9 @@ const (
 
 // protocol stream flags (maps to STREAM_*_FLAG in settings.bpf.h)
 const (
-	streamProtocolHTTP     uint32 = 1 << 0
-	streamProtocolRedis    uint32 = 1 << 1
-	streamProtocolMySQL    uint32 = 1 << 2
-	streamProtocolPostgres uint32 = 1 << 3
+	streamProtocolHTTP  uint32 = 1 << 0
+	streamProtocolRedis uint32 = 1 << 1
+	streamProtocolMySQL uint32 = 1 << 2
 )
 
 // possible traffic directions (maps to DIRECTION enum)
@@ -125,18 +124,6 @@ func (m *SettingsManager) updateSocketSettingStreamProtocols() error {
 		for _, e := range m.config.Tap.Endpoints {
 			if e.MySQL.HasStack() {
 				protocols |= streamProtocolMySQL
-				break
-			}
-		}
-	}
-
-	// check top-level and endpoint-level Postgres configs
-	if m.config.Tap.Postgres.HasStack() {
-		protocols |= streamProtocolPostgres
-	} else {
-		for _, e := range m.config.Tap.Endpoints {
-			if e.Postgres.HasStack() {
-				protocols |= streamProtocolPostgres
 				break
 			}
 		}

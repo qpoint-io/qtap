@@ -21,11 +21,10 @@ func (c *TapProtocolConfig) HasStack() bool {
 }
 
 type TapEndpointConfig struct {
-	Domain   string            `yaml:"domain" validate:"required,hostname"`
-	Http     TapProtocolConfig `yaml:"http"`
-	Redis    TapProtocolConfig `yaml:"redis"`
-	MySQL    TapProtocolConfig `yaml:"mysql"`
-	Postgres TapProtocolConfig `yaml:"postgres"`
+	Domain string            `yaml:"domain" validate:"required,hostname"`
+	Http   TapProtocolConfig `yaml:"http"`
+	Redis  TapProtocolConfig `yaml:"redis"`
+	MySQL  TapProtocolConfig `yaml:"mysql"`
 }
 
 type TapConfig struct {
@@ -35,18 +34,17 @@ type TapConfig struct {
 	Http            TapProtocolConfig   `yaml:"http"`
 	Redis           TapProtocolConfig   `yaml:"redis"`
 	MySQL           TapProtocolConfig   `yaml:"mysql"`
-	Postgres        TapProtocolConfig   `yaml:"postgres"`
 	Filters         TapFilters          `yaml:"filters,omitempty"`
 	Endpoints       []TapEndpointConfig `yaml:"endpoints" validate:"dive"`
 }
 
 func (c *TapConfig) HasAnyStack() bool {
-	if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() || c.Postgres.HasStack() {
+	if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() {
 		return true
 	}
 
 	for _, e := range c.Endpoints {
-		if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() || e.Postgres.HasStack() {
+		if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() {
 			return true
 		}
 	}
@@ -66,9 +64,6 @@ func (c *TapConfig) GetAllProtocols() []string {
 	if c.MySQL.HasStack() {
 		protocols = append(protocols, "mysql")
 	}
-	if c.Postgres.HasStack() {
-		protocols = append(protocols, "postgres")
-	}
 
 	for _, e := range c.Endpoints {
 		if e.Http.HasStack() {
@@ -80,9 +75,6 @@ func (c *TapConfig) GetAllProtocols() []string {
 		}
 		if e.MySQL.HasStack() {
 			protocols = append(protocols, "mysql")
-		}
-		if e.Postgres.HasStack() {
-			protocols = append(protocols, "postgres")
 		}
 	}
 

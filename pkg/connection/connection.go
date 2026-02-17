@@ -147,10 +147,11 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 	}
 
 	id := xid.New().String()
-	span.SetAttributes(
-		attribute.String("connection.id", id),
-		attribute.Int64("connection.cookie", int64(openEvent.Cookie)),
-	)
+	span.SetAttributes(attribute.String("connection.id", id))
+
+	if openEvent != nil {
+		span.SetAttributes(attribute.Int64("connection.cookie", int64(openEvent.Cookie)))
+	}
 
 	t := tags.New()
 	// TODO: is this what we actually want here?

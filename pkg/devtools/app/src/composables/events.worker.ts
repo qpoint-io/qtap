@@ -1,6 +1,7 @@
 import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
+import type { DatabaseRequest } from '@/stores/redis'
 import type { WorkerInboundMessage, WorkerOutboundMessage } from './events.types'
 
 /**
@@ -16,6 +17,7 @@ let pauseState = {
   http: false,
   connections: false,
   processes: false,
+  database: false,
 }
 let reconnectAttempt = 0
 let reconnectTimeout: number | null = null
@@ -24,6 +26,7 @@ let reconnectTimeout: number | null = null
 const eventNames = [
   'system.connected',
   'request.http_transaction',
+  'request.database',
   'connection.opened',
   'connection.updated',
   'connection.closed',
@@ -147,6 +150,19 @@ function handleSSEEvent(eventType: string, data: string) {
         }
         break
 
+      case 'request.database':
+        // Check if database events are paused
+        if (pauseState.database) return
+
+        const databaseRequest = parseDatabaseRequest(parsed)
+        if (databaseRequest) {
+          sendEvent(eventType, {
+            type: 'database_request',
+            request: databaseRequest,
+          })
+        }
+        break
+
       case 'connection.opened':
         // Check if connection events are paused
         if (pauseState.connections) return
@@ -241,6 +257,20 @@ function parseHttpTransaction(event: any): HttpTransaction | null {
     console.error('DevTools Worker: Failed to parse HTTP transaction:', err, event)
     return null
   }
+}
+
+/**
+ * Parse database request from event data
+ */
+function parseDatabaseRequest(event: any): DatabaseRequest | null {
+  // Backend sends: { ts, data: { data: <DatabaseRequest> } }
+
+  if (!event?.data?.data) {
+    console.warn('DevTools Worker: Unexpected request.database structure:', event)
+    return null
+  }
+
+  return event.data.data as DatabaseRequest
 }
 
 /**

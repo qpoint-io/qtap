@@ -150,6 +150,7 @@ export function useMySQL() {
 
 // Extract the first SQL keyword from a statement
 export function getStatementType(statement: string): string {
+  if (!statement) return '-'
   const firstWord = statement.trim().split(/\s+/)[0]?.toUpperCase()
   return firstWord || '-'
 }

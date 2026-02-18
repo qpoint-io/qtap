@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import type { Filter } from './filter'
 import { usePersistedBuffer } from '@/composables/persistedBuffer'
+import type { DatabaseRequest } from '@/types/database'
+
+export type { DatabaseRequest }
 
 // Storage configuration
 const bufferManager = usePersistedBuffer<DatabaseRequest>({
@@ -9,33 +12,6 @@ const bufferManager = usePersistedBuffer<DatabaseRequest>({
   maxBytes: 5 * 1024 * 1024, // 5 MiB
   idKey: 'requestId',
 })
-
-// Database Request Types
-export interface DatabaseRequest {
-  connectionId?: string
-  requestId: string
-  timestamp: string
-  direction: string
-  databaseType: string  // "redis"
-  statement: string     // The Redis command (e.g., "GET mykey", "SET foo bar")
-  resultType?: string
-  isError: boolean
-  errorMsg?: string
-  affectedCount?: number
-  resultCount?: number
-  duration: number      // milliseconds
-  bytesSent: number
-  bytesReceived: number
-  // Process metadata (from tags/meta)
-  process?: {
-    exe?: string
-    pid?: number
-    containerName?: string
-    containerImage?: string
-    podName?: string
-    podNamespace?: string
-  }
-}
 
 // Redis Store
 export const useRedisStore = defineStore('redis', {

@@ -1,7 +1,7 @@
 import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
-import type { DatabaseRequest } from '@/stores/redis'
+import type { DatabaseRequest } from '@/types/database'
 import type { WorkerInboundMessage, WorkerOutboundMessage } from './events.types'
 
 /**

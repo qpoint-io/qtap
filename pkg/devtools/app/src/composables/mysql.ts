@@ -1,7 +1,7 @@
 import { computed, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMySQLStore } from '@/stores/mysql'
-import type { DatabaseRequest } from '@/stores/redis'
+import type { DatabaseRequest } from '@/types/database'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
 import { usePersistedFilters } from '@/composables/persistedFilters'

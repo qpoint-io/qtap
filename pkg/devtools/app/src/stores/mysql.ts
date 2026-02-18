@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import type { Filter } from './filter'
 import { usePersistedBuffer } from '@/composables/persistedBuffer'
-import type { DatabaseRequest } from '@/stores/redis'
+import type { DatabaseRequest } from '@/types/database'
 
 // Storage configuration
 const bufferManager = usePersistedBuffer<DatabaseRequest>({

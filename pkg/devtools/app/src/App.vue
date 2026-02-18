@@ -47,6 +47,7 @@
       <Connections v-else-if="activeTab === 'connections'" />
       <Processes v-else-if="activeTab === 'processes'" />
       <Redis v-else-if="activeTab === 'redis'" />
+      <MySQL v-else-if="activeTab === 'mysql'" />
       <Welcome v-else-if="activeTab === 'welcome'" :connectionStatus="status" @selectTab="selectTab" />
     </div>
   </div>
@@ -61,10 +62,12 @@ import { useHttpStore } from '@/stores/http'
 import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
+import { useMySQLStore } from '@/stores/mysql'
 import Requests from '@/components/pages/Requests.vue'
 import Connections from '@/components/pages/Connections.vue'
 import Processes from '@/components/pages/Processes.vue'
 import Redis from '@/components/pages/Redis.vue'
+import MySQL from '@/components/pages/MySQL.vue'
 import Welcome from '@/components/pages/Welcome.vue'
 import ThemeToggle from '@/components/ux/ThemeToggle.vue'
 import logoSmallBlack from '@/assets/logo-small-black.svg'
@@ -78,18 +81,21 @@ const httpStore = useHttpStore()
 const connectionsStore = useConnectionsStore()
 const processesStore = useProcessesStore()
 const redisStore = useRedisStore()
+const mysqlStore = useMySQLStore()
 
 onMounted(() => {
   httpStore.restoreFromStorage()
   connectionsStore.restoreFromStorage()
   processesStore.restoreFromStorage()
   redisStore.restoreFromStorage()
+  mysqlStore.restoreFromStorage()
   
   // Start periodic persistence for all stores
   httpStore.startPeriodicPersistence()
   connectionsStore.startPeriodicPersistence()
   processesStore.startPeriodicPersistence()
   redisStore.startPeriodicPersistence()
+  mysqlStore.startPeriodicPersistence()
 })
 
 const params = useUrlParams()
@@ -99,6 +105,7 @@ const tabs: { id: string; label: string }[] = [
   { id: 'connections', label: 'Connections' },
   { id: 'requests', label: 'Requests' },
   { id: 'redis', label: 'Redis' },
+  { id: 'mysql', label: 'MySQL' },
 ]
 
 // get active tab from URL, default to 'requests'
@@ -112,6 +119,7 @@ const selectTab = (tabId: string) => {
   if (tabId !== 'connections') delete params.connection_id
   if (tabId !== 'processes') delete params.process_id
   if (tabId !== 'redis') delete params.redis_id
+  if (tabId !== 'mysql') delete params.mysql_id
 }
 
 // connect to the SSE endpoint

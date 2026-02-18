@@ -13,7 +13,7 @@ import type { DatabaseRequest } from '@/stores/redis'
 // Messages from main thread -> worker
 export type WorkerInboundMessage =
   | { type: 'init'; endpoint: string }
-  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean; database: boolean } }
+  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean; redis: boolean; mysql: boolean } }
   | { type: 'close' }
 
 // Messages from worker -> main thread  

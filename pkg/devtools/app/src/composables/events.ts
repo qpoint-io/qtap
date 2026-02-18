@@ -82,12 +82,13 @@ export function useEvents() {
       () => httpStore.paused,
       () => connectionsStore.paused,
       () => processesStore.paused,
-      () => redisStore.paused || mysqlStore.paused,
+      () => redisStore.paused,
+      () => mysqlStore.paused,
     ],
-    ([http, connections, processes, database]) => {
+    ([http, connections, processes, redis, mysql]) => {
       worker.postMessage({
         type: 'pause',
-        paused: { http, connections, processes, database },
+        paused: { http, connections, processes, redis, mysql },
       })
     },
     { immediate: true }

@@ -15,13 +15,13 @@ import (
 
 var (
 	readerEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(bytes.Reader)
 		},
 	}
 
 	traceEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(TraceEventMeta)
 		},
 	}

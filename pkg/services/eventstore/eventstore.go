@@ -295,7 +295,7 @@ const (
 )
 
 type Connection struct {
-	meta `json:"meta,omitempty"`
+	meta `json:"meta"`
 
 	Tags           map[string][]string `json:"tags,omitzero"`
 	Finalized      bool                `json:"finalized,omitempty"`
@@ -314,8 +314,8 @@ type Connection struct {
 
 	// Timestamp is the time the connection was created.
 	// [DEPRECATED] Use CreatedAt instead.
-	Timestamp time.Time  `json:"timestamp,omitempty"`
-	CreatedAt time.Time  `json:"createdAt,omitempty"`
+	Timestamp time.Time  `json:"timestamp"`
+	CreatedAt time.Time  `json:"createdAt"`
 	ClosedAt  *time.Time `json:"closedAt,omitempty"`
 }
 
@@ -330,7 +330,7 @@ type ConnectionEndpoint interface {
 }
 
 type ConnectionEndpointLocal struct {
-	Address   qnet.NetAddr `json:"address,omitempty"`
+	Address   qnet.NetAddr `json:"address"`
 	Hostname  string       `json:"hostname,omitempty"`
 	Exe       string       `json:"exe,omitempty"`
 	User      string       `json:"user,omitempty"`
@@ -340,7 +340,7 @@ type ConnectionEndpointLocal struct {
 }
 
 type ConnectionEndpointRemote struct {
-	Address qnet.NetAddr `json:"address,omitempty"`
+	Address qnet.NetAddr `json:"address"`
 }
 
 func (c *ConnectionEndpointLocal) isConnectionEndpoint()  {}

@@ -80,7 +80,7 @@ func buildEOFPayload() []byte {
 }
 
 // Helper to build a text protocol row payload
-func buildRowPayload(values ...interface{}) []byte {
+func buildRowPayload(values ...any) []byte {
 	var data []byte
 	for _, v := range values {
 		if v == nil {
@@ -208,7 +208,7 @@ func TestResultSetIntegration(t *testing.T) {
 				{"name", 0xfd},  // VARCHAR
 				{"email", 0xfd}, // VARCHAR
 			},
-			[][]interface{}{
+			[][]any{
 				{"1", "Alice", "alice@example.com"},
 				{"2", "Bob", "bob@example.com"},
 			},
@@ -257,7 +257,7 @@ func TestResultSetIntegration(t *testing.T) {
 				{"name", 0xfd},
 				{"bio", 0xfc}, // BLOB
 			},
-			[][]interface{}{
+			[][]any{
 				{"1", "Alice", nil},
 				{"2", nil, "some bio"},
 			},
@@ -278,9 +278,9 @@ func TestResultSetIntegration(t *testing.T) {
 
 	t.Run("truncation at 100 rows", func(t *testing.T) {
 		// Build 150 rows
-		rows := make([][]interface{}, 150)
+		rows := make([][]any, 150)
 		for i := range rows {
-			rows[i] = []interface{}{"val"}
+			rows[i] = []any{"val"}
 		}
 		rs := simulateResultSet(t, 1,
 			[]colDef{{"x", 0xfd}},
@@ -300,7 +300,7 @@ func TestResultSetIntegration(t *testing.T) {
 				{"blob_col", 0xfc},     // BLOB
 				{"decimal_col", 0x00},  // DECIMAL
 			},
-			[][]interface{}{
+			[][]any{
 				{"42", "hello", "2024-01-15 10:30:00", "binary data", "99.99"},
 			},
 		)
@@ -324,7 +324,7 @@ type colDef struct {
 
 // simulateResultSet feeds raw packets through a Parser to reconstruct a ResultSet.
 // It simulates: column_count packet → N column defs → EOF → M rows → EOF
-func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]interface{}) *ResultSet {
+func simulateResultSet(t *testing.T, colCount int, cols []colDef, rows [][]any) *ResultSet {
 	t.Helper()
 
 	parser := NewParser()

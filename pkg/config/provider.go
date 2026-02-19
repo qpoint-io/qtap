@@ -88,11 +88,9 @@ func (cm *ConfigManager) updateConfig(cfg *Config) func() {
 	// Notify subscribers
 	var wg sync.WaitGroup
 	for _, sub := range subscribers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sub(cfg)
-		}()
+		})
 	}
 	return wg.Wait
 }

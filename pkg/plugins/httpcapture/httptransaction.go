@@ -2,7 +2,9 @@ package httpcapture
 
 import (
 	"encoding/json"
+	"maps"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
@@ -233,15 +235,9 @@ func (t *HttpTransaction) Summary() map[string]any {
 		summary["direction"] = t.Direction
 	}
 	// Merge metadata, request, response summaries
-	for k, v := range t.Metadata.Summary() {
-		summary[k] = v
-	}
-	for k, v := range t.Request.Summary() {
-		summary[k] = v
-	}
-	for k, v := range t.Response.Summary() {
-		summary[k] = v
-	}
+	maps.Copy(summary, t.Metadata.Summary())
+	maps.Copy(summary, t.Request.Summary())
+	maps.Copy(summary, t.Response.Summary())
 	return summary
 }
 
@@ -253,63 +249,64 @@ func (t *HttpTransaction) ToJSON() ([]byte, error) {
 // ToString converts the HttpTransaction to a formatted text string
 func (t *HttpTransaction) ToString() string {
 	// Create a text representation of the transaction
-	text := "HTTP Transaction\n"
-	text += "================\n\n"
+	var text strings.Builder
+	text.WriteString("HTTP Transaction\n")
+	text.WriteString("================\n\n")
 
 	// Add metadata
-	text += "Metadata:\n"
-	text += "  Transaction Time: " + t.TransactionTime.Format(time.RFC3339) + "\n"
+	text.WriteString("Metadata:\n")
+	text.WriteString("  Transaction Time: " + t.TransactionTime.Format(time.RFC3339) + "\n")
 	if t.DurationMs > 0 {
-		text += "  Duration: " + strconv.FormatInt(t.DurationMs, 10) + "ms\n"
+		text.WriteString("  Duration: " + strconv.FormatInt(t.DurationMs, 10) + "ms\n")
 	}
-	text += "  Direction: " + t.Direction + "\n"
+	text.WriteString("  Direction: " + t.Direction + "\n")
 	if t.Metadata.RequestID != "" {
-		text += "  Request ID: " + t.Metadata.RequestID + "\n"
+		text.WriteString("  Request ID: " + t.Metadata.RequestID + "\n")
 	}
 	if t.Metadata.ProcessID != "" {
-		text += "  Process ID: " + t.Metadata.ProcessID + "\n"
+		text.WriteString("  Process ID: " + t.Metadata.ProcessID + "\n")
 	}
 	if t.Metadata.ProcessExe != "" {
-		text += "  Process: " + t.Metadata.ProcessExe + "\n"
+		text.WriteString("  Process: " + t.Metadata.ProcessExe + "\n")
 	}
-	text += "  Bytes Sent: " + strconv.FormatInt(t.Metadata.BytesSent, 10) + "\n"
-	text += "  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n\n"
+	text.WriteString("  Bytes Sent: " + strconv.FormatInt(t.Metadata.BytesSent, 10) + "\n")
+	text.WriteString("  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n\n")
 
 	// Add request info
-	text += "Request:\n"
-	text += "  Method: " + t.Request.Method + "\n"
-	text += "  URL: " + t.Request.URL + "\n"
+	text.WriteString("Request:\n")
+	text.WriteString("  Method: " + t.Request.Method + "\n")
+	text.WriteString("  URL: " + t.Request.URL + "\n")
 	if t.Request.ContentType != "" {
-		text += "  Content-Type: " + t.Request.ContentType + "\n"
+		text.WriteString("  Content-Type: " + t.Request.ContentType + "\n")
 	}
 	if len(t.Request.Headers) > 0 {
-		text += "  Headers:\n"
+		text.WriteString("  Headers:\n")
 		for k, v := range t.Request.Headers {
-			text += "    " + k + ": " + v + "\n"
+			text.WriteString("    " + k + ": " + v + "\n")
 		}
 	}
 	if len(t.Request.Body) > 0 {
-		text += "  Body:\n"
-		text += string(t.Request.Body) + "\n"
+		text.WriteString("  Body:\n")
+		text.WriteString(string(t.Request.Body) + "\n")
 	}
-	text += "\n"
+	text.WriteString("\n")
 
 	// Add response info
-	text += "Response:\n"
-	text += "  Status: " + strconv.Itoa(t.Response.Status) + "\n"
+	text.WriteString("Response:\n")
+	text.WriteString("  Status: " + strconv.Itoa(t.Response.Status) + "\n")
 	if t.Response.ContentType != "" {
-		text += "  Content-Type: " + t.Response.ContentType + "\n"
+		text.WriteString("  Content-Type: " + t.Response.ContentType + "\n")
 	}
 	if len(t.Response.Headers) > 0 {
-		text += "  Headers:\n"
+		text.WriteString("  Headers:\n")
 		for k, v := range t.Response.Headers {
-			text += "    " + k + ": " + v + "\n"
+			text.WriteString("    " + k + ": " + v + "\n")
 		}
 	}
 	if len(t.Response.Body) > 0 {
-		text += "  Body:\n"
-		text += string(t.Response.Body) + "\n"
+		text.WriteString("  Body:\n")
+		text.WriteString(string(t.Response.Body) + "\n")
 	}
 
-	return text
+	return text.String()
 }

@@ -12,43 +12,43 @@ import (
 )
 
 var socketEventPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(socketEvent)
 	},
 }
 
 var readerEventPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(bytes.Reader)
 	},
 }
 
 var attrPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(attr)
 	},
 }
 
 var hostnameAttrProol = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(socketHostnameAttr)
 	},
 }
 
 var socketProtoEventPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(socketProtoEvent)
 	},
 }
 
 var tlsClientHelloAttrPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(socketTLSClientHelloAttr)
 	},
 }
 
 var tlsServerHelloAttrPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(socketTLSServerHelloAttr)
 	},
 }

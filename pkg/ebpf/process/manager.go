@@ -25,7 +25,7 @@ const (
 )
 
 var recordPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(ringbuf.Record)
 	},
 }
@@ -122,12 +122,12 @@ func (m *Manager) readProcEvents(ctx context.Context) {
 
 var (
 	eventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(event)
 		},
 	}
 	readerEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(bytes.Reader)
 		},
 	}

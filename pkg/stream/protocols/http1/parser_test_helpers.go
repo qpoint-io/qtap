@@ -431,10 +431,7 @@ func NewChunkedDataSender(t *testing.T, parser *Parser) *ChunkedDataSender {
 // SendInChunks sends data in specified chunk sizes with optional delay
 func (c *ChunkedDataSender) SendInChunks(phase Phase, data []byte, chunkSize int, delay time.Duration) error {
 	for i := 0; i < len(data); i += chunkSize {
-		end := i + chunkSize
-		if end > len(data) {
-			end = len(data)
-		}
+		end := min(i+chunkSize, len(data))
 
 		chunk := data[i:end]
 		if err := c.parser.ProcessEvent(phase, chunk); err != nil {

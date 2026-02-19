@@ -179,14 +179,12 @@ func TestKeyedCoordinator_TokenSupersededWhileWaiting(t *testing.T) {
 
 	// start op2 in background - it will wait for op1 to finish
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_ = token2.Execute(ctx, func(ctx context.Context) error {
 			op2Executed.Store(true)
 			return nil
 		})
-	}()
+	})
 
 	// give op2 time to start waiting
 	time.Sleep(10 * time.Millisecond)

@@ -145,9 +145,7 @@ func (m *HTTPRequestBuilder) WithExtraEnvVar(key, value string) *HTTPRequestBuil
 // WithExtraEnvVars adds additional environment variables
 func (m *HTTPRequest) WithExtraEnvVars(vars map[string]string) *HTTPRequest {
 	maps.Copy(m.ExtraEnvVars, vars)
-	for k, v := range vars {
-		m.ExtraEnvVars[k] = v
-	}
+	maps.Copy(m.ExtraEnvVars, vars)
 	return m
 }
 
@@ -230,9 +228,7 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 	envVars["VERBOSE"] = "true"
 
 	// Add any extra environment variables
-	for key, value := range m.ExtraEnvVars {
-		envVars[key] = value
-	}
+	maps.Copy(envVars, m.ExtraEnvVars)
 
 	return envVars
 }
@@ -348,14 +344,10 @@ func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 	}
 
 	// Deep copy the headers map
-	for k, v := range m.req.Headers {
-		reqCopy.Headers[k] = v
-	}
+	maps.Copy(reqCopy.Headers, m.req.Headers)
 
 	// Deep copy the extra env vars map
-	for k, v := range m.req.ExtraEnvVars {
-		reqCopy.ExtraEnvVars[k] = v
-	}
+	maps.Copy(reqCopy.ExtraEnvVars, m.req.ExtraEnvVars)
 
 	return reqCopy, nil
 }

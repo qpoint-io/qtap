@@ -335,7 +335,7 @@ func TestSanitizeAuthCommand(t *testing.T) {
 	assert.Equal(t, "AUTH", infos[0].ContextMap()["command"])
 
 	// Check that args are redacted
-	args := infos[0].ContextMap()["args"].([]interface{})
+	args := infos[0].ContextMap()["args"].([]any)
 	require.Len(t, args, 1)
 	assert.Equal(t, "[REDACTED]", args[0])
 }

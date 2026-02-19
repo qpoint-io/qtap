@@ -355,8 +355,8 @@ func (p *Process) Tags() tags.List {
 func (p *Process) discoverTags() error {
 	// look for any custom tags in the QPOINT_TAGS environment variable
 	if v, ok := p.Env[QpointTagsEnvVar]; ok {
-		ts := strings.Split(v, ",")
-		for _, t := range ts {
+		ts := strings.SplitSeq(v, ",")
+		for t := range ts {
 			if err := p.tags.AddString(t); err != nil {
 				return fmt.Errorf("adding tag from QPOINT_TAGS environment variable: %w", err)
 			}

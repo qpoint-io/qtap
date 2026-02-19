@@ -50,8 +50,8 @@ func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 	}
 
 	// if a unix socket is provided, check if the endpoint exists and is a socket
-	if strings.HasPrefix(endpoint, "unix://") {
-		filepath := strings.TrimPrefix(endpoint, "unix://")
+	if after, ok := strings.CutPrefix(endpoint, "unix://"); ok {
+		filepath := after
 		info, err := os.Stat(filepath)
 		if err != nil {
 			return nil, fmt.Errorf("endpoint %s does not exist: %w", filepath, err)

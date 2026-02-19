@@ -22,17 +22,15 @@ func TestSingleFlight_Do_Deduplicates(t *testing.T) {
 	// The function takes 50ms to complete.
 	// We expect 'calls' to be 1, and all 10 goroutines to get the same result.
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			val, err := g.Do("key", func() (string, error) {
 				atomic.AddInt32(&calls, 1)
 				time.Sleep(50 * time.Millisecond)
 				return "success", nil
 			})
-			assert.NoError(t, err)
-			assert.Equal(t, "success", val)
-		}()
+			require.NoError(t, err)
+			require.Equal(t, "success", val)
+		})
 	}
 
 	wg.Wait()

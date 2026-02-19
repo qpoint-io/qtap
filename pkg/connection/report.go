@@ -37,10 +37,7 @@ func (r *report) reportEvent(event any) {
 		eventAttrs = append(eventAttrs, attribute.String("protocol", v.Protocol.String()))
 		r.gotProtocolEvent = true
 	case DataEvent:
-		eventAttrs = append(eventAttrs,
-			attribute.Int("size", v.Size),
-			attribute.Stringer("direction", v.Direction),
-		)
+		eventAttrs = append(eventAttrs, attribute.Int("data_event.size", v.Size))
 		r.dataEventCount++
 	case TLSClientHelloEvent:
 		r.gotTLSClientHelloEvent = true

@@ -1,57 +1,50 @@
 import { computed, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRedisStore } from '@/stores/redis'
+import { useMySQLStore } from '@/stores/mysql'
 import type { DatabaseRequest } from '@/types/database'
 import { useUrlParams } from '@/composables/urlParams'
 import { useBufferSettings } from '@/composables/bufferSettings'
 import { usePersistedFilters } from '@/composables/persistedFilters'
 
-// Re-export SizeUnit for components that import from this file
 export type { SizeUnit } from '@/composables/bufferSettings'
 
-const FILTER_STORAGE_KEY = 'devtools_redis_filters'
+const FILTER_STORAGE_KEY = 'devtools_mysql_filters'
 
-export function useRedis() {
-  // get the store
-  const store = useRedisStore()
-
-  // get reactive pause state and filters from store
+export function useMySQL() {
+  const store = useMySQLStore()
   const { paused, filters } = storeToRefs(store)
 
-  // Filter persistence - restore from localStorage and watch for changes
   usePersistedFilters(FILTER_STORAGE_KEY, filters)
 
-  // watch URL params to sync selected item with buffer GC protection
   const params = useUrlParams()
   watchEffect(() => {
-    const requestId = params.redis_id as string | undefined
+    const requestId = params.mysql_id as string | undefined
     store.setSelectedId(requestId || null)
   })
 
-  // Buffer settings with localStorage persistence
   const {
     maxItems,
     maxSize,
     maxSizeUnit,
     resetBufferSettings,
   } = useBufferSettings(
-    'devtools_redis_buffer_settings',
+    'devtools_mysql_buffer_settings',
     (maxItems, maxBytes) => store.updateBufferLimits(maxItems, maxBytes)
   )
 
   const filtered = computed(() => {
     let result = store.requestsBuffer
     
-    // Apply each filter
     filters.value.forEach(filter => {
       result = result.filter(request => {
-        // Get the value to filter against based on the key
         let fieldValue: string | undefined
         
         switch (filter.key) {
-          case 'command':
-            // Extract first word from statement (e.g., "GET", "SET", "HGET")
-            fieldValue = request.statement.split(' ')[0]?.toUpperCase()
+          case 'type':
+            fieldValue = getStatementType(request.statement)
+            break
+          case 'statement':
+            fieldValue = request.statement
             break
           case 'direction':
             fieldValue = request.direction
@@ -67,10 +60,8 @@ export function useRedis() {
             break
         }
         
-        // If field value doesn't exist, filter it out
         if (!fieldValue) return false
         
-        // Apply the operator
         const filterValue = filter.value.toLowerCase()
         const compareValue = fieldValue.toLowerCase()
         
@@ -101,7 +92,8 @@ export function useRedis() {
   })
   
   const filterableKeys = [
-    'command',
+    'type',
+    'statement',
     'direction',
     'resultType',
     'isError',
@@ -115,8 +107,11 @@ export function useRedis() {
       let value: string | undefined
       
       switch (key) {
-        case 'command':
-          value = request.statement.split(' ')[0]?.toUpperCase()
+        case 'type':
+          value = getStatementType(request.statement)
+          break
+        case 'statement':
+          value = request.statement
           break
         case 'direction':
           value = request.direction
@@ -146,7 +141,6 @@ export function useRedis() {
     filters,
     filterableKeys,
     getFilterValues,
-    // Buffer settings
     maxItems,
     maxSize,
     maxSizeUnit,
@@ -154,7 +148,9 @@ export function useRedis() {
   }
 }
 
-// Helper to extract command from statement
-export function getCommandFromStatement(statement: string): string {
-  return statement.split(' ')[0]?.toUpperCase() || '-'
+// Extract the first SQL keyword from a statement
+export function getStatementType(statement: string): string {
+  if (!statement) return '-'
+  const firstWord = statement.trim().split(/\s+/)[0]?.toUpperCase()
+  return firstWord || '-'
 }

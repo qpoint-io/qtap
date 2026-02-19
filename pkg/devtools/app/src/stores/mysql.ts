@@ -3,18 +3,19 @@ import type { Filter } from './filter'
 import { usePersistedBuffer } from '@/composables/persistedBuffer'
 import type { DatabaseRequest } from '@/types/database'
 
-export type { DatabaseRequest }
-
 // Storage configuration
 const bufferManager = usePersistedBuffer<DatabaseRequest>({
-  storageKey: 'devtools_redis_buffer',
+  storageKey: 'devtools_mysql_buffer',
   maxItems: 500,
   maxBytes: 5 * 1024 * 1024, // 5 MiB
   idKey: 'requestId',
 })
 
-// Redis Store
-export const useRedisStore = defineStore('redis', {
+// Re-export for convenience
+export type { DatabaseRequest }
+
+// MySQL Store
+export const useMySQLStore = defineStore('mysql', {
   state: () => ({
     requestsBuffer: [] as DatabaseRequest[],
     paused: false,

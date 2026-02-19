@@ -21,12 +21,12 @@
     "vue": "^3.5.22"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
     "@tsconfig/node22": "^22.0.2",
     "@types/node": "^22.18.11",
     "@types/prismjs": "^1.26.5",
-    "@vitejs/plugin-vue": "^6.0.1",
+    "@vitejs/plugin-vue": "^6.0.4",
     "@vue/tsconfig": "^0.8.1",
-    "@tailwindcss/postcss": "^4.1.17",
     "autoprefixer": "^10.4.21",
     "npm-run-all2": "^8.0.4",
     "postcss": "^8.5.6",

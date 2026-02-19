@@ -4,6 +4,7 @@ import { useHttpStore } from '@/stores/http'
 import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
+import { useMySQLStore } from '@/stores/mysql'
 import type { WorkerOutboundMessage } from './events.types'
 
 /**
@@ -21,6 +22,7 @@ export function useEvents() {
   const connectionsStore = useConnectionsStore()
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
+  const mysqlStore = useMySQLStore()
 
   // reactive state for connection status and errors
   const status = ref<'CONNECTING' | 'OPEN' | 'CLOSED'>('CONNECTING')
@@ -81,11 +83,12 @@ export function useEvents() {
       () => connectionsStore.paused,
       () => processesStore.paused,
       () => redisStore.paused,
+      () => mysqlStore.paused,
     ],
-    ([http, connections, processes, database]) => {
+    ([http, connections, processes, redis, mysql]) => {
       worker.postMessage({
         type: 'pause',
-        paused: { http, connections, processes, database },
+        paused: { http, connections, processes, redis, mysql },
       })
     },
     { immediate: true }
@@ -118,6 +121,7 @@ function handleParsedEvent(eventType: string, data: any) {
   const connectionsStore = useConnectionsStore()
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
+  const mysqlStore = useMySQLStore()
 
   switch (data.type) {
     case 'http_transaction':
@@ -125,7 +129,17 @@ function handleParsedEvent(eventType: string, data: any) {
       break
 
     case 'database_request':
-      redisStore.addRequest(data.request)
+      switch (data.request?.databaseType) {
+        case 'redis':
+          redisStore.addRequest(data.request)
+          break
+        case 'mysql':
+          mysqlStore.addRequest(data.request)
+          break
+        default:
+          console.warn('DevTools: Unknown databaseType for database_request:', data.request?.databaseType)
+          break
+      }
       break
 
     case 'connection_opened':

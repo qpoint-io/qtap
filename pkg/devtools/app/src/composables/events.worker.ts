@@ -1,7 +1,7 @@
 import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
-import type { DatabaseRequest } from '@/stores/redis'
+import type { DatabaseRequest } from '@/types/database'
 import type { WorkerInboundMessage, WorkerOutboundMessage } from './events.types'
 
 /**
@@ -17,7 +17,8 @@ let pauseState = {
   http: false,
   connections: false,
   processes: false,
-  database: false,
+  redis: false,
+  mysql: false,
 }
 let reconnectAttempt = 0
 let reconnectTimeout: number | null = null
@@ -151,11 +152,11 @@ function handleSSEEvent(eventType: string, data: string) {
         break
 
       case 'request.database':
-        // Check if database events are paused
-        if (pauseState.database) return
-
         const databaseRequest = parseDatabaseRequest(parsed)
         if (databaseRequest) {
+          const dbType = databaseRequest.databaseType?.toLowerCase()
+          if (dbType === 'mysql' && pauseState.mysql) return
+          if (dbType === 'redis' && pauseState.redis) return
           sendEvent(eventType, {
             type: 'database_request',
             request: databaseRequest,

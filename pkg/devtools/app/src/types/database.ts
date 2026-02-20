@@ -13,6 +13,7 @@ export interface DatabaseRequest {
   duration: number      // milliseconds
   bytesSent: number
   bytesReceived: number
+  tags?: string[]
   // Process metadata (from tags/meta)
   process?: {
     exe?: string

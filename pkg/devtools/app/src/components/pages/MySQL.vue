@@ -109,11 +109,11 @@
 
               <div
                 v-else-if="column.key === 'type'"
-                class="px-2 py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light font-semibold"
-                :class="getStatementClass(request.statement)"
+                class="px-2 py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light font-semibold truncate"
+                :class="getStatementClass(getComType(request.tags))"
                 :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
               >
-                {{ getStatementType(request.statement) }}
+                {{ getComType(request.tags) }}
               </div>
 
               <div
@@ -122,7 +122,7 @@
                 :class="getStatementClass(request.statement)"
                 :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
               >
-                {{ request.statement }}
+                {{ request.statement || '-' }}
               </div>
 
               <div
@@ -180,9 +180,9 @@
               <DirectionIndicator :direction="selectedRequest!.direction" :show-label="false" />
               <span
                 class="font-semibold text-sm"
-                :class="getStatementClass(selectedRequest!.statement)"
+                :class="getStatementClass(getComType(selectedRequest!.tags))"
               >
-                {{ getStatementTypeLabel(selectedRequest!.statement) }}
+                {{ getComType(selectedRequest!.tags) }}
               </span>
               <span
                 v-if="selectedRequest!.isError"
@@ -314,10 +314,26 @@
               </div>
             </div>
 
-            <div>
+            <div class="mb-4">
               <h3 class="text-xs font-semibold text-dt-text-secondary dark:text-dt-text-dark-secondary mb-2">Timestamp</h3>
               <div class="bg-dt-bg-secondary dark:bg-dt-bg-dark-secondary p-2 rounded border border-dt-border-light dark:border-dt-border-dark-light">
                 <p class="text-xs font-mono text-dt-text-primary dark:text-dt-text-dark-primary">{{ selectedRequest!.timestamp }}</p>
+              </div>
+            </div>
+
+            <div v-if="selectedRequest!.tags && selectedRequest!.tags.length > 0">
+              <h3 class="text-xs font-semibold text-dt-text-secondary dark:text-dt-text-dark-secondary mb-2">Tags</h3>
+              <div class="bg-dt-bg-secondary dark:bg-dt-bg-dark-secondary p-2 rounded border border-dt-border-light dark:border-dt-border-dark-light">
+                <div class="space-y-1">
+                  <div
+                    v-for="(tag, index) in selectedRequest!.tags"
+                    :key="index"
+                    class="text-xs font-mono"
+                  >
+                    <span class="text-dt-text-secondary dark:text-dt-text-dark-secondary">{{ tag.split(':')[0] }}:</span>
+                    <span class="text-dt-text-primary dark:text-dt-text-dark-primary ml-2">{{ tag.split(':').slice(1).join(':') }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -453,7 +469,7 @@ import Clipboard from '@/components/ux/Clipboard.vue'
 const defaultColumns: ColumnConfig[] = [
   { key: 'timestamp', label: 'Timestamp', width: 128, minWidth: 80, visible: true, resizable: true },
   { key: 'direction', label: 'Direction', width: 96, minWidth: 60, visible: true, resizable: true },
-  { key: 'type', label: 'Type', width: 96, minWidth: 60, visible: true, resizable: true },
+  { key: 'type', label: 'Type', width: 128, minWidth: 60, visible: true, resizable: true },
   { key: 'statement', label: 'Statement', width: 400, minWidth: 100, visible: true, resizable: true },
   { key: 'result', label: 'Result', width: 96, minWidth: 60, visible: true, resizable: true },
   { key: 'error', label: 'Error', width: 64, minWidth: 50, visible: true, resizable: true },
@@ -660,9 +676,10 @@ const visibleRange = computed(() => {
   return { start: startIndex, end: endIndex }
 })
 
-// Get statement type label for detail panel
-const getStatementTypeLabel = (statement: string): string => {
-  return getStatementType(statement)
+// Extract com_type value from tags (format: "com_type:VALUE")
+const getComType = (tags?: string[]): string => {
+  const tag = tags?.find(t => t.startsWith('com_type:'))
+  return tag ? tag.split(':').slice(1).join(':') : '-'
 }
 
 // Color-code by SQL statement type

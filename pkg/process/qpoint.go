@@ -47,8 +47,8 @@ func QpointStrategyFromString(s string, p *Process) (QpointStrategy, error) {
 	strat, filterStr, found := strings.Cut(s, ",")
 	if found {
 		var match bool
-		filterStrs := strings.Split(filterStr, ",")
-		for _, filterStr := range filterStrs {
+		filterStrs := strings.SplitSeq(filterStr, ",")
+		for filterStr := range filterStrs {
 			filterConfig, err := createTapFilter(filterStr)
 			if err != nil {
 				return StrategyObserve, err

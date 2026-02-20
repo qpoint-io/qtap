@@ -211,10 +211,7 @@ func buildSectionDivider(color lipgloss.Color, title string, width int) string {
 	titleLeft := "├───╼ " + title
 	titleWidth := lipgloss.Width(titleLeft)
 
-	remainingWidth := width - titleWidth
-	if remainingWidth < 0 {
-		remainingWidth = 0
-	}
+	remainingWidth := max(width-titleWidth, 0)
 	var titleRight string
 	switch {
 	case remainingWidth < 2:
@@ -380,7 +377,7 @@ func getStatusColor(status int) lipgloss.Color {
 	}
 }
 
-func getColorFn(status int) func(a ...interface{}) string {
+func getColorFn(status int) func(a ...any) string {
 	switch {
 	case status >= 200 && status < 300:
 		return color.New(color.FgGreen).SprintFunc()

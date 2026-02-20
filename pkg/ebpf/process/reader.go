@@ -14,22 +14,22 @@ import (
 
 var (
 	execStartEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(execStartEvent)
 		},
 	}
 	execArgvEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(execArgvEvent)
 		},
 	}
 	execEndEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(execEndEvent)
 		},
 	}
 	exitEventPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return new(exitEvent)
 		},
 	}

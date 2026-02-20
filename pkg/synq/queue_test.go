@@ -112,13 +112,11 @@ func TestQueue_Next(t *testing.T) {
 			name: "Next on empty queue",
 			ops: []func(*Queue, *sync.WaitGroup, chan any){
 				func(q *Queue, wg *sync.WaitGroup, ch chan any) {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						v, ok := q.Next()
 						ch <- v
 						ch <- ok
-					}()
+					})
 				},
 				func(q *Queue, wg *sync.WaitGroup, ch chan any) {
 					time.Sleep(100 * time.Millisecond)
@@ -140,15 +138,13 @@ func TestQueue_Next(t *testing.T) {
 					}
 				},
 				func(q *Queue, wg *sync.WaitGroup, ch chan any) {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						for range 3 {
 							v, ok := q.Next()
 							ch <- v
 							ch <- ok
 						}
-					}()
+					})
 				},
 			},
 			want: []any{1, true, 2, true, 3, true},
@@ -157,13 +153,11 @@ func TestQueue_Next(t *testing.T) {
 			name: "Next after Destroy",
 			ops: []func(*Queue, *sync.WaitGroup, chan any){
 				func(q *Queue, wg *sync.WaitGroup, ch chan any) {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						v, ok := q.Next()
 						ch <- v
 						ch <- ok
-					}()
+					})
 				},
 				func(q *Queue, wg *sync.WaitGroup, ch chan any) {
 					time.Sleep(100 * time.Millisecond)
@@ -374,14 +368,12 @@ func TestQueue_Drain(t *testing.T) {
 		}
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 3 {
 				time.Sleep(50 * time.Millisecond)
 				q.Pop()
 			}
-		}()
+		})
 
 		err = q.Drain(500 * time.Millisecond)
 		if err != nil {

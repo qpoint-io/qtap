@@ -1,6 +1,7 @@
 package synq
 
 import (
+	"maps"
 	"sync"
 )
 
@@ -87,9 +88,7 @@ func (cm *Map[K, V]) Copy() map[K]V {
 	defer cm.mu.RUnlock()
 
 	dest := make(map[K]V, len(cm.m))
-	for k, v := range cm.m {
-		dest[k] = v
-	}
+	maps.Copy(dest, cm.m)
 
 	return dest
 }

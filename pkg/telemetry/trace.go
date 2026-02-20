@@ -62,10 +62,7 @@ func (tp *TraceProvider) StartFn(
 func callerInfo(skip int) (pkg, fn string) {
 	pc, _, _, _ := runtime.Caller(1 + skip)
 	funcName := runtime.FuncForPC(pc).Name()
-	lastSlash := strings.LastIndexByte(funcName, '/')
-	if lastSlash < 0 {
-		lastSlash = 0
-	}
+	lastSlash := max(strings.LastIndexByte(funcName, '/'), 0)
 	lastDot := strings.LastIndexByte(funcName[lastSlash:], '.') + lastSlash
 
 	pkg = funcName[:lastDot]

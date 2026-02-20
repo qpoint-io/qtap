@@ -699,10 +699,7 @@ func TestLinkedBufferDrainConcurrency(t *testing.T) {
 
 	wg.Wait()
 
-	expectedLength := len(initialData) - (concurrency * opsPerGoroutine * drainAmount)
-	if expectedLength < 0 {
-		expectedLength = 0
-	}
+	expectedLength := max(len(initialData)-(concurrency*opsPerGoroutine*drainAmount), 0)
 
 	assert.Equal(t, expectedLength, b.Length(), "After concurrent operations, LinkedBuffer.Length() should return the expected length")
 

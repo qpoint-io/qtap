@@ -215,8 +215,8 @@ func TestFormatSpecificFields(t *testing.T) {
 	assert.Contains(t, textOutput, "Response:")
 
 	// Verify formatting is table-like
-	lines := strings.Split(textOutput, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(textOutput, "\n")
+	for line := range lines {
 		if strings.TrimSpace(line) != "" &&
 			!strings.HasPrefix(strings.TrimSpace(line), "HTTP Transaction") &&
 			!strings.HasPrefix(strings.TrimSpace(line), "==") {

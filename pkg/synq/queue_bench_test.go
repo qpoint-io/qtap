@@ -163,14 +163,12 @@ func BenchmarkQueue_Concurrent1Writer(b *testing.B) {
 	b.ResetTimer()
 
 	var wg sync.WaitGroup
-	wg.Add(1)
 
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range b.N {
 			_ = q.Push(1)
 		}
-	}()
+	})
 
 	wg.Wait()
 }
@@ -186,13 +184,11 @@ func BenchmarkQueue_Concurrent10Writers(b *testing.B) {
 	itemsPerWorker := b.N / concurrency
 
 	for range concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range itemsPerWorker {
 				_ = q.Push(1)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -210,13 +206,11 @@ func BenchmarkQueue_Concurrent10Readers(b *testing.B) {
 	itemsPerWorker := b.N / concurrency
 
 	for range concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range itemsPerWorker {
 				_ = q.Pop()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -262,24 +256,20 @@ func BenchmarkQueue_Concurrent10W10R(b *testing.B) {
 
 	// Writers
 	for range concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range itemsPerWorker {
 				_ = q.Push(1)
 			}
-		}()
+		})
 	}
 
 	// Readers
 	for range concurrency {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range itemsPerWorker {
 				_ = q.Pop()
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

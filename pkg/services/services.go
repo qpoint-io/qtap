@@ -85,7 +85,7 @@ func GetService[T any](ctx context.Context, sr *ServiceRegistry, typ ServiceType
 	}
 	t, ok := service.(T)
 	if !ok {
-		return zero, fmt.Errorf("service %q is of type %s, expected %s", key, reflect.TypeOf(service), reflect.TypeOf(&zero).Elem())
+		return zero, fmt.Errorf("service %q is of type %s, expected %s", key, reflect.TypeOf(service), reflect.TypeFor[T]())
 	}
 	return t, nil
 }

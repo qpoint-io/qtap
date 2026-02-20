@@ -384,7 +384,7 @@ func getMySQLStatusColor(res *plugins.MySQLResult) lipgloss.Color {
 	return lipgloss.Color("2") // Green
 }
 
-func getMySQLColorFn(res *plugins.MySQLResult) func(a ...interface{}) string {
+func getMySQLColorFn(res *plugins.MySQLResult) func(a ...any) string {
 	if res == nil {
 		return color.New(color.FgWhite).SprintFunc()
 	}

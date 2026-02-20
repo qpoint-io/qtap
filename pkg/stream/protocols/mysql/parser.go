@@ -301,10 +301,7 @@ func ParseServerHandshake(pkt *Packet) (*ServerHandshake, error) {
 
 	// Auth plugin data part 2 (if CLIENT_SECURE_CONNECTION)
 	if pos < len(pkt.Payload) && authLen > 8 {
-		part2Len := authLen - 8
-		if part2Len > 13 {
-			part2Len = 13
-		}
+		part2Len := min(authLen-8, 13)
 		if pos+part2Len <= len(pkt.Payload) {
 			authData = append(authData, pkt.Payload[pos:pos+part2Len]...)
 			pos += part2Len

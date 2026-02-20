@@ -253,6 +253,7 @@ build-race: build
 ci: ## Run CI pipeline
 	@echo $(INFO) Running CI pipeline... $(RESET)
 	$(MAKE) deps-verify
+	$(GO) fix ./...
 	$(MAKE) lint
 	$(MAKE) security
 	if [ -n "$$(git status --porcelain)" ]; then \

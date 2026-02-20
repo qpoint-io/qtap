@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -36,12 +37,7 @@ func MimeCategory(contentType string) string {
 
 func isApp(contentType string) bool {
 	appTypes := []string{"text/html", "application/json", "application/grpc", "text/xml", "application/xml", "text/plain"}
-	for _, t := range appTypes {
-		if contentType == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(appTypes, contentType)
 }
 
 func isCss(contentType string) bool {

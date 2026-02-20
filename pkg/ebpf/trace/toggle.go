@@ -20,8 +20,8 @@ func NewMatcher(toggleQuery string) (*Matcher, error) {
 		return matcher, nil
 	}
 
-	toggles := strings.Split(toggleQuery, ",")
-	for _, toggle := range toggles {
+	toggles := strings.SplitSeq(toggleQuery, ",")
+	for toggle := range toggles {
 		parts := strings.Split(toggle, ":")
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid toggle format: %s", toggle)

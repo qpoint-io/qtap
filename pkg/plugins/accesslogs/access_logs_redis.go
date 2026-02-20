@@ -323,7 +323,7 @@ func getRedisStatusColor(res *plugins.RedisResult) lipgloss.Color {
 	return lipgloss.Color("2") // Green
 }
 
-func getRedisColorFn(res *plugins.RedisResult) func(a ...interface{}) string {
+func getRedisColorFn(res *plugins.RedisResult) func(a ...any) string {
 	if res == nil {
 		return color.New(color.FgWhite).SprintFunc()
 	}

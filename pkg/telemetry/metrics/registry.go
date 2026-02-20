@@ -64,12 +64,12 @@ func getPackageName(skip int) string {
 	packageAndFunc := funcName[lastSlash+1:]
 
 	// Find the first dot to separate package from function/method
-	firstDot := strings.IndexByte(packageAndFunc, '.')
-	if firstDot == -1 {
+	before, _, ok := strings.Cut(packageAndFunc, ".")
+	if !ok {
 		// No dot found, return the whole thing
 		return packageAndFunc
 	}
 
 	// Return just the package name (everything before the first dot)
-	return packageAndFunc[:firstDot]
+	return before
 }

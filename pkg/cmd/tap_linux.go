@@ -237,7 +237,7 @@ func runTapCmd(logger *zap.Logger) {
 		logger.Fatal("failed to load BPF programs and maps", zap.Error(err))
 	}
 	// write the current pid to the bpf program
-	err = spec.RewriteConstants(map[string]interface{}{
+	err = spec.RewriteConstants(map[string]any{
 		"qpid": uint32(os.Getpid()),
 	})
 	if err != nil {
@@ -495,7 +495,7 @@ func runTapCmd(logger *zap.Logger) {
 // parseDeploymentTags parses the deployment tags string into a tags.List
 func parseDeploymentTags() (tags.List, error) {
 	t := tags.New()
-	for _, tag := range strings.Split(deploymentTags, ",") {
+	for tag := range strings.SplitSeq(deploymentTags, ",") {
 		if err := t.AddString(tag); err != nil {
 			return nil, err
 		}

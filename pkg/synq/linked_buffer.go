@@ -211,10 +211,3 @@ func (r *bufferReader) Read(p []byte) (n int, err error) {
 	r.offset += int64(n)
 	return
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

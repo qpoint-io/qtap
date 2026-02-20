@@ -31,7 +31,7 @@ var (
 const bufferSize = 4096
 
 var bufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new([bufferSize]byte)
 	},
 }

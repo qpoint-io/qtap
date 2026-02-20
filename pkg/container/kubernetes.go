@@ -39,8 +39,8 @@ type KubernetesAccessor struct {
 
 func NewKubernetesAccessor(logger *zap.Logger, criRuntimeEndpoint string) (*KubernetesAccessor, string, []error) {
 	// if a unix socket is provided, check if the endpoint exists and is a socket
-	if strings.HasPrefix(criRuntimeEndpoint, "unix://") {
-		filepath := strings.TrimPrefix(criRuntimeEndpoint, "unix://")
+	if after, ok := strings.CutPrefix(criRuntimeEndpoint, "unix://"); ok {
+		filepath := after
 		info, err := os.Stat(filepath)
 		if err != nil {
 			return nil, "", []error{fmt.Errorf("endpoint %s does not exist: %w", filepath, err)}

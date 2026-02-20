@@ -437,8 +437,8 @@ func IsKernelProcess(pid int) (bool, error) {
 	}
 
 	// Look for VmSize in the status file
-	lines := strings.Split(string(statusContent), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(statusContent), "\n")
+	for line := range lines {
 		if strings.HasPrefix(line, "VmSize:") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {

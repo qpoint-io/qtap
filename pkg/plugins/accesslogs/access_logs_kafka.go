@@ -452,7 +452,7 @@ func getKafkaStatusColor(res *plugins.KafkaResult) lipgloss.Color {
 	return lipgloss.Color("2") // Green
 }
 
-func getKafkaColorFn(res *plugins.KafkaResult) func(a ...interface{}) string {
+func getKafkaColorFn(res *plugins.KafkaResult) func(a ...any) string {
 	if res == nil {
 		return color.New(color.FgWhite).SprintFunc()
 	}

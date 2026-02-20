@@ -649,10 +649,7 @@ func extractRecordBatchMessages(data []byte, topic string, partition int32, maxM
 	}
 
 	offset := 61
-	limit := int(recordCount)
-	if limit > maxMessages {
-		limit = maxMessages
-	}
+	limit := min(int(recordCount), maxMessages)
 
 	var messages []KafkaMessage
 	for range limit {
@@ -704,10 +701,7 @@ func extractRecordBatchMessages(data []byte, topic string, partition int32, maxM
 			if offset+int(keyLen) > recordEnd {
 				break
 			}
-			kl := int(keyLen)
-			if kl > MaxKeySize {
-				kl = MaxKeySize
-			}
+			kl := min(int(keyLen), MaxKeySize)
 			key = string(data[offset : offset+kl])
 			offset += int(keyLen)
 		}
@@ -1107,11 +1101,4 @@ func readBytesField(data []byte, offset int, flexible bool) ([]byte, int) {
 		return nil, -1
 	}
 	return data[offset : offset+size], offset + size
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

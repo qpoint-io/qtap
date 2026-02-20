@@ -8,10 +8,10 @@ stacks:
   basic_reporting:
     plugins:
       - type: http_metrics
-      # - type: access_logs
-      #   config:
-      #     mode: summary
-      #     format: console
+      - type: access_logs
+        config:
+          mode: full
+          format: console
 tap:
   direction: all
   ignore_loopback: false
@@ -21,4 +21,6 @@ tap:
   redis:
     stack: basic_reporting
   mysql:
+    stack: basic_reporting
+  kafka:
     stack: basic_reporting

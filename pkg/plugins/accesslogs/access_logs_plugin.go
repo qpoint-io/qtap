@@ -180,7 +180,7 @@ func (f *factory) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.Ser
 		format = f.format
 	}
 
-return &kafkaFilterInstance{
+	return &kafkaFilterInstance{
 		ctx:    ctx,
 		logger: f.logger,
 		writer: f.writer,

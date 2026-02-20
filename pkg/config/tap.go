@@ -41,12 +41,12 @@ type TapConfig struct {
 }
 
 func (c *TapConfig) HasAnyStack() bool {
-if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() || c.Kafka.HasStack() {
+	if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() || c.Kafka.HasStack() {
 		return true
 	}
 
 	for _, e := range c.Endpoints {
-if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() || e.Kafka.HasStack() {
+		if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() || e.Kafka.HasStack() {
 			return true
 		}
 	}
@@ -63,7 +63,7 @@ func (c *TapConfig) GetAllProtocols() []string {
 	if c.Redis.HasStack() {
 		protocols = append(protocols, "redis")
 	}
-if c.MySQL.HasStack() {
+	if c.MySQL.HasStack() {
 		protocols = append(protocols, "mysql")
 	}
 	if c.Kafka.HasStack() {
@@ -78,7 +78,7 @@ if c.MySQL.HasStack() {
 		if e.Redis.HasStack() {
 			protocols = append(protocols, "redis")
 		}
-if e.MySQL.HasStack() {
+		if e.MySQL.HasStack() {
 			protocols = append(protocols, "mysql")
 		}
 		if e.Kafka.HasStack() {

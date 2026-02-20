@@ -118,7 +118,7 @@ func (m *SettingsManager) updateSocketSettingStreamProtocols() error {
 		}
 	}
 
-// check top-level and endpoint-level MySQL configs
+	// check top-level and endpoint-level MySQL configs
 	if m.config.Tap.MySQL.HasStack() {
 		protocols |= streamProtocolMySQL
 	} else {

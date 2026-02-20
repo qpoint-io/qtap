@@ -7,7 +7,7 @@ import (
 	dnsStream "github.com/qpoint-io/qtap/pkg/stream/protocols/dns"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http1"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/http2"
-kafkaStream "github.com/qpoint-io/qtap/pkg/stream/protocols/kafka"
+	kafkaStream "github.com/qpoint-io/qtap/pkg/stream/protocols/kafka"
 	mysqlStream "github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
 	redisStream "github.com/qpoint-io/qtap/pkg/stream/protocols/redis"
 	"go.uber.org/zap"
@@ -79,7 +79,7 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		)
 	}
 
-// parse mysql streams
+	// parse mysql streams
 	if conn.Protocol == connection.Protocol_MYSQL {
 		domain := conn.Domain()
 

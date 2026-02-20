@@ -104,7 +104,7 @@ const (
 	Protocol_DNS     Protocol = "dns"
 	Protocol_MONGODB Protocol = "mongodb"
 	Protocol_REDIS   Protocol = "redis"
-Protocol_MYSQL   Protocol = "mysql"
+	Protocol_MYSQL   Protocol = "mysql"
 	Protocol_KAFKA   Protocol = "kafka"
 	Protocol_GRPC    Protocol = "grpc"
 )

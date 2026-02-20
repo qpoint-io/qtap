@@ -270,28 +270,6 @@ func (s *PanicCatcher) NewMySQLInstance(ctx plugins.PluginContext, svcs *service
 	return NewSafeMySQLFilterInstance(s.logger, i)
 }
 
-// NewKafkaInstance implements the KafkaPlugin interface
-func (s *PanicCatcher) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
-	kafkaP, ok := s.p.(plugins.KafkaPlugin)
-	if !ok {
-		return nil
-	}
-
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.Error("Panic in NewKafkaInstance",
-				zap.Any("panic", r),
-			)
-		}
-	}()
-
-	i := kafkaP.NewKafkaInstance(ctx, svcs)
-	if i == nil {
-		return nil
-	}
-	return NewSafeKafkaFilterInstance(s.logger, i)
-}
-
 // SafeMySQLFilterInstance is a wrapper struct that implements MySQLPluginInstance interface
 // and provides panic recovery and logging
 type SafeMySQLFilterInstance struct {

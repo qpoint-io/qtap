@@ -11,6 +11,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
+	"github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -210,6 +211,8 @@ func (m *devtoolsMySQLInstance) Destroy() {
 		WrBytes:      meta.WriteBytes(),
 		RdBytes:      meta.ReadBytes(),
 	}
+
+	req.AddTags("com_type:" + strings.TrimPrefix(mysql.CommandName(m.command.Type), "COM_"))
 
 	if !m.command.Timestamp.IsZero() {
 		duration := time.Since(m.command.Timestamp).Milliseconds()

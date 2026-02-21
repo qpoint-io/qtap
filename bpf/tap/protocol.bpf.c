@@ -354,7 +354,9 @@ static bool detect_redis(struct conn_info *conn_info, struct buf_info *buf_info,
 }
 
 // Kafka detection: 4-byte length + 2-byte ApiKey (0-67) + 2-byte ApiVersion (0-16) + 4-byte CorrelationID
-// ApiVersions (18) or Metadata (3) are most common first requests
+// ApiVersions (18) or Metadata (3) are most common first requests.
+// Note: the parser accepts ApiKey up to 74 for forward-compatibility, but BPF
+// caps at 67 (the highest currently named constant) to keep detection tight.
 static bool detect_kafka(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	if (count < 14 || !buf_info->buf) {
 		return false;
@@ -389,10 +391,25 @@ static bool detect_kafka(struct conn_info *conn_info, struct buf_info *buf_info,
 		return true;
 	}
 
-	// For other ApiKeys, require additional validation
-	// Check CorrelationID is reasonable (typically starts at 0 or 1)
+	// For other ApiKeys, require two additional checks to reduce false positives
+	// from binary protocols (e.g. gRPC DATA frames, custom framing) whose first
+	// 14 bytes happen to satisfy the ApiKey/ApiVersion range checks above.
+
+	// 1. CorrelationID: Kafka clients start at 0 or 1 on a new connection and
+	//    increment monotonically. Cap at 65535 instead of 1,000,000 — high
+	//    values indicate this is not a fresh Kafka connection.
 	__u32 corr_id = (__u32)hdr[8] << 24 | (__u32)hdr[9] << 16 | (__u32)hdr[10] << 8 | hdr[11];
-	if (corr_id > 1000000) {
+	if (corr_id > 65535) {
+		return false;
+	}
+
+	// 2. Frame-length coherence: require the first write to contain exactly one
+	//    complete Kafka frame (length_field + 4 == packet size). Binary protocols
+	//    that pass the field-range checks by coincidence rarely also satisfy this
+	//    framing invariant. This may produce a false negative if a client
+	//    coalesces multiple requests into a single write on the first packet, but
+	//    that is uncommon during connection setup.
+	if (length + 4 != (__u32)count) {
 		return false;
 	}
 

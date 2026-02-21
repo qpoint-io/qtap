@@ -61,7 +61,7 @@ enum PROTOCOL {
 	P_DNS,
 	P_MONGODB,
 	P_REDIS,
-P_MYSQL,
+	P_MYSQL,
 	P_KAFKA,
 };
 

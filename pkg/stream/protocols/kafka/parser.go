@@ -217,6 +217,8 @@ func (p *Parser) ParseRequest() (*Request, error) {
 	correlationID := int32(binary.BigEndian.Uint32(data[4:8]))
 
 	// Validate ranges
+	// Upper bound 74 is intentionally higher than the highest named constant (67,
+	// AllocateProducerIds) to allow headroom for newer Kafka protocol versions.
 	if apiKey < 0 || apiKey > 74 {
 		p.buffer = p.buffer[1:]
 		return nil, ErrInvalidFormat

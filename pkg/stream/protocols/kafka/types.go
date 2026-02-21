@@ -194,7 +194,9 @@ type Request struct {
 	TotalSize   int            // Total bytes consumed including length prefix
 }
 
-// KafkaMessage represents a sampled message key/value from a record batch
+// KafkaMessage represents a sampled message key/value from a record batch.
+// This mirrors plugins.KafkaMessage; stream.go converts between the two at the
+// plugin boundary so that the parser stays decoupled from the plugins package.
 type KafkaMessage struct {
 	Topic     string
 	Partition int32

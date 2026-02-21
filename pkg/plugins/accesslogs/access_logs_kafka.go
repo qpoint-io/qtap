@@ -12,7 +12,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// kafkaFilterInstance handles Kafka traffic for access logging
+// kafkaFilterInstance handles Kafka traffic for access logging.
+//
+// The plugin lifecycle guarantees exactly one OnKafkaCommand and at most one
+// OnKafkaResult per instance: stream.go creates a new plugin connection for
+// each correlated request/response pair and calls Teardown immediately after
+// OnKafkaResult. Single fields are therefore sufficient and correct.
 type kafkaFilterInstance struct {
 	logger *zap.Logger
 	writer *zap.Logger
@@ -21,41 +26,33 @@ type kafkaFilterInstance struct {
 	mode   displayMode
 	format outputFormat
 
-	commands []*plugins.KafkaCommand
-	results  []*plugins.KafkaResult
+	command *plugins.KafkaCommand
+	result  *plugins.KafkaResult
 }
 
 func (f *kafkaFilterInstance) OnKafkaCommand(cmd *plugins.KafkaCommand) plugins.KafkaStatus {
-	f.commands = append(f.commands, cmd)
+	f.command = cmd
 	return plugins.KafkaStatusContinue
 }
 
 func (f *kafkaFilterInstance) OnKafkaResult(res *plugins.KafkaResult) plugins.KafkaStatus {
-	f.results = append(f.results, res)
+	f.result = res
 	return plugins.KafkaStatusContinue
 }
 
 func (f *kafkaFilterInstance) Destroy() {
-	if f.mode == displayModeNone {
+	if f.mode == displayModeNone || f.command == nil {
 		return
 	}
 
-	// Print each command/result pair
-	for i, cmd := range f.commands {
-		var res *plugins.KafkaResult
-		if i < len(f.results) {
-			res = f.results[i]
-		}
-
-		printer := NewKafkaPrinter(f.format, f.ctx, cmd, res, f.logger, f.writer)
-		switch f.mode {
-		case displayModeSummary:
-			printer.PrintSummary()
-		case displayModeDetails, displayModeFull:
-			printer.PrintDetails()
-		default:
-			printer.PrintSummary()
-		}
+	printer := NewKafkaPrinter(f.format, f.ctx, f.command, f.result, f.logger, f.writer)
+	switch f.mode {
+	case displayModeSummary:
+		printer.PrintSummary()
+	case displayModeDetails, displayModeFull:
+		printer.PrintDetails()
+	default:
+		printer.PrintSummary()
 	}
 }
 

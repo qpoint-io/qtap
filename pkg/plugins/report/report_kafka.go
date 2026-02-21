@@ -57,8 +57,15 @@ func (k *kafkaFilterInstance) buildDatabaseRequest(cmd *plugins.KafkaCommand, re
 		RdBytes:      meta.ReadBytes(),
 	}
 
-	// Calculate duration if we have timestamp info
-	if !cmd.Timestamp.IsZero() {
+	// Use latency from result (request-parse to response-parse round-trip).
+	// Fall back to wall-clock from command timestamp only when no result is available.
+	if res != nil && res.Latency > 0 {
+		duration := res.Latency.Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	} else if !cmd.Timestamp.IsZero() {
 		duration := time.Since(cmd.Timestamp).Milliseconds()
 		if duration == 0 {
 			duration = 1

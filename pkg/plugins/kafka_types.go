@@ -43,6 +43,7 @@ type KafkaResult struct {
 	ErrorMessage  string         // Human-readable error message
 	IsError       bool           // Whether this response contains an error
 	Messages      []KafkaMessage // Sample messages from Fetch responses
+	Latency       time.Duration  // Round-trip latency from request parse to response parse
 }
 
 // KafkaPluginInstance handles Kafka traffic for a single connection

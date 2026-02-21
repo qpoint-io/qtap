@@ -242,6 +242,7 @@ func (s *Stream) processResponses() {
 				ErrorCode:     resp.ErrorCode,
 				IsError:       isError,
 				Messages:      fetchMessages,
+				Latency:       latency,
 			}
 			if isError {
 				pluginResult.ErrorMessage = KafkaErrorName(resp.ErrorCode)

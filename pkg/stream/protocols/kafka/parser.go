@@ -527,8 +527,10 @@ func (p *Parser) extractTopicArrayLegacy(data []byte, offset int) []string {
 
 	topics := make([]string, 0, min(int(arrayLen), 32))
 
-	// We can't easily skip the rest of each topic structure without
-	// knowing the exact schema version, so just collect the first topic.
+	// TODO: multi-topic requests only report the first topic. To iterate all
+	// topics we would need to know the per-topic struct size (partition array,
+	// record sets, etc.) which varies by API and version. Extend this when
+	// full multi-topic visibility is needed.
 	if arrayLen > 0 {
 		if offset+2 > len(data) {
 			return topics
@@ -558,8 +560,10 @@ func (p *Parser) extractTopicArrayCompact(data []byte, offset int) []string {
 
 	topics := make([]string, 0, min(arrayLen, 32))
 
-	// We can't easily skip the rest of each topic structure without
-	// knowing the exact schema, so just collect the first topic.
+	// TODO: multi-topic requests only report the first topic. To iterate all
+	// topics we would need to skip each topic's partition/record-set fields,
+	// whose layout varies by API and version. Extend this when full
+	// multi-topic visibility is needed.
 	if arrayLen > 0 {
 		topicName, newOff := readCompactString(data, offset)
 		if newOff < 0 {

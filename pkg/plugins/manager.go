@@ -138,7 +138,7 @@ func (m *Manager) SetConfig(conf *config.Config) {
 		)
 		m.domainStacks.Store(
 			stackKey{Domain: endpoint.Domain, Protocol: "kafka"},
-			endpoint.Http,
+			endpoint.Kafka,
 		)
 	}
 

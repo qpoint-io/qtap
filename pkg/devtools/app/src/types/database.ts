@@ -14,6 +14,7 @@ export interface DatabaseRequest {
   bytesSent: number
   bytesReceived: number
   tags?: string[]
+  responseSummary?: string
   // Process metadata (from tags/meta)
   process?: {
     exe?: string

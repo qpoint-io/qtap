@@ -299,7 +299,7 @@ func (k *devtoolsKafkaInstance) Destroy() {
 		Timestamp:    time.Now().UTC(),
 		Direction:    meta.Direction(),
 		DatabaseType: "kafka",
-		Statement:    k.buildStatement(k.command),
+		Statement:    plugins.BuildKafkaStatement(k.command),
 		WrBytes:      meta.WriteBytes(),
 		RdBytes:      meta.ReadBytes(),
 	}
@@ -320,7 +320,7 @@ func (k *devtoolsKafkaInstance) Destroy() {
 		req.Duration = duration
 	}
 
-	req.ResponseSummary = k.buildResponseSummary(k.command, k.result)
+	req.ResponseSummary = plugins.BuildKafkaResponseSummary(k.command, k.result)
 
 	if k.result != nil {
 		req.IsError = k.result.IsError
@@ -351,65 +351,4 @@ func (k *devtoolsKafkaInstance) Destroy() {
 	}
 
 	k.eventstore.Save(context.TODO(), req)
-}
-
-func (k *devtoolsKafkaInstance) buildStatement(cmd *plugins.KafkaCommand) string {
-	var parts []string
-	parts = append(parts, cmd.Operation)
-	if len(cmd.Topics) > 0 {
-		parts = append(parts, strings.Join(cmd.Topics, ","))
-	}
-	if cmd.GroupID != "" {
-		parts = append(parts, "group="+cmd.GroupID)
-	}
-	return strings.Join(parts, " ")
-}
-
-const maxKafkaSummaryBytes = 64 * 1024 // 64KB
-
-func (k *devtoolsKafkaInstance) buildResponseSummary(cmd *plugins.KafkaCommand, res *plugins.KafkaResult) string {
-	var sb strings.Builder
-
-	var messages []plugins.KafkaMessage
-	if len(cmd.Messages) > 0 {
-		messages = cmd.Messages
-	}
-	if res != nil && len(res.Messages) > 0 {
-		messages = append(messages, res.Messages...)
-	}
-
-	if len(messages) == 0 {
-		if len(cmd.Topics) > 0 {
-			sb.WriteString("topics: " + strings.Join(cmd.Topics, ", "))
-		}
-		return truncateKafkaSummary(sb.String())
-	}
-
-	sb.WriteString(fmt.Sprintf("%d messages", len(messages)))
-	for i, msg := range messages {
-		if i >= 10 {
-			sb.WriteString(fmt.Sprintf("\n... and %d more", len(messages)-10))
-			break
-		}
-		sb.WriteString(fmt.Sprintf("\n  [%s/%d]", msg.Topic, msg.Partition))
-		if msg.Key != "" {
-			sb.WriteString(" key=" + msg.Key)
-		}
-		if msg.Value != "" {
-			val := msg.Value
-			if runes := []rune(val); len(runes) > 256 {
-				val = string(runes[:256]) + "..."
-			}
-			sb.WriteString(" " + val)
-		}
-	}
-
-	return truncateKafkaSummary(sb.String())
-}
-
-func truncateKafkaSummary(s string) string {
-	if len(s) > maxKafkaSummaryBytes {
-		return s[:maxKafkaSummaryBytes]
-	}
-	return s
 }

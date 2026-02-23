@@ -2,16 +2,12 @@ package report
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"go.uber.org/zap"
 )
-
-const maxKafkaSummaryBytes = 64 * 1024 // 64KB
 
 // kafkaFilterInstance handles Kafka traffic for reporting
 type kafkaFilterInstance struct {
@@ -52,7 +48,7 @@ func (k *kafkaFilterInstance) buildDatabaseRequest(cmd *plugins.KafkaCommand, re
 		Timestamp:    time.Now().UTC(),
 		Direction:    meta.Direction(),
 		DatabaseType: "kafka",
-		Statement:    k.buildStatement(cmd),
+		Statement:    plugins.BuildKafkaStatement(cmd),
 		WrBytes:      meta.WriteBytes(),
 		RdBytes:      meta.ReadBytes(),
 	}
@@ -73,10 +69,8 @@ func (k *kafkaFilterInstance) buildDatabaseRequest(cmd *plugins.KafkaCommand, re
 		req.Duration = duration
 	}
 
-	// Build response summary from command and result messages
-	req.ResponseSummary = k.buildResponseSummary(cmd, res)
+	req.ResponseSummary = plugins.BuildKafkaResponseSummary(cmd, res)
 
-	// Add result details if available
 	if res != nil {
 		req.IsError = res.IsError
 		if res.IsError {
@@ -90,66 +84,4 @@ func (k *kafkaFilterInstance) buildDatabaseRequest(cmd *plugins.KafkaCommand, re
 	req.SetRequestID(meta.RequestID())
 
 	return req
-}
-
-// buildStatement creates a human-readable statement from the Kafka command
-func (k *kafkaFilterInstance) buildStatement(cmd *plugins.KafkaCommand) string {
-	var parts []string
-	parts = append(parts, cmd.Operation)
-	if len(cmd.Topics) > 0 {
-		parts = append(parts, strings.Join(cmd.Topics, ","))
-	}
-	if cmd.GroupID != "" {
-		parts = append(parts, "group="+cmd.GroupID)
-	}
-	return strings.Join(parts, " ")
-}
-
-// buildResponseSummary creates a summary of topics and message samples
-func (k *kafkaFilterInstance) buildResponseSummary(cmd *plugins.KafkaCommand, res *plugins.KafkaResult) string {
-	var sb strings.Builder
-
-	// Collect all messages (from command for Produce, from result for Fetch)
-	var messages []plugins.KafkaMessage
-	if len(cmd.Messages) > 0 {
-		messages = cmd.Messages
-	}
-	if res != nil && len(res.Messages) > 0 {
-		messages = append(messages, res.Messages...)
-	}
-
-	if len(messages) == 0 {
-		if len(cmd.Topics) > 0 {
-			sb.WriteString("topics: " + strings.Join(cmd.Topics, ", "))
-		}
-		return truncateKafkaSummary(sb.String(), maxKafkaSummaryBytes)
-	}
-
-	sb.WriteString(fmt.Sprintf("%d messages", len(messages)))
-	for i, msg := range messages {
-		if i >= 10 { // Cap at 10 message samples
-			sb.WriteString(fmt.Sprintf("\n... and %d more", len(messages)-10))
-			break
-		}
-		sb.WriteString(fmt.Sprintf("\n  [%s/%d]", msg.Topic, msg.Partition))
-		if msg.Key != "" {
-			sb.WriteString(" key=" + msg.Key)
-		}
-		if msg.Value != "" {
-			val := msg.Value
-			if runes := []rune(val); len(runes) > 256 {
-				val = string(runes[:256]) + "..."
-			}
-			sb.WriteString(" " + val)
-		}
-	}
-
-	return truncateKafkaSummary(sb.String(), maxKafkaSummaryBytes)
-}
-
-func truncateKafkaSummary(s string, max int) string {
-	if len(s) > max {
-		return s[:max]
-	}
-	return s
 }

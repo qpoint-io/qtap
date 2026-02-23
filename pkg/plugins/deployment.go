@@ -91,6 +91,16 @@ func (d *StackDeployment) NewStack(connType ConnectionType, ctx PluginContext, s
 					zap.Stringer("plugin", p.PluginType()),
 					zap.String("connection_type", string(connType)))
 			}
+		case ConnectionType_KAFKA:
+			if kafkaP, ok := p.(KafkaPlugin); ok {
+				if i := kafkaP.NewKafkaInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else {
+				d.logger.Log(log.TraceLevel, "plugin does not support Kafka protocol, skipping",
+					zap.Stringer("plugin", p.PluginType()),
+					zap.String("connection_type", string(connType)))
+			}
 		}
 	}
 	return instances

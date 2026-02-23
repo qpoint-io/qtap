@@ -170,6 +170,28 @@ func (s *SafeHttpFilterInstance) Destroy() {
 	s.instance.Destroy()
 }
 
+// NewKafkaInstance implements the KafkaPlugin interface
+func (s *PanicCatcher) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
+	kafkaP, ok := s.p.(plugins.KafkaPlugin)
+	if !ok {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in NewKafkaInstance",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	i := kafkaP.NewKafkaInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafeKafkaFilterInstance(s.logger, i)
+}
+
 // SafeRedisFilterInstance is a wrapper struct that implements RedisPluginInstance interface
 // and provides panic recovery and logging
 type SafeRedisFilterInstance struct {
@@ -263,6 +285,21 @@ func NewSafeMySQLFilterInstance(logger *zap.Logger, instance plugins.MySQLPlugin
 	}
 }
 
+// SafeKafkaFilterInstance is a wrapper struct that implements KafkaPluginInstance interface
+// and provides panic recovery and logging
+type SafeKafkaFilterInstance struct {
+	instance plugins.KafkaPluginInstance
+	logger   *zap.Logger
+}
+
+// NewSafeKafkaFilterInstance creates a new SafeKafkaFilterInstance
+func NewSafeKafkaFilterInstance(logger *zap.Logger, instance plugins.KafkaPluginInstance) *SafeKafkaFilterInstance {
+	return &SafeKafkaFilterInstance{
+		logger:   logger,
+		instance: instance,
+	}
+}
+
 // OnMySQLCommand implements the MySQLPluginInstance interface
 func (s *SafeMySQLFilterInstance) OnMySQLCommand(cmd *plugins.MySQLCommand) (status plugins.MySQLStatus) {
 	defer func() {
@@ -296,6 +333,47 @@ func (s *SafeMySQLFilterInstance) Destroy() {
 	defer func() {
 		if r := recover(); r != nil {
 			s.logger.Error("Panic in Destroy (MySQLFilterInstance)",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	s.instance.Destroy()
+}
+
+// OnKafkaCommand implements the KafkaPluginInstance interface
+func (s *SafeKafkaFilterInstance) OnKafkaCommand(cmd *plugins.KafkaCommand) (status plugins.KafkaStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnKafkaCommand",
+				zap.Any("panic", r),
+			)
+			status = plugins.KafkaStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnKafkaCommand(cmd)
+}
+
+// OnKafkaResult implements the KafkaPluginInstance interface
+func (s *SafeKafkaFilterInstance) OnKafkaResult(res *plugins.KafkaResult) (status plugins.KafkaStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in OnKafkaResult",
+				zap.Any("panic", r),
+			)
+			status = plugins.KafkaStatusStopIteration
+		}
+	}()
+
+	return s.instance.OnKafkaResult(res)
+}
+
+// Destroy implements the KafkaPluginInstance interface
+func (s *SafeKafkaFilterInstance) Destroy() {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in Destroy (KafkaFilterInstance)",
 				zap.Any("panic", r),
 			)
 		}

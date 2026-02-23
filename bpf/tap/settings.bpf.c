@@ -82,6 +82,8 @@ static __always_inline bool should_stream(enum PROTOCOL protocol) {
 		return SHOULD_STREAM_REDIS(stream_protocols);
 	case P_MYSQL:
 		return SHOULD_STREAM_MYSQL(stream_protocols);
+	case P_KAFKA:
+		return SHOULD_STREAM_KAFKA(stream_protocols);
 	default:
 		return false;
 	}

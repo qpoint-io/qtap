@@ -22,6 +22,7 @@ const (
 	streamProtocolHTTP  uint32 = 1 << 0
 	streamProtocolRedis uint32 = 1 << 1
 	streamProtocolMySQL uint32 = 1 << 2
+	streamProtocolKafka uint32 = 1 << 3
 )
 
 // possible traffic directions (maps to DIRECTION enum)
@@ -124,6 +125,18 @@ func (m *SettingsManager) updateSocketSettingStreamProtocols() error {
 		for _, e := range m.config.Tap.Endpoints {
 			if e.MySQL.HasStack() {
 				protocols |= streamProtocolMySQL
+				break
+			}
+		}
+	}
+
+	// check top-level and endpoint-level Kafka configs
+	if m.config.Tap.Kafka.HasStack() {
+		protocols |= streamProtocolKafka
+	} else {
+		for _, e := range m.config.Tap.Endpoints {
+			if e.Kafka.HasStack() {
+				protocols |= streamProtocolKafka
 				break
 			}
 		}

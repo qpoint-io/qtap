@@ -10,7 +10,7 @@ stacks:
       - type: http_metrics
       # - type: access_logs
       #   config:
-      #     mode: summary
+      #     mode: full
       #     format: console
 tap:
   direction: all
@@ -21,4 +21,6 @@ tap:
   redis:
     stack: basic_reporting
   mysql:
+    stack: basic_reporting
+  kafka:
     stack: basic_reporting

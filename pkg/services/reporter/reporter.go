@@ -233,6 +233,10 @@ func toEventStoreL7Protocol(protocol connection.Protocol) eventstore.L7Protocol 
 		return eventstore.L7Protocol_MYSQL
 	case connection.Protocol_REDIS:
 		return eventstore.L7Protocol_REDIS
+	case connection.Protocol_KAFKA:
+		return eventstore.L7Protocol_KAFKA
+	case connection.Protocol_MONGODB:
+		return eventstore.L7Protocol_MONGODB
 	default:
 		return eventstore.L7Protocol_OTHER
 	}

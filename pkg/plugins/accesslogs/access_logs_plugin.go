@@ -167,6 +167,28 @@ func (f *factory) NewMySQLInstance(ctx plugins.PluginContext, svcs *services.Ser
 	}
 }
 
+func (f *factory) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
+	var mode displayMode
+	var format outputFormat
+	if f.config != nil {
+		mode = f.config.Mode
+		format = f.config.Format
+	}
+
+	// fall back to the factory's default format if none was configured
+	if format == "" {
+		format = f.format
+	}
+
+	return &kafkaFilterInstance{
+		ctx:    ctx,
+		logger: f.logger,
+		writer: f.writer,
+		mode:   mode,
+		format: format,
+	}
+}
+
 func (f *factory) Destroy() {
 	f.logger.Debug("plugin destroyed")
 }

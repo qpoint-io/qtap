@@ -23,3 +23,5 @@ tap:
     stack: basic_reporting
   mysql:
     stack: basic_reporting
+  kafka:
+    stack: basic_reporting

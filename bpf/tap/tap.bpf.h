@@ -62,6 +62,7 @@ enum PROTOCOL {
 	P_MONGODB,
 	P_REDIS,
 	P_MYSQL,
+	P_KAFKA,
 };
 
 enum DIRECTION {

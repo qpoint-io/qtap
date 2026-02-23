@@ -25,6 +25,7 @@ type TapEndpointConfig struct {
 	Http   TapProtocolConfig `yaml:"http"`
 	Redis  TapProtocolConfig `yaml:"redis"`
 	MySQL  TapProtocolConfig `yaml:"mysql"`
+	Kafka  TapProtocolConfig `yaml:"kafka"`
 }
 
 type TapConfig struct {
@@ -34,17 +35,18 @@ type TapConfig struct {
 	Http            TapProtocolConfig   `yaml:"http"`
 	Redis           TapProtocolConfig   `yaml:"redis"`
 	MySQL           TapProtocolConfig   `yaml:"mysql"`
+	Kafka           TapProtocolConfig   `yaml:"kafka"`
 	Filters         TapFilters          `yaml:"filters,omitempty"`
 	Endpoints       []TapEndpointConfig `yaml:"endpoints" validate:"dive"`
 }
 
 func (c *TapConfig) HasAnyStack() bool {
-	if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() {
+	if c.Http.HasStack() || c.Redis.HasStack() || c.MySQL.HasStack() || c.Kafka.HasStack() {
 		return true
 	}
 
 	for _, e := range c.Endpoints {
-		if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() {
+		if e.Http.HasStack() || e.Redis.HasStack() || e.MySQL.HasStack() || e.Kafka.HasStack() {
 			return true
 		}
 	}
@@ -64,6 +66,9 @@ func (c *TapConfig) GetAllProtocols() []string {
 	if c.MySQL.HasStack() {
 		protocols = append(protocols, "mysql")
 	}
+	if c.Kafka.HasStack() {
+		protocols = append(protocols, "kafka")
+	}
 
 	for _, e := range c.Endpoints {
 		if e.Http.HasStack() {
@@ -75,6 +80,9 @@ func (c *TapConfig) GetAllProtocols() []string {
 		}
 		if e.MySQL.HasStack() {
 			protocols = append(protocols, "mysql")
+		}
+		if e.Kafka.HasStack() {
+			protocols = append(protocols, "kafka")
 		}
 	}
 

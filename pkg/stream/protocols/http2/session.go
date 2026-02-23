@@ -67,6 +67,9 @@ type Session struct {
 
 	// closed
 	closed bool
+
+	// gRPC support
+	isGRPC bool
 }
 
 func NewSession(ctx context.Context, id uint32, domain string, logger *zap.Logger, conn *connection.Connection, pluginManager *plugins.Manager) *Session {
@@ -247,6 +250,88 @@ func (s *Session) CreateResponse(headers []hpack.HeaderField, endOfStream bool) 
 	}
 
 	return nil
+}
+
+// HandleTrailers processes gRPC trailer headers, extracting grpc-status and grpc-message.
+// It updates the response headers so that downstream plugins and reporters can see the
+// gRPC status information.
+func (s *Session) HandleTrailers(fields []hpack.HeaderField) {
+	meta := extractGRPCTrailers(fields)
+
+	s.logger.Debug("gRPC trailers received",
+		zap.String("grpc-status", meta.Status),
+		zap.String("grpc-status-name", meta.StatusName),
+		zap.String("grpc-message", meta.Message),
+	)
+
+	// Set the gRPC trailer metadata on the response headers so plugins can access them.
+	// The response object was already created via CreateResponse, so we add trailer info to it.
+	if s.res != nil {
+		if meta.Status != "" {
+			s.res.Header.Set("Grpc-Status", meta.Status)
+			s.res.Header.Set("Grpc-Status-Name", meta.StatusName)
+		}
+		if meta.Message != "" {
+			s.res.Header.Set("Grpc-Message", meta.Message)
+		}
+
+		// For gRPC, override the HTTP status code with the gRPC status.
+		// gRPC always returns HTTP 200, so the real status is in grpc-status.
+		// We map grpc-status 0 (OK) → HTTP 200, all others → appropriate error codes.
+		if meta.Status != "" && meta.Status != "0" {
+			s.res.StatusCode = grpcStatusToHTTP(meta.Status)
+			s.res.Status = http.StatusText(s.res.StatusCode)
+
+			// Also update the :status pseudo-header so that plugins reading
+			// status via the header map (e.g., report plugin's HeaderMap.Status())
+			// see the gRPC-mapped status instead of the original HTTP 200.
+			s.res.Header.Set(":status", strconv.Itoa(s.res.StatusCode))
+		}
+	}
+}
+
+// grpcStatusToHTTP maps a gRPC status code to a roughly equivalent HTTP status code
+// for reporting purposes. This helps plugins that look at HTTP status codes understand
+// gRPC errors without gRPC-specific awareness.
+func grpcStatusToHTTP(grpcStatus string) int {
+	switch grpcStatus {
+	case "0": // OK
+		return 200
+	case "1": // CANCELLED
+		return 499
+	case "2": // UNKNOWN
+		return 500
+	case "3": // INVALID_ARGUMENT
+		return 400
+	case "4": // DEADLINE_EXCEEDED
+		return 504
+	case "5": // NOT_FOUND
+		return 404
+	case "6": // ALREADY_EXISTS
+		return 409
+	case "7": // PERMISSION_DENIED
+		return 403
+	case "8": // RESOURCE_EXHAUSTED
+		return 429
+	case "9": // FAILED_PRECONDITION
+		return 400
+	case "10": // ABORTED
+		return 409
+	case "11": // OUT_OF_RANGE
+		return 400
+	case "12": // UNIMPLEMENTED
+		return 501
+	case "13": // INTERNAL
+		return 500
+	case "14": // UNAVAILABLE
+		return 503
+	case "15": // DATA_LOSS
+		return 500
+	case "16": // UNAUTHENTICATED
+		return 401
+	default:
+		return 500
+	}
 }
 
 func (s *Session) WriteRequestBody(data []byte, endStream bool) error {

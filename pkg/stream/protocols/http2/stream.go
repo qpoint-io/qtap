@@ -171,10 +171,16 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			))
 			// stop if the protocol is unrecognized
 			if errors.Is(err, http2.ConnectionError(http2.ErrCodeProtocol)) {
-				s.conn.Protocol = connection.Protocol_UNKNOWN
+				// If we've already identified this as a gRPC connection, skip
+				// unparseable frames (e.g. DATA with protobuf payloads) and let
+				// the stream continue so the plugin chain can still extract
+				// method paths, grpc-status trailers, and per-RPC latency.
+				if s.conn.Protocol == connection.Protocol_GRPC {
+					*buf = (*buf)[totalFrameSize:]
+					continue
+				}
 
-				// we want to drop data frames for GRPC streams
-				// since plugins do not support it
+				s.conn.Protocol = connection.Protocol_UNKNOWN
 				return connection.ErrStreamUnrecoverable(fmt.Errorf("http2 unknown protocol format; likely gRPC or a custom HTTP/2 implementation: %w", err))
 			}
 
@@ -189,6 +195,14 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			attribute.Int("length", frameLength),
 			attribute.String("direction", string(event.Direction)),
 		))
+
+		// Skip stream 0 (connection control stream).
+		// HTTP/2 stream 0 carries only control frames (SETTINGS, PING,
+		// WINDOW_UPDATE, GOAWAY) — never request/response data.
+		// Creating sessions for stream 0 produces phantom events.
+		if frame.Header().StreamID == 0 {
+			continue
+		}
 
 		// session
 		session := s.initSession(frame.Header().StreamID)
@@ -269,19 +283,17 @@ func (t *HTTPStream) handleFrame(session *Session, frame http2.Frame, framer *ht
 	case *http2.HeadersFrame:
 		mh, err := t.readMetaFrame(f, framer, decoder)
 		if err != nil {
-			t.logger.Error("Failed to read meta headers frame",
-				zap.Any("mh", mh),
+			t.logger.Debug("Skipping stream due to HPACK decode error (fail-open)",
+				zap.Uint32("stream_id", session.ID),
 				zap.Error(err))
-			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to read meta headers frame: %w", err))
+			t.cleanupSession(session)
+			return nil
 		}
 
 		if t.isGRPC(mh) {
 			t.conn.Protocol = connection.Protocol_GRPC
-			t.logger.Debug("HTTP/2 GRPC detected, closing stream")
-
-			// we want to drop data frames for GRPC streams
-			// since plugins do not support it
-			return connection.ErrStreamUnrecoverable(errors.New("grpc stream; not supported"))
+			session.isGRPC = true
+			t.logger.Debug("HTTP/2 gRPC stream detected, processing")
 		}
 
 		return t.handleHeadersFrame(session, mh)
@@ -297,24 +309,30 @@ func (t *HTTPStream) handleFrame(session *Session, frame http2.Frame, framer *ht
 	return nil
 }
 
+// skipStream logs a debug message and cleans up a session for fail-open behavior.
+// Instead of returning a fatal error that kills the entire connection, we skip
+// the problematic stream and continue processing other streams.
+func (t *HTTPStream) skipStream(session *Session, msg string, err error) {
+	t.logger.Debug(msg,
+		zap.Uint32("stream_id", session.ID),
+		zap.Error(err))
+	t.cleanupSession(session)
+}
+
 func (t *HTTPStream) handleHeadersFrame(session *Session, frame *http2.MetaHeadersFrame) error {
 	switch session.State {
 	case StreamStateIdle: // request is started
 		// create request
 		if err := session.CreateRequest(frame.Fields, frame.StreamEnded()); err != nil {
-			t.logger.Error("Failed to create http2 request", zap.Error(err))
-			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to create http2 request: %w", err))
+			t.skipStream(session, "Skipping stream: failed to create http2 request", err)
+			return nil
 		}
 
 		if frame.StreamEnded() {
 			// request is done reading body (no body in this case)
 			if err := session.WriteRequestBody(nil, true); err != nil {
-				if errors.Is(err, ErrEncodedBody) {
-					return connection.ErrStreamUnrecoverable(errors.New("request body is encoded; not supported"))
-				}
-
-				t.logger.Error("Failed to write http2 request body", zap.Error(err))
-				return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to write http2 request body: %w", err))
+				t.skipStream(session, "Skipping stream: failed to write http2 request body", err)
+				return nil
 			}
 
 			// request is done
@@ -323,33 +341,99 @@ func (t *HTTPStream) handleHeadersFrame(session *Session, frame *http2.MetaHeade
 			// request is reading body
 			session.SetState(StreamStateRequestHeaders)
 		}
-	case StreamStateRequestDone: // response is started
-		// create response
-		if err := session.CreateResponse(frame.Fields, frame.StreamEnded()); err != nil {
-			t.logger.Error("Failed to create http2 response", zap.Error(err))
-			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to create http2 response: %w", err))
+	case StreamStateRequestHeaders, StreamStateRequestBody:
+		// HTTP/2 allows the server to send response HEADERS before the client
+		// finishes sending the request body. This is common in gRPC bidirectional
+		// streaming where the server starts responding immediately.
+		// Check if this HEADERS frame is a server response (has :status pseudo-header).
+		if hasStatusHeader(frame.Fields) {
+			// Mark the request as done (we'll miss trailing request DATA frames
+			// for body content, but the request headers are already captured)
+			if err := session.WriteRequestBody(nil, true); err != nil {
+				if !errors.Is(err, ErrEncodedBody) {
+					t.logger.Debug("Failed to finalize http2 request body for early response",
+						zap.Uint32("stream_id", session.ID),
+						zap.Error(err))
+				}
+			}
+			session.SetState(StreamStateRequestDone)
+
+			// Fall through to the RequestDone handler below
+			return t.handleResponseHeaders(session, frame)
 		}
 
-		if frame.StreamEnded() {
-			// response is done reading body (no body in this case)
-			if err := session.WriteResponseBody(nil, true); err != nil {
-				if errors.Is(err, ErrEncodedBody) {
-					return connection.ErrStreamUnrecoverable(errors.New("response body is encoded; not supported"))
-				}
+	case StreamStateRequestDone: // response is started
+		return t.handleResponseHeaders(session, frame)
 
-				t.logger.Error("Failed to write http2 response body", zap.Error(err))
-				return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to write http2 response body: %w", err))
+	case StreamStateResponseHeaders, StreamStateResponseBody:
+		// A HEADERS frame during response body phase = trailers (gRPC or HTTP/2 trailers)
+		if frame.StreamEnded() {
+			// Extract gRPC trailer metadata if this is a gRPC session
+			if session.isGRPC {
+				session.HandleTrailers(frame.Fields)
 			}
 
-			// response is done
-			session.SetState(StreamStateResponseDone)
+			// Finalize the response body
+			if err := session.WriteResponseBody(nil, true); err != nil {
+				t.skipStream(session, "Skipping stream: failed to write http2 trailer response body", err)
+				return nil
+			}
 
-			// cleanup the session
+			session.SetState(StreamStateResponseDone)
 			delete(t.sessions, session.ID)
-		} else {
-			// response is reading body
-			session.SetState(StreamStateResponseHeaders)
 		}
+	}
+
+	return nil
+}
+
+// handleResponseHeaders processes a response HEADERS frame when the session
+// is in StreamStateRequestDone (request finished, awaiting server response).
+func (t *HTTPStream) handleResponseHeaders(session *Session, frame *http2.MetaHeadersFrame) error {
+	// For gRPC: check if this is a Trailers-Only response
+	// (single HEADERS frame with :status AND grpc-status, with END_STREAM)
+	if session.isGRPC && frame.StreamEnded() && isTrailersOnly(frame.Fields) {
+		// Trailers-Only: create response from same frame, then handle trailers
+		if err := session.CreateResponse(frame.Fields, false); err != nil {
+			t.skipStream(session, "Skipping stream: failed to create gRPC trailers-only response", err)
+			return nil
+		}
+
+		// Extract gRPC trailer metadata
+		session.HandleTrailers(frame.Fields)
+
+		// Finalize the response body (no body for trailers-only)
+		if err := session.WriteResponseBody(nil, true); err != nil {
+			t.skipStream(session, "Skipping stream: failed to write gRPC trailers-only response body", err)
+			return nil
+		}
+
+		session.SetState(StreamStateResponseDone)
+		delete(t.sessions, session.ID)
+		return nil
+	}
+
+	// create response
+	if err := session.CreateResponse(frame.Fields, frame.StreamEnded()); err != nil {
+		t.skipStream(session, "Skipping stream: failed to create http2 response", err)
+		return nil
+	}
+
+	if frame.StreamEnded() {
+		// response is done reading body (no body in this case)
+		if err := session.WriteResponseBody(nil, true); err != nil {
+			t.skipStream(session, "Skipping stream: failed to write http2 response body", err)
+			return nil
+		}
+
+		// response is done
+		session.SetState(StreamStateResponseDone)
+
+		// cleanup the session
+		delete(t.sessions, session.ID)
+	} else {
+		// response is reading body
+		session.SetState(StreamStateResponseHeaders)
 	}
 
 	return nil
@@ -360,12 +444,8 @@ func (t *HTTPStream) handleDataFrame(session *Session, frame *http2.DataFrame) e
 	case StreamStateRequestHeaders, StreamStateRequestBody: // request is reading body
 		// write the request body
 		if err := session.WriteRequestBody(frame.Data(), frame.StreamEnded()); err != nil {
-			if errors.Is(err, ErrEncodedBody) {
-				return connection.ErrStreamUnrecoverable(errors.New("request body is encoded; not supported"))
-			}
-
-			t.logger.Error("Failed to write http2 request body", zap.Error(err))
-			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to write http2 request body: %w", err))
+			t.skipStream(session, "Skipping stream: failed to write http2 request body", err)
+			return nil
 		}
 
 		if frame.StreamEnded() {
@@ -378,12 +458,8 @@ func (t *HTTPStream) handleDataFrame(session *Session, frame *http2.DataFrame) e
 	case StreamStateResponseHeaders, StreamStateResponseBody: // response is reading body
 		// write the response body
 		if err := session.WriteResponseBody(frame.Data(), frame.StreamEnded()); err != nil {
-			if errors.Is(err, ErrEncodedBody) {
-				return connection.ErrStreamUnrecoverable(errors.New("response body is encoded; not supported"))
-			}
-
-			t.logger.Error("Failed to write http2 response body", zap.Error(err))
-			return connection.ErrStreamUnrecoverable(fmt.Errorf("failed to write http2 response body: %w", err))
+			t.skipStream(session, "Skipping stream: failed to write http2 response body", err)
+			return nil
 		}
 
 		if frame.StreamEnded() {
@@ -429,7 +505,7 @@ func (t *HTTPStream) Closed() bool {
 
 func (t *HTTPStream) isGRPC(h *http2.MetaHeadersFrame) bool {
 	for _, field := range h.Fields {
-		if field.Name == "content-type" && field.Value == "application/grpc" {
+		if field.Name == "content-type" && strings.HasPrefix(field.Value, "application/grpc") {
 			return true
 		}
 	}

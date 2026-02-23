@@ -137,8 +137,8 @@ func (k *kafkaFilterInstance) buildResponseSummary(cmd *plugins.KafkaCommand, re
 		}
 		if msg.Value != "" {
 			val := msg.Value
-			if len(val) > 256 {
-				val = val[:256] + "..."
+			if runes := []rune(val); len(runes) > 256 {
+				val = string(runes[:256]) + "..."
 			}
 			sb.WriteString(" " + val)
 		}

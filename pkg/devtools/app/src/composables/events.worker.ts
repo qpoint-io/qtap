@@ -19,6 +19,7 @@ let pauseState = {
   processes: false,
   redis: false,
   mysql: false,
+  kafka: false,
 }
 let reconnectAttempt = 0
 let reconnectTimeout: number | null = null
@@ -157,6 +158,7 @@ function handleSSEEvent(eventType: string, data: string) {
           const dbType = databaseRequest.databaseType?.toLowerCase()
           if (dbType === 'mysql' && pauseState.mysql) return
           if (dbType === 'redis' && pauseState.redis) return
+          if (dbType === 'kafka' && pauseState.kafka) return
           sendEvent(eventType, {
             type: 'database_request',
             request: databaseRequest,

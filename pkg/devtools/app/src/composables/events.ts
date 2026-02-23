@@ -5,6 +5,7 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
 import { useMySQLStore } from '@/stores/mysql'
+import { useKafkaStore } from '@/stores/kafka'
 import type { WorkerOutboundMessage } from './events.types'
 
 /**
@@ -23,6 +24,7 @@ export function useEvents() {
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
+  const kafkaStore = useKafkaStore()
 
   // reactive state for connection status and errors
   const status = ref<'CONNECTING' | 'OPEN' | 'CLOSED'>('CONNECTING')
@@ -84,11 +86,12 @@ export function useEvents() {
       () => processesStore.paused,
       () => redisStore.paused,
       () => mysqlStore.paused,
+      () => kafkaStore.paused,
     ],
-    ([http, connections, processes, redis, mysql]) => {
+    ([http, connections, processes, redis, mysql, kafka]) => {
       worker.postMessage({
         type: 'pause',
-        paused: { http, connections, processes, redis, mysql },
+        paused: { http, connections, processes, redis, mysql, kafka },
       })
     },
     { immediate: true }
@@ -122,6 +125,7 @@ function handleParsedEvent(eventType: string, data: any) {
   const processesStore = useProcessesStore()
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
+  const kafkaStore = useKafkaStore()
 
   switch (data.type) {
     case 'http_transaction':
@@ -135,6 +139,9 @@ function handleParsedEvent(eventType: string, data: any) {
           break
         case 'mysql':
           mysqlStore.addRequest(data.request)
+          break
+        case 'kafka':
+          kafkaStore.addRequest(data.request)
           break
         default:
           console.warn('DevTools: Unknown databaseType for database_request:', data.request?.databaseType)

@@ -91,6 +91,22 @@ func (f *PluginFactory) NewMySQLInstance(ctx plugins.PluginContext, svcs *servic
 	}
 }
 
+func (f *PluginFactory) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
+	f.logger.Debug("new devtools Kafka plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for Kafka", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsKafkaInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
@@ -251,4 +267,149 @@ func (m *devtoolsMySQLInstance) Destroy() {
 	}
 
 	m.eventstore.Save(context.TODO(), req)
+}
+
+// devtoolsKafkaInstance captures Kafka commands and saves them as DatabaseRequests
+type devtoolsKafkaInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	command *plugins.KafkaCommand
+	result  *plugins.KafkaResult
+}
+
+func (k *devtoolsKafkaInstance) OnKafkaCommand(cmd *plugins.KafkaCommand) plugins.KafkaStatus {
+	k.command = cmd
+	return plugins.KafkaStatusContinue
+}
+
+func (k *devtoolsKafkaInstance) OnKafkaResult(res *plugins.KafkaResult) plugins.KafkaStatus {
+	k.result = res
+	return plugins.KafkaStatusContinue
+}
+
+func (k *devtoolsKafkaInstance) Destroy() {
+	if k.command == nil {
+		return
+	}
+
+	meta := k.ctx.Meta()
+	req := &eventstore.DatabaseRequest{
+		Timestamp:    time.Now().UTC(),
+		Direction:    meta.Direction(),
+		DatabaseType: "kafka",
+		Statement:    k.buildStatement(k.command),
+		WrBytes:      meta.WriteBytes(),
+		RdBytes:      meta.ReadBytes(),
+	}
+
+	req.AddTags("operation:" + k.command.Operation)
+
+	if k.result != nil && k.result.Latency > 0 {
+		duration := k.result.Latency.Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	} else if !k.command.Timestamp.IsZero() {
+		duration := time.Since(k.command.Timestamp).Milliseconds()
+		if duration == 0 {
+			duration = 1
+		}
+		req.Duration = duration
+	}
+
+	req.ResponseSummary = k.buildResponseSummary(k.command, k.result)
+
+	if k.result != nil {
+		req.IsError = k.result.IsError
+		if k.result.IsError {
+			req.ErrorMsg = k.result.ErrorMessage
+			req.ResultType = "Error"
+		} else {
+			req.ResultType = "OK"
+		}
+	}
+
+	req.SetConnectionID(meta.ConnectionID())
+	req.SetRequestID(meta.RequestID())
+
+	if p := meta.Process(); p != nil {
+		req.Process = &eventstore.DatabaseRequestProcess{
+			Exe: p.Exe,
+			Pid: p.Pid,
+		}
+		if c, _ := p.Container(); c != nil {
+			req.Process.ContainerName = c.Name
+			req.Process.ContainerImage = c.Image
+		}
+		if pod, _ := p.Pod(); pod != nil {
+			req.Process.PodName = pod.Name
+			req.Process.PodNamespace = pod.Namespace
+		}
+	}
+
+	k.eventstore.Save(context.TODO(), req)
+}
+
+func (k *devtoolsKafkaInstance) buildStatement(cmd *plugins.KafkaCommand) string {
+	var parts []string
+	parts = append(parts, cmd.Operation)
+	if len(cmd.Topics) > 0 {
+		parts = append(parts, strings.Join(cmd.Topics, ","))
+	}
+	if cmd.GroupID != "" {
+		parts = append(parts, "group="+cmd.GroupID)
+	}
+	return strings.Join(parts, " ")
+}
+
+const maxKafkaSummaryBytes = 64 * 1024 // 64KB
+
+func (k *devtoolsKafkaInstance) buildResponseSummary(cmd *plugins.KafkaCommand, res *plugins.KafkaResult) string {
+	var sb strings.Builder
+
+	var messages []plugins.KafkaMessage
+	if len(cmd.Messages) > 0 {
+		messages = cmd.Messages
+	}
+	if res != nil && len(res.Messages) > 0 {
+		messages = append(messages, res.Messages...)
+	}
+
+	if len(messages) == 0 {
+		if len(cmd.Topics) > 0 {
+			sb.WriteString("topics: " + strings.Join(cmd.Topics, ", "))
+		}
+		return truncateKafkaSummary(sb.String())
+	}
+
+	sb.WriteString(fmt.Sprintf("%d messages", len(messages)))
+	for i, msg := range messages {
+		if i >= 10 {
+			sb.WriteString(fmt.Sprintf("\n... and %d more", len(messages)-10))
+			break
+		}
+		sb.WriteString(fmt.Sprintf("\n  [%s/%d]", msg.Topic, msg.Partition))
+		if msg.Key != "" {
+			sb.WriteString(" key=" + msg.Key)
+		}
+		if msg.Value != "" {
+			val := msg.Value
+			if runes := []rune(val); len(runes) > 256 {
+				val = string(runes[:256]) + "..."
+			}
+			sb.WriteString(" " + val)
+		}
+	}
+
+	return truncateKafkaSummary(sb.String())
+}
+
+func truncateKafkaSummary(s string) string {
+	if len(s) > maxKafkaSummaryBytes {
+		return s[:maxKafkaSummaryBytes]
+	}
+	return s
 }

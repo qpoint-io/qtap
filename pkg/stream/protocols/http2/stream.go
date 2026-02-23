@@ -56,8 +56,10 @@ type HTTPStream struct {
 	// plugin manager
 	pluginManager *plugins.Manager
 
-	// a buffer
-	buffer []byte
+	// HTTP/2 requires independent HPACK dynamic tables for client→server
+	// and server→client header compression.
+	egressBuffer  []byte // client→server frames
+	ingressBuffer []byte // server→client frames
 
 	// socket connection
 	conn *connection.Connection
@@ -65,8 +67,9 @@ type HTTPStream struct {
 	// sessions
 	sessions map[uint32]*Session
 
-	// HTTP/2 read meta headers decoder
-	headerDecoder *hpack.Decoder
+	// per-direction HPACK decoders
+	egressDecoder  *hpack.Decoder // client→server
+	ingressDecoder *hpack.Decoder // server→client
 
 	// closed
 	closed bool
@@ -100,8 +103,9 @@ func NewHTTPStream(ctx context.Context, domain string, logger *zap.Logger, conn 
 		opt(s)
 	}
 
-	// initialize the header decoder
-	s.headerDecoder = hpack.NewDecoder(4096, nil)
+	// initialize per-direction HPACK decoders
+	s.egressDecoder = hpack.NewDecoder(4096, nil)
+	s.ingressDecoder = hpack.NewDecoder(4096, nil)
 
 	// return the stream
 	return s
@@ -117,36 +121,47 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 		return nil
 	}
 
-	s.buffer = append(s.buffer, event.Data...)
+	// select the directional buffer and decoder
+	var buf *[]byte
+	var decoder *hpack.Decoder
+	if event.Direction == connection.Egress {
+		buf = &s.egressBuffer
+		decoder = s.egressDecoder
+	} else {
+		buf = &s.ingressBuffer
+		decoder = s.ingressDecoder
+	}
+
+	*buf = append(*buf, event.Data...)
 
 	// read the preface if we haven't already
 	if !s.prefaceRead && event.Direction == connection.Egress {
-		if err := s.readPreface(); err != nil {
+		if err := s.readPreface(buf); err != nil {
 			return connection.ErrStreamUnrecoverable(err)
 		}
 
 		s.prefaceRead = true
 	}
 
-	for len(s.buffer) > 0 {
+	for len(*buf) > 0 {
 		// Need at least 9 bytes for the frame header
-		if len(s.buffer) < frameHeaderLen {
+		if len(*buf) < frameHeaderLen {
 			return nil
 		}
 
 		// Parse the frame length from the first 3 bytes (big endian)
-		frameLength := int(s.buffer[0])<<16 | int(s.buffer[1])<<8 | int(s.buffer[2])
+		frameLength := int((*buf)[0])<<16 | int((*buf)[1])<<8 | int((*buf)[2])
 
 		// Calculate total frame size (header + payload)
 		totalFrameSize := frameLength + frameHeaderLen
 
 		// Check if we have the complete frame
-		if len(s.buffer) < totalFrameSize {
+		if len(*buf) < totalFrameSize {
 			return nil
 		}
 
 		// Now we can safely process the complete frame
-		framer := http2.NewFramer(nil, bytes.NewReader(s.buffer[:totalFrameSize]))
+		framer := http2.NewFramer(nil, bytes.NewReader((*buf)[:totalFrameSize]))
 		frame, err := framer.ReadFrame()
 		if err != nil {
 			span.AddEvent("http2.frame[error]", trace.WithAttributes(
@@ -166,7 +181,7 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			return connection.ErrStreamUnrecoverable(fmt.Errorf("error reading http2 frame: %w", err))
 		}
 		// Remove the processed frame from buffer
-		s.buffer = s.buffer[totalFrameSize:]
+		*buf = (*buf)[totalFrameSize:]
 
 		frameType := strings.TrimPrefix(reflect.TypeOf(frame).String(), "*http2.")
 		span.AddEvent(fmt.Sprintf("http2.frame[%s]", frameType), trace.WithAttributes(
@@ -185,13 +200,13 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			session.wrBytes += int64(totalFrameSize)
 		}
 
-		err = s.handleFrame(session, frame, framer)
+		err = s.handleFrame(session, frame, framer, decoder)
 		if err != nil {
 			return err
 		}
 
 		// If we have consumed all the buffer, exit the loop
-		if len(s.buffer) == 0 {
+		if len(*buf) == 0 {
 			break
 		}
 	}
@@ -199,12 +214,12 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 	return nil
 }
 
-func (s *HTTPStream) readPreface() error {
+func (s *HTTPStream) readPreface(buf *[]byte) error {
 	// first, read the client connection preface
 	clientPreface := []byte(http2.ClientPreface)
 	prefaceBuffer := make([]byte, len(clientPreface))
 
-	_, err := io.ReadFull(bytes.NewReader(s.buffer), prefaceBuffer)
+	_, err := io.ReadFull(bytes.NewReader(*buf), prefaceBuffer)
 	if err != nil {
 		return fmt.Errorf("failed to read http2 client preface: %w", err)
 	}
@@ -214,10 +229,10 @@ func (s *HTTPStream) readPreface() error {
 	}
 
 	// remove the preface from the buffer
-	if len(s.buffer) > len(clientPreface) {
-		s.buffer = s.buffer[len(clientPreface):]
+	if len(*buf) > len(clientPreface) {
+		*buf = (*buf)[len(clientPreface):]
 	} else {
-		s.buffer = nil
+		*buf = nil
 	}
 
 	return nil
@@ -248,11 +263,11 @@ func (t *HTTPStream) cleanupSession(session *Session) {
 	delete(t.sessions, session.ID)
 }
 
-func (t *HTTPStream) handleFrame(session *Session, frame http2.Frame, framer *http2.Framer) error {
+func (t *HTTPStream) handleFrame(session *Session, frame http2.Frame, framer *http2.Framer, decoder *hpack.Decoder) error {
 	// process the frame
 	switch f := frame.(type) {
 	case *http2.HeadersFrame:
-		mh, err := t.readMetaFrame(f, framer)
+		mh, err := t.readMetaFrame(f, framer, decoder)
 		if err != nil {
 			t.logger.Error("Failed to read meta headers frame",
 				zap.Any("mh", mh),
@@ -401,7 +416,8 @@ func (t *HTTPStream) Close() {
 	}
 
 	t.closed = true
-	t.buffer = nil
+	t.egressBuffer = nil
+	t.ingressBuffer = nil
 }
 
 func (t *HTTPStream) Closed() bool {

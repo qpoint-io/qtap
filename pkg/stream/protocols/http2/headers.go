@@ -33,14 +33,14 @@ type headersOrContinuation interface {
 //
 // This is a modified version of the http2 framer's readMetaFrame method
 // which allows for illegal protocol operations.
-func (t *HTTPStream) readMetaFrame(hf *http2.HeadersFrame, framer *http2.Framer) (*http2.MetaHeadersFrame, error) {
+func (t *HTTPStream) readMetaFrame(hf *http2.HeadersFrame, framer *http2.Framer, decoder *hpack.Decoder) (*http2.MetaHeadersFrame, error) {
 	mh := &http2.MetaHeadersFrame{
 		HeadersFrame: hf,
 	}
 	var remainSize uint32 = MaxHeaderListSize
 
 	// var invalid error // pseudo header field errors
-	hdec := t.headerDecoder
+	hdec := decoder
 	hdec.SetEmitEnabled(true)
 	hdec.SetMaxStringLength(MaxStringLength) // no limit
 	hdec.SetEmitFunc(func(hf hpack.HeaderField) {

@@ -94,6 +94,7 @@ func (h *filterInstance) buildBaseRequest() eventstore.Request {
 		Direction: direction,
 		Category:  category,
 
+		// From Request/Response headers
 		Url:         url,
 		URLPath:     path,
 		Method:      method,
@@ -104,6 +105,7 @@ func (h *filterInstance) buildBaseRequest() eventstore.Request {
 
 	r.SetRequestID(meta.RequestID())
 
+	// Scan for auth tokens
 	authTokenSource, authToken, authTokenFound := h.scanForAuthTokens()
 	if authTokenFound {
 		authTokenType := detectTokenType(authTokenSource, authToken)

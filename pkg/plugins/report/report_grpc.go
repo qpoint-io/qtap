@@ -2,7 +2,6 @@ package report
 
 import (
 	"context"
-	"strings"
 
 	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
@@ -19,7 +18,8 @@ func (h *grpcFilterInstance) Destroy() {
 	base := h.buildBaseRequest()
 
 	rhm := tools.NewHeaderMap(h.resheaders)
-	grpcService, grpcMethod := parseGRPCPath(base.URLPath)
+	hm := tools.NewHeaderMap(h.reqheaders)
+	grpcService, grpcMethod := hm.GRPCServiceMethod()
 	grpcStatus, _ := rhm.Get("Grpc-Status")
 	grpcStatusName, _ := rhm.Get("Grpc-Status-Name")
 	grpcMessage, _ := rhm.Get("Grpc-Message")
@@ -35,14 +35,4 @@ func (h *grpcFilterInstance) Destroy() {
 
 	h.eventstore.Save(context.TODO(), &r)
 	h.logger.Debug("gRPC plugin instance destroyed")
-}
-
-// parseGRPCPath splits a gRPC path (e.g. "/grpc.health.v1.Health/Check")
-// into service ("grpc.health.v1.Health") and method ("Check").
-func parseGRPCPath(path string) (service, method string) {
-	trimmed := strings.TrimPrefix(path, "/")
-	if i := strings.LastIndex(trimmed, "/"); i >= 0 {
-		return trimmed[:i], trimmed[i+1:]
-	}
-	return trimmed, ""
 }

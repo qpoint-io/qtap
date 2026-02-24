@@ -24,3 +24,5 @@ tap:
     stack: basic_reporting
   kafka:
     stack: basic_reporting
+  grpc:
+    stack: basic_reporting

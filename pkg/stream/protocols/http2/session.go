@@ -161,7 +161,11 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 
 	// create a plugin connection
 	if s.pluginManager != nil {
-		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn, id)
+		connType := plugins.ConnectionType_HTTP
+		if s.isGRPC {
+			connType = plugins.ConnectionType_GRPC
+		}
+		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, connType, s.conn, id)
 		if err != nil {
 			return fmt.Errorf("creating plugin connection: %w", err)
 		}

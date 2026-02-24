@@ -76,18 +76,23 @@ func TestGRPC(t *testing.T) {
 		assert.Equal(t, eventstore.L7Protocol_GRPC, grpcConn.L7Protocol)
 
 		// The Health/Check request may arrive after the reflection connection
-		// closes, so poll until it appears.
-		var grpcReq *eventstore.Request
+		// closes, so poll until it appears in GrpcRequests.
+		var grpcReq *eventstore.GrpcRequest
 		require.Eventually(t, func() bool {
-			for _, r := range e2ectx.EventStore.GetByCtxID(ctxID).Requests {
-				if r.URLPath == "/grpc.health.v1.Health/Check" && r.Status == http.StatusOK {
+			for _, r := range e2ectx.EventStore.GetByCtxID(ctxID).GrpcRequests {
+				if r.URLPath == "/grpc.health.v1.Health/Check" {
 					grpcReq = r
 					return true
 				}
 			}
 			return false
-		}, 10*time.Second, 100*time.Millisecond, "no gRPC Health/Check request with status 200")
+		}, 10*time.Second, 100*time.Millisecond, "no gRPC Health/Check request in GrpcRequests")
+
 		assert.Equal(t, "/grpc.health.v1.Health/Check", grpcReq.URLPath)
 		assert.Equal(t, http.StatusOK, grpcReq.Status)
+		assert.Equal(t, "grpc.health.v1.Health", grpcReq.GrpcService)
+		assert.Equal(t, "Check", grpcReq.GrpcMethod)
+		assert.Equal(t, "0", grpcReq.GrpcStatus)
+		assert.Equal(t, "OK", grpcReq.GrpcStatusName)
 	})
 }

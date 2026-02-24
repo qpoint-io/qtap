@@ -82,6 +82,18 @@ type Request struct {
 	RequestAuthToken
 }
 
+// GrpcRequest extends Request with gRPC-specific metadata extracted from
+// the gRPC path and trailer headers (grpc-status, grpc-message).
+type GrpcRequest struct {
+	Request
+
+	GrpcService    string `json:"grpcService,omitempty"`
+	GrpcMethod     string `json:"grpcMethod,omitempty"`
+	GrpcStatus     string `json:"grpcStatus,omitempty"`
+	GrpcStatusName string `json:"grpcStatusName,omitempty"`
+	GrpcMessage    string `json:"grpcMessage,omitempty"`
+}
+
 // DatabaseRequest represents a database query/command transaction for eventstore
 type DatabaseRequest struct {
 	meta

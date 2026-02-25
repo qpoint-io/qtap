@@ -496,7 +496,7 @@ func TestServiceConfigs(t *testing.T) {
 			expected: []*ServiceConfig{
 				// event stores
 				{
-					Type:    "eventstore.eventstorev1_nonstreaming",
+					Type:    "eventstore.eventstorev1",
 					ID:      "pulse",
 					Default: true,
 					Config: ServiceEventStore{

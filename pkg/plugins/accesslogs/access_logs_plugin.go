@@ -123,6 +123,30 @@ func (f *factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.Serv
 	return i
 }
 
+func (f *factory) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.GrpcPluginInstance {
+	var mode displayMode
+	var format outputFormat
+	if f.config != nil {
+		mode = f.config.Mode
+		format = f.config.Format
+	}
+
+	if format == "" {
+		format = f.format
+	}
+
+	return &grpcFilterInstance{
+		filterInstance: filterInstance{
+			ctx:    ctx,
+			logger: f.logger,
+			writer: f.writer,
+			mode:   mode,
+			format: format,
+			rules:  f.config.Rules,
+		},
+	}
+}
+
 func (f *factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
 	var mode displayMode
 	var format outputFormat

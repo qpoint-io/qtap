@@ -161,7 +161,11 @@ func (s *Session) CreateRequest(headers []hpack.HeaderField, endOfStream bool) e
 
 	// create a plugin connection
 	if s.pluginManager != nil {
-		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, plugins.ConnectionType_HTTP, s.conn, id)
+		connType := plugins.ConnectionType_HTTP
+		if s.isGRPC {
+			connType = plugins.ConnectionType_GRPC
+		}
+		s.pluginConn, err = s.pluginManager.NewConnection(s.ctx, connType, s.conn, id)
 		if err != nil {
 			return fmt.Errorf("creating plugin connection: %w", err)
 		}
@@ -394,6 +398,17 @@ func (s *Session) Close() {
 			attribute.Int64("wr_bytes", s.wrBytes),
 			attribute.Int64("rd_bytes", s.rdBytes),
 		)
+
+		// For gRPC streams that close without a trailing HEADERS frame
+		// (e.g. client cancellation, RST_STREAM), no grpc-status trailer is
+		// ever delivered. Default to CANCELLED (1) so plugins always see a
+		// meaningful status rather than an empty string.
+		if s.isGRPC && s.res != nil && s.res.Header.Get("Grpc-Status") == "" {
+			s.res.Header.Set("Grpc-Status", "1")
+			s.res.Header.Set("Grpc-Status-Name", "CANCELLED")
+			s.res.StatusCode = 499
+			s.res.Header.Set(":status", "499")
+		}
 
 		// teardown the plugin connection
 		s.pluginConn.Teardown()

@@ -42,6 +42,24 @@ func (f *Factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.Serv
 	return fi
 }
 
+func (f *Factory) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.GrpcPluginInstance {
+	f.logger.Debug("new gRPC plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "")
+	if err != nil {
+		f.logger.Error("failed to get event store", zap.Error(err))
+		return nil
+	}
+
+	return &grpcFilterInstance{
+		filterInstance: filterInstance{
+			logger:     f.logger,
+			ctx:        ctx,
+			eventstore: es,
+		},
+	}
+}
+
 func (f *Factory) NewRedisInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.RedisPluginInstance {
 	f.logger.Debug("new Redis plugin instance created")
 	ri := &redisFilterInstance{

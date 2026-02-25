@@ -150,15 +150,18 @@ func (s *EventStore) Save(ctx context.Context, item any) {
 }
 
 type Events struct {
-	Requests    []*eventstore.Request
-	Issues      []*eventstore.Issue
-	Artifacts   []*eventstore.Artifact
-	PIIEntities []*eventstore.PIIEntity
-	Connections []*eventstore.Connection
+	Requests     []*eventstore.Request
+	GrpcRequests []*eventstore.GrpcRequest
+	Issues       []*eventstore.Issue
+	Artifacts    []*eventstore.Artifact
+	PIIEntities  []*eventstore.PIIEntity
+	Connections  []*eventstore.Connection
 }
 
 func (e *Events) Add(item any) error {
 	switch i := item.(type) {
+	case *eventstore.GrpcRequest:
+		e.GrpcRequests = append(e.GrpcRequests, i)
 	case *eventstore.Request:
 		e.Requests = append(e.Requests, i)
 	case *eventstore.Issue:
@@ -177,6 +180,7 @@ func (e *Events) Add(item any) error {
 
 func (e *Events) Merge(other *Events) {
 	e.Requests = append(e.Requests, other.Requests...)
+	e.GrpcRequests = append(e.GrpcRequests, other.GrpcRequests...)
 	e.Issues = append(e.Issues, other.Issues...)
 	e.Artifacts = append(e.Artifacts, other.Artifacts...)
 	e.PIIEntities = append(e.PIIEntities, other.PIIEntities...)

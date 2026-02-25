@@ -170,6 +170,28 @@ func (s *SafeHttpFilterInstance) Destroy() {
 	s.instance.Destroy()
 }
 
+// NewGrpcInstance implements the GrpcPlugin interface
+func (s *PanicCatcher) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.GrpcPluginInstance {
+	grpcP, ok := s.p.(plugins.GrpcPlugin)
+	if !ok {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in NewGrpcInstance",
+				zap.Any("panic", r),
+			)
+		}
+	}()
+
+	i := grpcP.NewGrpcInstance(ctx, svcs)
+	if i == nil {
+		return nil
+	}
+	return NewSafeGrpcFilterInstance(s.logger, i)
+}
+
 // NewKafkaInstance implements the KafkaPlugin interface
 func (s *PanicCatcher) NewKafkaInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.KafkaPluginInstance {
 	kafkaP, ok := s.p.(plugins.KafkaPlugin)
@@ -379,6 +401,69 @@ func (s *SafeKafkaFilterInstance) Destroy() {
 		}
 	}()
 
+	s.instance.Destroy()
+}
+
+// SafeGrpcFilterInstance is a wrapper struct that implements GrpcPluginInstance
+// and provides panic recovery and logging.
+type SafeGrpcFilterInstance struct {
+	instance plugins.GrpcPluginInstance
+	logger   *zap.Logger
+}
+
+func NewSafeGrpcFilterInstance(logger *zap.Logger, instance plugins.GrpcPluginInstance) *SafeGrpcFilterInstance {
+	return &SafeGrpcFilterInstance{
+		logger:   logger,
+		instance: instance,
+	}
+}
+
+func (s *SafeGrpcFilterInstance) RequestHeaders(requestHeaders plugins.Headers, endOfStream bool) (status plugins.HeadersStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in gRPC RequestHeaders", zap.Any("panic", r))
+			status = plugins.HeadersStatusStopIteration
+		}
+	}()
+	return s.instance.RequestHeaders(requestHeaders, endOfStream)
+}
+
+func (s *SafeGrpcFilterInstance) RequestBody(frame plugins.BodyBuffer, endOfStream bool) (status plugins.BodyStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in gRPC RequestBody", zap.Any("panic", r))
+			status = plugins.BodyStatusStopIterationAndBuffer
+		}
+	}()
+	return s.instance.RequestBody(frame, endOfStream)
+}
+
+func (s *SafeGrpcFilterInstance) ResponseHeaders(responseHeaders plugins.Headers, endOfStream bool) (status plugins.HeadersStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in gRPC ResponseHeaders", zap.Any("panic", r))
+			status = plugins.HeadersStatusStopIteration
+		}
+	}()
+	return s.instance.ResponseHeaders(responseHeaders, endOfStream)
+}
+
+func (s *SafeGrpcFilterInstance) ResponseBody(frame plugins.BodyBuffer, endOfStream bool) (status plugins.BodyStatus) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in gRPC ResponseBody", zap.Any("panic", r))
+			status = plugins.BodyStatusStopIterationAndBuffer
+		}
+	}()
+	return s.instance.ResponseBody(frame, endOfStream)
+}
+
+func (s *SafeGrpcFilterInstance) Destroy() {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("Panic in gRPC Destroy", zap.Any("panic", r))
+		}
+	}()
 	s.instance.Destroy()
 }
 

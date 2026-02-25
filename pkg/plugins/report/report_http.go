@@ -48,8 +48,14 @@ func (h *filterInstance) ResponseBody(body plugins.BodyBuffer, endStream bool) p
 }
 
 func (h *filterInstance) Destroy() {
-	ctx := context.TODO()
+	r := h.buildBaseRequest()
+	h.eventstore.Save(context.TODO(), &r)
+	h.logger.Debug("plugin instance destroyed")
+}
 
+// buildBaseRequest constructs an eventstore.Request from the captured headers,
+// timing, and connection metadata. Shared by HTTP and gRPC report instances.
+func (h *filterInstance) buildBaseRequest() eventstore.Request {
 	if h.finishTime.IsZero() {
 		h.finishTime = time.Now()
 	}
@@ -68,7 +74,6 @@ func (h *filterInstance) Destroy() {
 
 	status, _ := rhm.Status()
 	contentType, _ := rhm.Get("Content-Type")
-
 	category := tools.MimeCategory(contentType)
 
 	// ------ Duration
@@ -113,9 +118,7 @@ func (h *filterInstance) Destroy() {
 		}
 	}
 
-	h.eventstore.Save(ctx, &r)
-
-	h.logger.Debug("plugin instance destroyed")
+	return r
 }
 
 func (h *filterInstance) scanForAuthTokens() (string, string, bool) {

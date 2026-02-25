@@ -93,6 +93,20 @@ func (h HeaderMap) ContentType() (string, bool) {
 	return h.Get("Content-Type")
 }
 
+// GRPCServiceMethod parses a gRPC path (e.g. "/grpc.health.v1.Health/Check")
+// and returns the service ("grpc.health.v1.Health") and method ("Check").
+func (h HeaderMap) GRPCServiceMethod() (service, method string) {
+	path, ok := h.Path()
+	if !ok {
+		return "", ""
+	}
+	trimmed := strings.TrimPrefix(path, "/")
+	if i := strings.LastIndex(trimmed, "/"); i >= 0 {
+		return trimmed[:i], trimmed[i+1:]
+	}
+	return trimmed, ""
+}
+
 func (h HeaderMap) MimeCategory() (string, bool) {
 	ct, ok := h.ContentType()
 	if !ok {

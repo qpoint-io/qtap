@@ -32,6 +32,8 @@ func (f *EventStoreFactory) Create(ctx context.Context, svcRegistry *services.Se
 func (f *EventStoreFactory) save(item any) {
 	var topic string
 	switch i := item.(type) {
+	case *eventstore.GrpcRequest:
+		topic = "request.grpc"
 	case *eventstore.Request:
 		topic = "request.created"
 	case *eventstore.Issue:

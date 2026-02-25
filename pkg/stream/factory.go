@@ -109,8 +109,8 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 		)
 	}
 
-	// parse http streams
-	if conn.Protocol == connection.Protocol_HTTP1 || conn.Protocol == connection.Protocol_HTTP2 {
+	// parse http streams (gRPC uses the HTTP/2 parser — it's detected and reclassified inside)
+	if conn.Protocol == connection.Protocol_HTTP1 || conn.Protocol == connection.Protocol_HTTP2 || conn.Protocol == connection.Protocol_GRPC {
 		// extract the domain
 		domain := conn.Domain()
 
@@ -126,8 +126,8 @@ func (m *StreamFactory) OnConnection(conn *connection.Connection) connection.Str
 			)
 		}
 
-		// parse http/2 streams
-		if conn.Protocol == connection.Protocol_HTTP2 {
+		// parse http/2 streams (gRPC uses HTTP/2 transport and is parsed by the same handler)
+		if conn.Protocol == connection.Protocol_HTTP2 || conn.Protocol == connection.Protocol_GRPC {
 			return http2.NewHTTPStream(conn.Context(), domain, logger, conn,
 				http2.SetPluginManager(m.pluginManager),
 			)

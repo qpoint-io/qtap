@@ -61,13 +61,27 @@ func (d *StackDeployment) NewStack(connType ConnectionType, ctx PluginContext, s
 	instances := make([]PluginInstance, 0)
 	for _, p := range d.plugins {
 		switch connType {
-		case ConnectionType_HTTP, ConnectionType_GRPC:
+		case ConnectionType_HTTP:
 			if httpP, ok := p.(HttpPlugin); ok {
 				if i := httpP.NewHttpInstance(ctx, svcs); i != nil {
 					instances = append(instances, i)
 				}
 			} else {
 				d.logger.Log(log.TraceLevel, "plugin does not support HTTP protocol, skipping",
+					zap.Stringer("plugin", p.PluginType()),
+					zap.String("connection_type", string(connType)))
+			}
+		case ConnectionType_GRPC:
+			if grpcP, ok := p.(GrpcPlugin); ok {
+				if i := grpcP.NewGrpcInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else if httpP, ok := p.(HttpPlugin); ok {
+				if i := httpP.NewHttpInstance(ctx, svcs); i != nil {
+					instances = append(instances, i)
+				}
+			} else {
+				d.logger.Log(log.TraceLevel, "plugin does not support gRPC or HTTP protocol, skipping",
 					zap.Stringer("plugin", p.PluginType()),
 					zap.String("connection_type", string(connType)))
 			}

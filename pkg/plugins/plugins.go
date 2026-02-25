@@ -58,6 +58,24 @@ type HttpPluginInstance interface {
 	ResponseBody(frame BodyBuffer, endOfStream bool) BodyStatus
 }
 
+// GrpcPlugin is the capability interface for plugins that handle gRPC traffic.
+// Plugins that do not implement GrpcPlugin will fall back to HttpPlugin for gRPC connections.
+type GrpcPlugin interface {
+	Plugin // Embeds base
+	NewGrpcInstance(PluginContext, *services.ServiceRegistry) GrpcPluginInstance
+}
+
+// GrpcPluginInstance handles gRPC traffic for a single connection.
+// gRPC is transported over HTTP/2, so the method signatures mirror HttpPluginInstance,
+// but implementations receive gRPC-enriched headers (Grpc-Status, Grpc-Status-Name, Grpc-Message).
+type GrpcPluginInstance interface {
+	PluginInstance
+	RequestHeaders(requestHeaders Headers, endOfStream bool) HeadersStatus
+	RequestBody(frame BodyBuffer, endOfStream bool) BodyStatus
+	ResponseHeaders(responseHeaders Headers, endOfStream bool) HeadersStatus
+	ResponseBody(frame BodyBuffer, endOfStream bool) BodyStatus
+}
+
 type PluginContext interface {
 	GetRequestBodyBuffer() BodyBuffer
 	GetResponseBodyBuffer() BodyBuffer

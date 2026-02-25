@@ -49,6 +49,7 @@
       <Redis v-else-if="activeTab === 'redis'" />
       <MySQL v-else-if="activeTab === 'mysql'" />
       <Kafka v-else-if="activeTab === 'kafka'" />
+      <Grpc v-else-if="activeTab === 'grpc'" />
       <Welcome v-else-if="activeTab === 'welcome'" :connectionStatus="status" @selectTab="selectTab" />
     </div>
   </div>
@@ -65,12 +66,14 @@ import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
 import { useMySQLStore } from '@/stores/mysql'
 import { useKafkaStore } from '@/stores/kafka'
+import { useGrpcStore } from '@/stores/grpc'
 import Requests from '@/components/pages/Requests.vue'
 import Connections from '@/components/pages/Connections.vue'
 import Processes from '@/components/pages/Processes.vue'
 import Redis from '@/components/pages/Redis.vue'
 import MySQL from '@/components/pages/MySQL.vue'
 import Kafka from '@/components/pages/Kafka.vue'
+import Grpc from '@/components/pages/Grpc.vue'
 import Welcome from '@/components/pages/Welcome.vue'
 import ThemeToggle from '@/components/ux/ThemeToggle.vue'
 import logoSmallBlack from '@/assets/logo-small-black.svg'
@@ -86,6 +89,7 @@ const processesStore = useProcessesStore()
 const redisStore = useRedisStore()
 const mysqlStore = useMySQLStore()
 const kafkaStore = useKafkaStore()
+const grpcStore = useGrpcStore()
 
 onMounted(() => {
   httpStore.restoreFromStorage()
@@ -94,6 +98,7 @@ onMounted(() => {
   redisStore.restoreFromStorage()
   mysqlStore.restoreFromStorage()
   kafkaStore.restoreFromStorage()
+  grpcStore.restoreFromStorage()
 
   // Start periodic persistence for all stores
   httpStore.startPeriodicPersistence()
@@ -102,6 +107,7 @@ onMounted(() => {
   redisStore.startPeriodicPersistence()
   mysqlStore.startPeriodicPersistence()
   kafkaStore.startPeriodicPersistence()
+  grpcStore.startPeriodicPersistence()
 })
 
 const params = useUrlParams()
@@ -113,6 +119,7 @@ const tabs: { id: string; label: string }[] = [
   { id: 'redis', label: 'Redis' },
   { id: 'mysql', label: 'MySQL' },
   { id: 'kafka', label: 'Kafka' },
+  { id: 'grpc', label: 'gRPC' },
 ]
 
 // get active tab from URL, default to 'requests'
@@ -128,6 +135,7 @@ const selectTab = (tabId: string) => {
   if (tabId !== 'redis') delete params.redis_id
   if (tabId !== 'mysql') delete params.mysql_id
   if (tabId !== 'kafka') delete params.kafka_id
+  if (tabId !== 'grpc') delete params.grpc_id
 }
 
 // connect to the SSE endpoint

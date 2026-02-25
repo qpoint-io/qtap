@@ -6,6 +6,7 @@ import { useProcessesStore } from '@/stores/processes'
 import { useRedisStore } from '@/stores/redis'
 import { useMySQLStore } from '@/stores/mysql'
 import { useKafkaStore } from '@/stores/kafka'
+import { useGrpcStore } from '@/stores/grpc'
 import type { WorkerOutboundMessage } from './events.types'
 
 /**
@@ -25,6 +26,7 @@ export function useEvents() {
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
   const kafkaStore = useKafkaStore()
+  const grpcStore = useGrpcStore()
 
   // reactive state for connection status and errors
   const status = ref<'CONNECTING' | 'OPEN' | 'CLOSED'>('CONNECTING')
@@ -87,11 +89,12 @@ export function useEvents() {
       () => redisStore.paused,
       () => mysqlStore.paused,
       () => kafkaStore.paused,
+      () => grpcStore.paused,
     ],
-    ([http, connections, processes, redis, mysql, kafka]) => {
+    ([http, connections, processes, redis, mysql, kafka, grpc]) => {
       worker.postMessage({
         type: 'pause',
-        paused: { http, connections, processes, redis, mysql, kafka },
+        paused: { http, connections, processes, redis, mysql, kafka, grpc },
       })
     },
     { immediate: true }
@@ -126,6 +129,7 @@ function handleParsedEvent(eventType: string, data: any) {
   const redisStore = useRedisStore()
   const mysqlStore = useMySQLStore()
   const kafkaStore = useKafkaStore()
+  const grpcStore = useGrpcStore()
 
   switch (data.type) {
     case 'http_transaction':
@@ -192,6 +196,10 @@ function handleParsedEvent(eventType: string, data: any) {
           status: 'exited',
         })
       }
+      break
+
+    case 'grpc_request':
+      grpcStore.addRequest(data.request)
       break
 
     default:

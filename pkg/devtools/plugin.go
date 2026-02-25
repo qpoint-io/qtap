@@ -9,6 +9,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
+	"github.com/qpoint-io/qtap/pkg/plugins/tools"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/stream/protocols/mysql"
@@ -107,6 +108,22 @@ func (f *PluginFactory) NewKafkaInstance(ctx plugins.PluginContext, svcs *servic
 	}
 }
 
+func (f *PluginFactory) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.GrpcPluginInstance {
+	f.logger.Debug("new devtools gRPC plugin instance created")
+
+	es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, "devtools")
+	if err != nil {
+		f.logger.Error("failed to get devtools event store for gRPC", zap.Error(err))
+		return nil
+	}
+
+	return &devtoolsGrpcInstance{
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
+	}
+}
+
 func (f *PluginFactory) Destroy() {}
 
 func (f *PluginFactory) PluginType() plugins.PluginType {
@@ -169,7 +186,7 @@ func (r *devtoolsRedisInstance) Destroy() {
 	req.SetRequestID(meta.RequestID())
 
 	if p := meta.Process(); p != nil {
-		req.Process = &eventstore.DatabaseRequestProcess{
+		req.Process = &eventstore.RequestProcess{
 			Exe: p.Exe,
 			Pid: p.Pid,
 		}
@@ -252,7 +269,7 @@ func (m *devtoolsMySQLInstance) Destroy() {
 	req.SetRequestID(meta.RequestID())
 
 	if p := meta.Process(); p != nil {
-		req.Process = &eventstore.DatabaseRequestProcess{
+		req.Process = &eventstore.RequestProcess{
 			Exe: p.Exe,
 			Pid: p.Pid,
 		}
@@ -336,7 +353,7 @@ func (k *devtoolsKafkaInstance) Destroy() {
 	req.SetRequestID(meta.RequestID())
 
 	if p := meta.Process(); p != nil {
-		req.Process = &eventstore.DatabaseRequestProcess{
+		req.Process = &eventstore.RequestProcess{
 			Exe: p.Exe,
 			Pid: p.Pid,
 		}
@@ -351,4 +368,97 @@ func (k *devtoolsKafkaInstance) Destroy() {
 	}
 
 	k.eventstore.Save(context.TODO(), req)
+}
+
+// devtoolsGrpcInstance captures gRPC calls and saves them as GrpcRequests
+// to the devtools eventstore, which broadcasts them via SSE.
+type devtoolsGrpcInstance struct {
+	logger     *zap.Logger
+	ctx        plugins.PluginContext
+	eventstore eventstore.EventStore
+
+	reqHeaders plugins.Headers
+	resHeaders plugins.Headers
+	reqTime    time.Time
+}
+
+func (g *devtoolsGrpcInstance) RequestHeaders(headers plugins.Headers, endOfStream bool) plugins.HeadersStatus {
+	g.reqHeaders = headers
+	g.reqTime = time.Now()
+	return plugins.HeadersStatusContinue
+}
+
+func (g *devtoolsGrpcInstance) RequestBody(frame plugins.BodyBuffer, endOfStream bool) plugins.BodyStatus {
+	return plugins.BodyStatusContinue
+}
+
+func (g *devtoolsGrpcInstance) ResponseHeaders(headers plugins.Headers, endOfStream bool) plugins.HeadersStatus {
+	g.resHeaders = headers
+	return plugins.HeadersStatusContinue
+}
+
+func (g *devtoolsGrpcInstance) ResponseBody(frame plugins.BodyBuffer, endOfStream bool) plugins.BodyStatus {
+	return plugins.BodyStatusContinue
+}
+
+func (g *devtoolsGrpcInstance) Destroy() {
+	if g.reqHeaders == nil {
+		return
+	}
+
+	meta := g.ctx.Meta()
+
+	reqHM := tools.NewHeaderMap(g.reqHeaders)
+	grpcService, grpcMethod := reqHM.GRPCServiceMethod()
+	urlPath, _ := reqHM.Path()
+
+	var grpcStatus, grpcStatusName, grpcMessage string
+	if g.resHeaders != nil {
+		resHM := tools.NewHeaderMap(g.resHeaders)
+		grpcStatus, _ = resHM.Get("Grpc-Status")
+		grpcStatusName, _ = resHM.Get("Grpc-Status-Name")
+		grpcMessage, _ = resHM.Get("Grpc-Message")
+	}
+
+	duration := time.Since(g.reqTime).Milliseconds()
+	if duration == 0 {
+		duration = 1
+	}
+
+	req := &eventstore.GrpcRequest{
+		Request: eventstore.Request{
+			Timestamp: time.Now().UTC(),
+			Direction: meta.Direction(),
+			URLPath:   urlPath,
+			Status:    200,
+			Duration:  duration,
+			WrBytes:   meta.WriteBytes(),
+			RdBytes:   meta.ReadBytes(),
+		},
+		GrpcService:    grpcService,
+		GrpcMethod:     grpcMethod,
+		GrpcStatus:     grpcStatus,
+		GrpcStatusName: grpcStatusName,
+		GrpcMessage:    grpcMessage,
+	}
+
+	req.SetConnectionID(meta.ConnectionID())
+	req.SetRequestID(meta.RequestID())
+
+	if p := meta.Process(); p != nil {
+		req.Process = &eventstore.RequestProcess{
+			Exe: p.Exe,
+			Pid: p.Pid,
+		}
+		if c, _ := p.Container(); c != nil {
+			req.Process.ContainerName = c.Name
+			req.Process.ContainerImage = c.Image
+		}
+		if pod, _ := p.Pod(); pod != nil {
+			req.Process.PodName = pod.Name
+			req.Process.PodNamespace = pod.Namespace
+		}
+	}
+
+	g.eventstore.Save(context.TODO(), req)
 }

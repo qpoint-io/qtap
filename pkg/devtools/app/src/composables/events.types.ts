@@ -2,6 +2,7 @@ import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
 import type { DatabaseRequest } from '@/types/database'
+import type { GrpcRequest } from '@/types/grpc'
 
 /**
  * Message types for Web Worker communication
@@ -13,7 +14,7 @@ import type { DatabaseRequest } from '@/types/database'
 // Messages from main thread -> worker
 export type WorkerInboundMessage =
   | { type: 'init'; endpoint: string }
-  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean; redis: boolean; mysql: boolean; kafka: boolean } }
+  | { type: 'pause'; paused: { http: boolean; connections: boolean; processes: boolean; redis: boolean; mysql: boolean; kafka: boolean; grpc: boolean } }
   | { type: 'close' }
 
 // Messages from worker -> main thread  
@@ -31,4 +32,5 @@ export type ParsedEventData =
   | { type: 'process_started'; process: Process }
   | { type: 'process_stopped'; pid: number }
   | { type: 'database_request'; request: DatabaseRequest }
+  | { type: 'grpc_request'; request: GrpcRequest }
 

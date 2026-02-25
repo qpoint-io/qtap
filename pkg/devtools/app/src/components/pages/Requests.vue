@@ -108,7 +108,7 @@
               <!-- Direction -->
               <div
                 v-else-if="column.key === 'direction'"
-                class="px-2 py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light flex items-center"
+                class="px-[5px] py-1.5 border-r border-dt-border-light dark:border-dt-border-dark-light flex items-center"
                 :style="{ width: `${column.width}px`, minWidth: `${column.minWidth}px` }"
               >
                 <DirectionIndicator :direction="transaction.direction" />
@@ -488,8 +488,8 @@ import 'prismjs/themes/prism-tomorrow.min.css'
 
 // Default column configuration
 const defaultColumns: ColumnConfig[] = [
+  { key: 'direction', label: '', width: 26, minWidth: 26, visible: true, resizable: false },
   { key: 'timestamp', label: 'Timestamp', width: 128, minWidth: 80, visible: true, resizable: true },
-  { key: 'direction', label: 'Direction', width: 96, minWidth: 60, visible: true, resizable: true },
   { key: 'endpoint', label: 'Endpoint', width: 160, minWidth: 80, visible: true, resizable: true },
   { key: 'path', label: 'Path', width: 300, minWidth: 100, visible: true, resizable: true },
   { key: 'status', label: 'Status', width: 64, minWidth: 50, visible: true, resizable: true },

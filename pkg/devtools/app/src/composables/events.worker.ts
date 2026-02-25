@@ -2,6 +2,7 @@ import type { HttpTransaction } from '@/stores/http'
 import type { Connection } from '@/stores/connections'
 import type { Process } from '@/stores/processes'
 import type { DatabaseRequest } from '@/types/database'
+import type { GrpcRequest } from '@/types/grpc'
 import type { WorkerInboundMessage, WorkerOutboundMessage } from './events.types'
 
 /**
@@ -20,6 +21,7 @@ let pauseState = {
   redis: false,
   mysql: false,
   kafka: false,
+  grpc: false,
 }
 let reconnectAttempt = 0
 let reconnectTimeout: number | null = null
@@ -29,6 +31,7 @@ const eventNames = [
   'system.connected',
   'request.http_transaction',
   'request.database',
+  'request.grpc',
   'connection.opened',
   'connection.updated',
   'connection.closed',
@@ -166,6 +169,17 @@ function handleSSEEvent(eventType: string, data: string) {
         }
         break
 
+      case 'request.grpc':
+        if (pauseState.grpc) return
+        const grpcRequest = parseGrpcRequest(parsed)
+        if (grpcRequest) {
+          sendEvent(eventType, {
+            type: 'grpc_request',
+            request: grpcRequest,
+          })
+        }
+        break
+
       case 'connection.opened':
         // Check if connection events are paused
         if (pauseState.connections) return
@@ -274,6 +288,20 @@ function parseDatabaseRequest(event: any): DatabaseRequest | null {
   }
 
   return event.data.data as DatabaseRequest
+}
+
+/**
+ * Parse gRPC request from event data
+ */
+function parseGrpcRequest(event: any): GrpcRequest | null {
+  // Backend sends: { ts, data: { data: <GrpcRequest> } }
+
+  if (!event?.data?.data) {
+    console.warn('DevTools Worker: Unexpected request.grpc structure:', event)
+    return null
+  }
+
+  return event.data.data as GrpcRequest
 }
 
 /**

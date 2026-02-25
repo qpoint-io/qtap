@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center">
+  <div class="flex items-center" :title="!showLabel ? direction : undefined">
     <template v-if="direction === 'ingress'">
       <IngressIcon class="text-blue-600 dark:text-blue-400" :class="{ 'mr-1.5': showLabel }" />
       <span v-if="showLabel" class="text-[11px] text-blue-600 dark:text-blue-400">ingress</span>
@@ -22,7 +22,7 @@ interface Props {
 
 withDefaults(defineProps<Props>(), {
   direction: 'egress',
-  showLabel: true
+  showLabel: false,
 })
 </script>
 

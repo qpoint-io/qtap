@@ -129,7 +129,7 @@ func (r *GRPCTestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc 
 	}
 
 	validationCtx := ValidationContext{
-		TestContext:   tctx,
+		TestContext:  tctx,
 		GRPCTestCase: &tc,
 		Container:    &containerResult,
 	}

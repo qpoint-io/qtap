@@ -160,8 +160,49 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 			return nil
 		}
 
-		// Now we can safely process the complete frame
-		framer := http2.NewFramer(nil, bytes.NewReader((*buf)[:totalFrameSize]))
+		// If this is a HEADERS or PUSH_PROMISE frame without END_HEADERS,
+		// we need to include all subsequent CONTINUATION frames so the
+		// framer can read them in readMetaFrame. Different gRPC/HTTP2
+		// implementations (e.g. Python grpc C-core) may split header
+		// blocks across HEADERS + CONTINUATION frames.
+		frameType := (*buf)[3] // frame type byte
+		frameFlags := (*buf)[4]
+		const (
+			frameTypeHeaders      = 0x1
+			frameTypeContinuation = 0x9
+			flagEndHeaders        = 0x4
+		)
+		endOfFrames := totalFrameSize
+		if (frameType == frameTypeHeaders) && (frameFlags&flagEndHeaders == 0) {
+			// Scan forward to collect all CONTINUATION frames
+			offset := totalFrameSize
+			for {
+				if len(*buf) < offset+frameHeaderLen {
+					// Need more data; wait for next event
+					return nil
+				}
+				contLength := int((*buf)[offset])<<16 | int((*buf)[offset+1])<<8 | int((*buf)[offset+2])
+				contType := (*buf)[offset+3]
+				contFlags := (*buf)[offset+4]
+				contSize := contLength + frameHeaderLen
+				if len(*buf) < offset+contSize {
+					return nil
+				}
+				if contType != frameTypeContinuation {
+					// Protocol violation: expected CONTINUATION, got something else.
+					// Let the framer handle the error.
+					break
+				}
+				offset += contSize
+				if contFlags&flagEndHeaders != 0 {
+					break
+				}
+			}
+			endOfFrames = offset
+		}
+
+		// Now we can safely process the complete frame (+ any CONTINUATIONs)
+		framer := http2.NewFramer(nil, bytes.NewReader((*buf)[:endOfFrames]))
 		frame, err := framer.ReadFrame()
 		if err != nil {
 			span.AddEvent("http2.frame[error]", trace.WithAttributes(
@@ -176,7 +217,7 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 				// the stream continue so the plugin chain can still extract
 				// method paths, grpc-status trailers, and per-RPC latency.
 				if s.conn.Protocol == connection.Protocol_GRPC {
-					*buf = (*buf)[totalFrameSize:]
+					*buf = (*buf)[endOfFrames:]
 					continue
 				}
 
@@ -186,11 +227,11 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 
 			return connection.ErrStreamUnrecoverable(fmt.Errorf("error reading http2 frame: %w", err))
 		}
-		// Remove the processed frame from buffer
-		*buf = (*buf)[totalFrameSize:]
+		// Remove the processed frame(s) from buffer
+		*buf = (*buf)[endOfFrames:]
 
-		frameType := strings.TrimPrefix(reflect.TypeOf(frame).String(), "*http2.")
-		span.AddEvent(fmt.Sprintf("http2.frame[%s]", frameType), trace.WithAttributes(
+		frameTypeName := strings.TrimPrefix(reflect.TypeOf(frame).String(), "*http2.")
+		span.AddEvent(fmt.Sprintf("http2.frame[%s]", frameTypeName), trace.WithAttributes(
 			attribute.Int64("stream_id", int64(frame.Header().StreamID)),
 			attribute.Int("length", frameLength),
 			attribute.String("direction", string(event.Direction)),
@@ -207,11 +248,11 @@ func (s *HTTPStream) Process(event *connection.DataEvent) error {
 		// session
 		session := s.initSession(frame.Header().StreamID)
 
-		// update the bytes
+		// update the bytes (endOfFrames includes any CONTINUATION frames)
 		if event.Direction == connection.Ingress {
-			session.rdBytes += int64(totalFrameSize)
+			session.rdBytes += int64(endOfFrames)
 		} else {
-			session.wrBytes += int64(totalFrameSize)
+			session.wrBytes += int64(endOfFrames)
 		}
 
 		err = s.handleFrame(session, frame, framer, decoder)

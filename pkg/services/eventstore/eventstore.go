@@ -222,6 +222,7 @@ var (
 	ArtifactType_QscanRequest    ArtifactType = "qscan_request"
 	ArtifactType_HTTPTransaction ArtifactType = "http_transaction"
 	ArtifactType_LLMConversation ArtifactType = "llm_conversation"
+	ArtifactType_GRPCTransaction ArtifactType = "grpc_transaction"
 )
 
 func (a ArtifactType) String() string {

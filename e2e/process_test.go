@@ -55,7 +55,7 @@ func TestProcessFiltering(t *testing.T) {
 
 		// expect to timeout because we should never capture the connection
 		events, err := e2ectx.EventStore.AwaitByCtxID(example.ID, 1, 3*time.Second)
-		require.NotNil(t, err)
+		require.Error(t, err)
 		require.Nil(t, events)
 	})
 }

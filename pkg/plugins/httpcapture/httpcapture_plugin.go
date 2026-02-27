@@ -139,6 +139,14 @@ func (f *Factory) NewHttpInstance(conn plugins.PluginContext, svcs *services.Ser
 	return fi
 }
 
+func (f *Factory) NewGrpcInstance(conn plugins.PluginContext, svcs *services.ServiceRegistry) plugins.GrpcPluginInstance {
+	httpInstance := f.NewHttpInstance(conn, svcs)
+	if httpInstance == nil {
+		return nil
+	}
+	return &grpcInstance{instance: *httpInstance.(*instance)}
+}
+
 func (f *Factory) Destroy() {
 	f.logger.Debug("http_capture plugin destroyed")
 }

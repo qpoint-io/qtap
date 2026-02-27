@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -92,7 +93,7 @@ func mainSetup() error {
 	}
 
 	if syscall.Getuid() != 0 {
-		return fmt.Errorf("please run e2e tests as root to load BPF programs and maps")
+		return errors.New("please run e2e tests as root to load BPF programs and maps")
 	}
 
 	// set up config

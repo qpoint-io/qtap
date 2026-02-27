@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestHTTP_SSE(t *testing.T) {
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf("Event %d", i))
 			time.Sleep(1 * time.Second)
 			w.(http.Flusher).Flush()
@@ -151,7 +152,7 @@ func TestHTTP_Ingress(t *testing.T) {
 		assert.NotZero(t, src.Address.Port)
 
 		assert.Equal(t, serverURL.Hostname(), dst.Address.IP.String())
-		assert.Equal(t, "5678", fmt.Sprint(dst.Address.Port))
+		assert.Equal(t, "5678", strconv.FormatUint(uint64(dst.Address.Port), 10))
 
 		// test request
 		require.Len(t, events.Requests, 1)
@@ -186,7 +187,7 @@ func echoHTTPServer(ctx *e2e.TestContext) *url.URL {
 
 	return &url.URL{
 		Scheme: "http",
-		Host:   fmt.Sprintf("%s:5678", containerIP),
+		Host:   containerIP + ":5678",
 	}
 }
 
@@ -312,7 +313,7 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)
-			require.Len(t, events.Requests, 0)
+			require.Empty(t, events.Requests)
 
 			return nil
 		}).

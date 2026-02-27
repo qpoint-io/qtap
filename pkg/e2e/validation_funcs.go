@@ -14,9 +14,10 @@ type ValidationFunc func(t *testing.T, ctx ValidationContext) error
 // "WithValidation(...)" to "WithTest(...)" and take funcs that have the
 // *testing.T and *TestContext as arguments.
 type ValidationContext struct {
-	TestContext *TestContext
-	TestCase    *TestCase
-	Container   *ContainerResult
+	TestContext  *TestContext
+	TestCase     *TestCase
+	GRPCTestCase *GRPCTestCase
+	Container    *ContainerResult
 }
 
 // TODO(Jon): Add more validation functions

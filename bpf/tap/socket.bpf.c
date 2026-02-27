@@ -61,6 +61,8 @@ enum SYSCALL_OP {
 	SYS_WRITE,
 	SYS_WRITEV,
 	SYS_SENDTO,
+	SYS_SENDMSG,
+	SYS_RECVMSG,
 };
 
 // A unique key combination of pid_tgid and syscall function names
@@ -1526,6 +1528,120 @@ int syscall__probe_ret_writev_init(struct trace_event_raw_sys_exit *ctx) {
 	return 0;
 }
 
+SEC("tracepoint/syscalls/sys_enter_sendmsg")
+int syscall__probe_entry_sendmsg(struct trace_event_raw_sys_enter *ctx) {
+	int32_t fd        = (int)ctx->args[0];
+	void *msghdr_ptr  = (void *)ctx->args[1];
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+
+	struct socket_op_key s_key = {};
+	s_key.pid_tgid             = pid_tgid;
+	s_key.func_name            = SYS_SENDMSG;
+	bpf_map_update_elem(&active_fd_args_map, &s_key, &fd, BPF_ANY);
+
+	// Read msg_iov (offset 16) and msg_iovlen (offset 24) from user_msghdr
+	const struct iovec *iov = NULL;
+	size_t iovlen           = 0;
+	bpf_probe_read_user(&iov, sizeof(iov), (void *)((uintptr_t)msghdr_ptr + 16));
+	bpf_probe_read_user(&iovlen, sizeof(iovlen), (void *)((uintptr_t)msghdr_ptr + 24));
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = fd;
+
+	struct data_args sendmsg_args = {};
+	sendmsg_args.fd               = fd;
+	sendmsg_args.buf              = (uintptr_t)iov;
+	sendmsg_args.iovcnt           = iovlen;
+
+	// share fd if uprobe has requested
+	respond_to_fd_request(pid_tgid, fd);
+
+	return bpf_map_update_elem(&active_write_args_map, &id, &sendmsg_args, BPF_ANY);
+}
+
+SEC("tracepoint/syscalls/sys_exit_sendmsg")
+int syscall__probe_ret_sendmsg(struct trace_event_raw_sys_exit *ctx) {
+	ssize_t bytes_count = ctx->ret;
+	uint64_t pid_tgid   = bpf_get_current_pid_tgid();
+	uint32_t pid        = pid_tgid >> 32;
+
+	struct socket_op_key key = {};
+	key.pid_tgid             = pid_tgid;
+	key.func_name            = SYS_SENDMSG;
+	int32_t *fd              = bpf_map_lookup_elem(&active_fd_args_map, &key);
+
+	if (fd == NULL) {
+		return 0;
+	}
+
+	bpf_map_delete_elem(&active_fd_args_map, &key);
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = *fd;
+
+	struct data_args *sendmsg_args = bpf_map_lookup_elem(&active_write_args_map, &id);
+
+	if (sendmsg_args == NULL)
+		return 0;
+
+	if (bytes_count > 0) {
+		TRACE_SOCKET(pid, "syscall/sendmsg", TRACE_INT("pid", pid), TRACE_INT("fd", sendmsg_args->fd), TRACE_INT("bytes", bytes_count));
+
+		struct socket_ctx sock_ctx = {};
+		sock_ctx.id                = &id;
+		sock_ctx.pid_tgid          = pid_tgid;
+		sock_ctx.trace_mod         = QTAP_SOCKET;
+		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "syscall/sendmsg");
+
+		process_data(&sock_ctx, D_EGRESS, sendmsg_args, bytes_count, /* ssl */ false);
+	}
+
+	bpf_map_delete_elem(&active_write_args_map, &id);
+
+	return 0;
+}
+
+SEC("tracepoint/syscalls/sys_exit_sendmsg")
+int syscall__probe_ret_sendmsg_init(struct trace_event_raw_sys_exit *ctx) {
+	ssize_t bytes_count = ctx->ret;
+	uint64_t pid_tgid   = bpf_get_current_pid_tgid();
+	uint32_t pid        = pid_tgid >> 32;
+
+	struct socket_op_key key = {};
+	key.pid_tgid             = pid_tgid;
+	key.func_name            = SYS_SENDMSG;
+	int32_t *fd              = bpf_map_lookup_elem(&active_fd_args_map, &key);
+
+	if (fd == NULL) {
+		return 0;
+	}
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = *fd;
+
+	struct data_args *sendmsg_args = bpf_map_lookup_elem(&active_write_args_map, &id);
+
+	if (sendmsg_args == NULL)
+		return 0;
+
+	if (bytes_count > 0) {
+		TRACE_SOCKET(pid, "syscall/sendmsg (init)", TRACE_INT("pid", pid), TRACE_INT("fd", sendmsg_args->fd), TRACE_INT("bytes", bytes_count));
+
+		struct socket_ctx sock_ctx = {};
+		sock_ctx.id                = &id;
+		sock_ctx.pid_tgid          = pid_tgid;
+		sock_ctx.trace_mod         = QTAP_SOCKET;
+		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "syscall/sendmsg");
+
+		init_conn(&sock_ctx, D_EGRESS, sendmsg_args, bytes_count);
+	}
+
+	return 0;
+}
+
 SEC("tracepoint/syscalls/sys_enter_recvfrom")
 int syscall__probe_entry_recvfrom(struct trace_event_raw_sys_enter *ctx) {
 	int32_t fd        = (int)ctx->args[0];
@@ -1875,6 +1991,121 @@ int syscall__probe_ret_readv_init(struct trace_event_raw_sys_exit *ctx) {
 
 		// process the data
 		init_conn(&sock_ctx, D_INGRESS, readv_args, bytes_count);
+	}
+
+	return 0;
+}
+
+SEC("tracepoint/syscalls/sys_enter_recvmsg")
+int syscall__probe_entry_recvmsg(struct trace_event_raw_sys_enter *ctx) {
+	int32_t fd        = (int)ctx->args[0];
+	void *msghdr_ptr  = (void *)ctx->args[1];
+	uint64_t pid_tgid = bpf_get_current_pid_tgid();
+
+	struct socket_op_key s_key = {};
+	s_key.pid_tgid             = pid_tgid;
+	s_key.func_name            = SYS_RECVMSG;
+	bpf_map_update_elem(&active_fd_args_map, &s_key, &fd, BPF_ANY);
+
+	// Read msg_iov (offset 16) and msg_iovlen (offset 24) from user_msghdr
+	const struct iovec *iov = NULL;
+	size_t iovlen           = 0;
+	bpf_probe_read_user(&iov, sizeof(iov), (void *)((uintptr_t)msghdr_ptr + 16));
+	bpf_probe_read_user(&iovlen, sizeof(iovlen), (void *)((uintptr_t)msghdr_ptr + 24));
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = fd;
+
+	struct data_args recvmsg_args = {};
+	recvmsg_args.fd               = fd;
+	recvmsg_args.buf              = (uintptr_t)iov;
+	recvmsg_args.iovcnt           = iovlen;
+
+	return bpf_map_update_elem(&active_read_args_map, &id, &recvmsg_args, BPF_ANY);
+}
+
+SEC("tracepoint/syscalls/sys_exit_recvmsg")
+int syscall__probe_ret_recvmsg(struct trace_event_raw_sys_exit *ctx) {
+	ssize_t bytes_count = ctx->ret;
+	uint64_t pid_tgid   = bpf_get_current_pid_tgid();
+	uint32_t pid        = pid_tgid >> 32;
+
+	struct socket_op_key key = {};
+	key.pid_tgid             = pid_tgid;
+	key.func_name            = SYS_RECVMSG;
+	int32_t *fd              = bpf_map_lookup_elem(&active_fd_args_map, &key);
+
+	if (fd == NULL) {
+		return 0;
+	}
+
+	bpf_map_delete_elem(&active_fd_args_map, &key);
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = *fd;
+
+	struct data_args *recvmsg_args = bpf_map_lookup_elem(&active_read_args_map, &id);
+
+	if (recvmsg_args == NULL)
+		return 0;
+
+	if (bytes_count > 0) {
+		TRACE_SOCKET(pid, "syscall/recvmsg", TRACE_INT("pid", pid), TRACE_INT("fd", recvmsg_args->fd), TRACE_INT("bytes", bytes_count));
+
+		respond_to_fd_request(pid_tgid, *fd);
+
+		struct socket_ctx sock_ctx = {};
+		sock_ctx.id                = &id;
+		sock_ctx.pid_tgid          = pid_tgid;
+		sock_ctx.trace_mod         = QTAP_SOCKET;
+		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "syscall/recvmsg");
+
+		process_data(&sock_ctx, D_INGRESS, recvmsg_args, bytes_count, /* ssl */ false);
+	}
+
+	bpf_map_delete_elem(&active_read_args_map, &id);
+
+	return 0;
+}
+
+SEC("tracepoint/syscalls/sys_exit_recvmsg")
+int syscall__probe_ret_recvmsg_init(struct trace_event_raw_sys_exit *ctx) {
+	ssize_t bytes_count = ctx->ret;
+	uint64_t pid_tgid   = bpf_get_current_pid_tgid();
+	uint32_t pid        = pid_tgid >> 32;
+
+	struct socket_op_key key = {};
+	key.pid_tgid             = pid_tgid;
+	key.func_name            = SYS_RECVMSG;
+	int32_t *fd              = bpf_map_lookup_elem(&active_fd_args_map, &key);
+
+	if (fd == NULL) {
+		return 0;
+	}
+
+	struct pid_fd_key id = {};
+	id.pid               = pid_tgid >> 32;
+	id.fd                = *fd;
+
+	struct data_args *recvmsg_args = bpf_map_lookup_elem(&active_read_args_map, &id);
+
+	if (recvmsg_args == NULL)
+		return 0;
+
+	if (bytes_count > 0) {
+		TRACE_SOCKET(pid, "syscall/recvmsg (init)", TRACE_INT("pid", pid), TRACE_INT("fd", recvmsg_args->fd), TRACE_INT("bytes", bytes_count));
+
+		respond_to_fd_request(pid_tgid, *fd);
+
+		struct socket_ctx sock_ctx = {};
+		sock_ctx.id                = &id;
+		sock_ctx.pid_tgid          = pid_tgid;
+		sock_ctx.trace_mod         = QTAP_SOCKET;
+		bpf_probe_read_str(sock_ctx.trace_id, sizeof(sock_ctx.trace_id), "syscall/recvmsg");
+
+		init_conn(&sock_ctx, D_INGRESS, recvmsg_args, bytes_count);
 	}
 
 	return 0;

@@ -227,6 +227,8 @@ type TapProgramSpecs struct {
 	SyscallProbeEntryRead        *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_readv"`
 	SyscallProbeEntryRecvfrom    *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvfrom"`
+	SyscallProbeEntryRecvmsg     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvmsg"`
+	SyscallProbeEntrySendmsg     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendmsg"`
 	SyscallProbeEntrySendto      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendto"`
 	SyscallProbeEntrySocket      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_socket"`
 	SyscallProbeEntryWrite       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_write"`
@@ -243,6 +245,10 @@ type TapProgramSpecs struct {
 	SyscallProbeRetReadvInit     *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv_init"`
 	SyscallProbeRetRecvfrom      *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom"`
 	SyscallProbeRetRecvfromInit  *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom_init"`
+	SyscallProbeRetRecvmsg       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg"`
+	SyscallProbeRetRecvmsgInit   *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg_init"`
+	SyscallProbeRetSendmsg       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg"`
+	SyscallProbeRetSendmsgInit   *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg_init"`
 	SyscallProbeRetSendto        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto"`
 	SyscallProbeRetSendtoInit    *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto_init"`
 	SyscallProbeRetSocket        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_socket"`
@@ -408,6 +414,8 @@ type TapPrograms struct {
 	SyscallProbeEntryRead        *ebpf.Program `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv       *ebpf.Program `ebpf:"syscall__probe_entry_readv"`
 	SyscallProbeEntryRecvfrom    *ebpf.Program `ebpf:"syscall__probe_entry_recvfrom"`
+	SyscallProbeEntryRecvmsg     *ebpf.Program `ebpf:"syscall__probe_entry_recvmsg"`
+	SyscallProbeEntrySendmsg     *ebpf.Program `ebpf:"syscall__probe_entry_sendmsg"`
 	SyscallProbeEntrySendto      *ebpf.Program `ebpf:"syscall__probe_entry_sendto"`
 	SyscallProbeEntrySocket      *ebpf.Program `ebpf:"syscall__probe_entry_socket"`
 	SyscallProbeEntryWrite       *ebpf.Program `ebpf:"syscall__probe_entry_write"`
@@ -424,6 +432,10 @@ type TapPrograms struct {
 	SyscallProbeRetReadvInit     *ebpf.Program `ebpf:"syscall__probe_ret_readv_init"`
 	SyscallProbeRetRecvfrom      *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom"`
 	SyscallProbeRetRecvfromInit  *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom_init"`
+	SyscallProbeRetRecvmsg       *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg"`
+	SyscallProbeRetRecvmsgInit   *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg_init"`
+	SyscallProbeRetSendmsg       *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg"`
+	SyscallProbeRetSendmsgInit   *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg_init"`
 	SyscallProbeRetSendto        *ebpf.Program `ebpf:"syscall__probe_ret_sendto"`
 	SyscallProbeRetSendtoInit    *ebpf.Program `ebpf:"syscall__probe_ret_sendto_init"`
 	SyscallProbeRetSocket        *ebpf.Program `ebpf:"syscall__probe_ret_socket"`
@@ -465,6 +477,8 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeEntryRead,
 		p.SyscallProbeEntryReadv,
 		p.SyscallProbeEntryRecvfrom,
+		p.SyscallProbeEntryRecvmsg,
+		p.SyscallProbeEntrySendmsg,
 		p.SyscallProbeEntrySendto,
 		p.SyscallProbeEntrySocket,
 		p.SyscallProbeEntryWrite,
@@ -481,6 +495,10 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeRetReadvInit,
 		p.SyscallProbeRetRecvfrom,
 		p.SyscallProbeRetRecvfromInit,
+		p.SyscallProbeRetRecvmsg,
+		p.SyscallProbeRetRecvmsgInit,
+		p.SyscallProbeRetSendmsg,
+		p.SyscallProbeRetSendmsgInit,
 		p.SyscallProbeRetSendto,
 		p.SyscallProbeRetSendtoInit,
 		p.SyscallProbeRetSocket,

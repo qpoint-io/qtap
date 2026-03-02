@@ -16,9 +16,7 @@ import (
 // newTestStream creates an HTTPStream with minimal dependencies suitable for unit tests.
 func newTestStream(t *testing.T) *HTTPStream {
 	t.Helper()
-	conn := &connection.Connection{
-		OpenEvent: &connection.OpenEvent{Source: connection.Client},
-	}
+	conn := connection.NewConnection(t.Context(), zap.NewNop(), &connection.OpenEvent{Source: connection.Client})
 	return NewHTTPStream(t.Context(), "example.com", zap.NewNop(), conn)
 }
 
@@ -755,4 +753,69 @@ func buildRawHeadersFrame(streamID uint32, endStream, endHeaders bool, payload [
 	// Payload
 	copy(frame[9:], payload)
 	return frame
+}
+
+// buildRawContinuationFrame constructs a raw HTTP/2 CONTINUATION frame.
+func buildRawContinuationFrame(streamID uint32, endHeaders bool, payload []byte) []byte {
+	length := len(payload)
+	frame := make([]byte, 9+length)
+	frame[0] = byte(length >> 16)
+	frame[1] = byte(length >> 8)
+	frame[2] = byte(length)
+	frame[3] = 0x9 // CONTINUATION
+	if endHeaders {
+		frame[4] = 0x4 // END_HEADERS
+	}
+	frame[5] = byte(streamID >> 24)
+	frame[6] = byte(streamID >> 16)
+	frame[7] = byte(streamID >> 8)
+	frame[8] = byte(streamID)
+	copy(frame[9:], payload)
+	return frame
+}
+
+// TestContinuationFrames verifies that HEADERS frames split across
+// HEADERS + CONTINUATION frames are correctly reassembled. This is
+// critical for gRPC clients like Python's grpc C-core which may split
+// header blocks across multiple frames.
+func TestContinuationFrames(t *testing.T) {
+	stream := newTestStream(t)
+
+	// Encode headers using HPACK
+	var hdrBuf bytes.Buffer
+	enc := hpack.NewEncoder(&hdrBuf)
+	fields := []hpack.HeaderField{
+		{Name: ":method", Value: "POST"},
+		{Name: ":path", Value: "/babel.v1.EchoService/UnaryEcho"},
+		{Name: ":scheme", Value: "http"},
+		{Name: ":authority", Value: "localhost:50051"},
+		{Name: "content-type", Value: "application/grpc"},
+		{Name: "te", Value: "trailers"},
+		{Name: "user-agent", Value: "grpc-python/1.60.0 grpc-c/38.0.0"},
+	}
+	for _, f := range fields {
+		require.NoError(t, enc.WriteField(f))
+	}
+	encoded := hdrBuf.Bytes()
+
+	// Split the HPACK block into two parts: HEADERS (no END_HEADERS) + CONTINUATION (with END_HEADERS)
+	splitPoint := len(encoded) / 2
+	headersFrame := buildRawHeadersFrame(1, false, false, encoded[:splitPoint])
+	contFrame := buildRawContinuationFrame(1, true, encoded[splitPoint:])
+
+	// Process: preface + SETTINGS + HEADERS + CONTINUATION
+	var settingsBuf bytes.Buffer
+	settingsFramer := http2.NewFramer(&settingsBuf, nil)
+	require.NoError(t, settingsFramer.WriteSettings())
+	settings := settingsBuf.Bytes()
+
+	processEgress(t, stream, []byte(http2.ClientPreface), settings, headersFrame, contFrame)
+
+	// Verify the session was created with correct headers
+	session, exists := stream.sessions[1]
+	require.True(t, exists, "session for stream 1 should exist")
+	assert.Equal(t, "/babel.v1.EchoService/UnaryEcho", session.req.URL.Path)
+	assert.Equal(t, "POST", session.req.Method)
+	assert.True(t, session.isGRPC, "should be detected as gRPC")
+	assert.Equal(t, connection.Protocol_GRPC, stream.conn.Protocol, "connection should be marked as gRPC")
 }

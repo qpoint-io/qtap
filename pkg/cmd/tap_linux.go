@@ -587,9 +587,11 @@ func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 	tps := []common.Probe{
 		// sni tracepoints
 		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.TapPrograms.SyscallProbeRetSendtoInit),
+		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.TapPrograms.SyscallProbeRetSendmsgInit),
 		common.NewTracepoint("syscalls", "sys_exit_write", objs.TapPrograms.SyscallProbeRetWriteInit),
 		common.NewTracepoint("syscalls", "sys_exit_writev", objs.TapPrograms.SyscallProbeRetWritevInit),
 		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.TapPrograms.SyscallProbeRetRecvfromInit),
+		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.TapPrograms.SyscallProbeRetRecvmsgInit),
 		common.NewTracepoint("syscalls", "sys_exit_read", objs.TapPrograms.SyscallProbeRetReadInit),
 		common.NewTracepoint("syscalls", "sys_exit_readv", objs.TapPrograms.SyscallProbeRetReadvInit),
 
@@ -608,12 +610,16 @@ func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 		common.NewTracepoint("syscalls", "sys_exit_writev", objs.TapPrograms.SyscallProbeRetWritev),
 		common.NewTracepoint("syscalls", "sys_enter_sendto", objs.TapPrograms.SyscallProbeEntrySendto),
 		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.TapPrograms.SyscallProbeRetSendto),
+		common.NewTracepoint("syscalls", "sys_enter_sendmsg", objs.TapPrograms.SyscallProbeEntrySendmsg),
+		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.TapPrograms.SyscallProbeRetSendmsg),
 		common.NewTracepoint("syscalls", "sys_enter_read", objs.TapPrograms.SyscallProbeEntryRead),
 		common.NewTracepoint("syscalls", "sys_enter_readv", objs.TapPrograms.SyscallProbeEntryReadv),
 		common.NewTracepoint("syscalls", "sys_exit_read", objs.TapPrograms.SyscallProbeRetRead),
 		common.NewTracepoint("syscalls", "sys_exit_readv", objs.TapPrograms.SyscallProbeRetReadv),
 		common.NewTracepoint("syscalls", "sys_enter_recvfrom", objs.TapPrograms.SyscallProbeEntryRecvfrom),
 		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.TapPrograms.SyscallProbeRetRecvfrom),
+		common.NewTracepoint("syscalls", "sys_enter_recvmsg", objs.TapPrograms.SyscallProbeEntryRecvmsg),
+		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.TapPrograms.SyscallProbeRetRecvmsg),
 		common.NewTracepoint("syscalls", "sys_enter_socket", objs.TapPrograms.SyscallProbeEntrySocket),
 		common.NewTracepoint("syscalls", "sys_exit_socket", objs.TapPrograms.SyscallProbeRetSocket),
 

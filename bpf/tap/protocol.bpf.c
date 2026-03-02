@@ -290,8 +290,8 @@ static bool detect_tls(struct conn_info *conn_info, struct buf_info *buf_info, s
 	return false;
 }
 
-// Redis RESP protocol detection
-// Redis commands are sent as RESP arrays: *<count>\r\n$<len>\r\n<cmd>...
+// MySQL RESP protocol detection
+// MySQL commands are sent as RESP arrays: *<count>\r\n$<len>\r\n<cmd>...
 static bool detect_mysql(struct conn_info *conn_info, struct buf_info *buf_info, size_t count) {
 	// MySQL Server Greeting (handshake) detection
 	// The server sends this as the first packet on a new connection (ingress)

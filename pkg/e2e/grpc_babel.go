@@ -11,7 +11,7 @@ var (
 	// Go
 	GRPCRequestGo1_25_1_Alpine GRPCRequestImage = "babel-go:1.25.1-grpc-alpine"
 	// Java
-	GRPCRequestJava21_Alpine GRPCRequestImage = "babel-java:21-grpc-alpine"
+	GRPCRequestJava21_Alpine GRPCRequestImage = "babel-java:21-grpc-corretto-alpine"
 	// Python
 	GRPCRequestPython3_12_0_Alpine GRPCRequestImage = "babel-python:3.12.0-grpc-alpine"
 	// NodeJS

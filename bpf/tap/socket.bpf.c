@@ -1542,8 +1542,9 @@ int syscall__probe_entry_sendmsg(struct trace_event_raw_sys_enter *ctx) {
 	// Read msg_iov (offset 16) and msg_iovlen (offset 24) from user_msghdr
 	const struct iovec *iov = NULL;
 	size_t iovlen           = 0;
-	bpf_probe_read_user(&iov, sizeof(iov), (void *)((uintptr_t)msghdr_ptr + 16));
-	bpf_probe_read_user(&iovlen, sizeof(iovlen), (void *)((uintptr_t)msghdr_ptr + 24));
+	struct user_msghdr *msg = (struct user_msghdr *)msghdr_ptr;
+	bpf_probe_read_user(&iov, sizeof(iov), &msg->msg_iov);
+	bpf_probe_read_user(&iovlen, sizeof(iovlen), &msg->msg_iovlen);
 
 	struct pid_fd_key id = {};
 	id.pid               = pid_tgid >> 32;
@@ -2010,8 +2011,9 @@ int syscall__probe_entry_recvmsg(struct trace_event_raw_sys_enter *ctx) {
 	// Read msg_iov (offset 16) and msg_iovlen (offset 24) from user_msghdr
 	const struct iovec *iov = NULL;
 	size_t iovlen           = 0;
-	bpf_probe_read_user(&iov, sizeof(iov), (void *)((uintptr_t)msghdr_ptr + 16));
-	bpf_probe_read_user(&iovlen, sizeof(iovlen), (void *)((uintptr_t)msghdr_ptr + 24));
+	struct user_msghdr *msg = (struct user_msghdr *)msghdr_ptr;
+	bpf_probe_read_user(&iov, sizeof(iov), &msg->msg_iov);
+	bpf_probe_read_user(&iovlen, sizeof(iovlen), &msg->msg_iovlen);
 
 	struct pid_fd_key id = {};
 	id.pid               = pid_tgid >> 32;

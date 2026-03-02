@@ -35,7 +35,7 @@ func TestGRPCLanguages(t *testing.T) {
 		// WithLanguage(e2epkg.Java, "21").
 		WithLanguage(e2epkg.Python, "3.12.0").
 		// WithLanguage(e2epkg.NodeJS, "22.16.0").
-		// WithLanguage(e2epkg.Ruby, "3.4.5").
+		WithLanguage(e2epkg.Ruby, "3.4.5").
 		// WithLanguage(e2epkg.PHP, "8.3").
 		WithMessage(`{"message":"hello"}`).
 		WithPlaintextOnly().

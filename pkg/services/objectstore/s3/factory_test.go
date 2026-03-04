@@ -1,7 +1,6 @@
 package s3
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -95,7 +94,7 @@ func TestFactory_Init(t *testing.T) {
 			t.Setenv("S3_TEST_SECRET_KEY_EMPTY", "")
 
 			f := &Factory{}
-			err := f.Init(context.Background(), tt.cfg)
+			err := f.Init(t.Context(), tt.cfg)
 			if err == nil {
 				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
 			}

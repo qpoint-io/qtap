@@ -332,3 +332,106 @@ func TestLanguageNonIntrospective(t *testing.T) {
 func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
+
+func wget(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
+	return ctx.Exec("wget", append([]string{"-q", "-O", "-", "--timeout=3"}, args...)...)
+}
+
+// TestHTTP_WgetMsgPeek is a regression test for QPT-754 / QPT-988.
+//
+// wget uses MSG_PEEK flag in recvfrom() syscalls during plaintext HTTP reads.
+// This causes qtap's eBPF probes to see the same data bytes twice — once for
+// the peek and once for the actual read — corrupting the HTTP parser state so
+// that response headers leak into the captured body.
+//
+// This test will FAIL until the MSG_PEEK fix is applied (filtering peek
+// events in the eBPF recvfrom hooks). The curl subtest serves as a baseline
+// to prove the test harness itself works correctly.
+func TestHTTP_WgetMsgPeek(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+
+	expectedBody := `{"message":"hello","status":"ok"}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedBody)
+	}))
+	defer server.Close()
+
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}, func(t *testing.T) {
+		t.Run("curl_baseline", func(t *testing.T) {
+			// curl does a single large recvfrom without MSG_PEEK — no corruption
+			result := curl(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output)
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Requests, 1)
+			assert.Equal(t, "GET", events.Requests[0].Method)
+
+			require.Len(t, events.Artifacts, 1)
+			assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, events.Artifacts[0].Type)
+
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			assert.Equal(t, "application/json", tx.Response.ContentType)
+			assert.Equal(t, expectedBody, string(tx.Response.Body))
+		})
+
+		t.Run("wget_msgpeek", func(t *testing.T) {
+			// wget uses recvfrom(..., MSG_PEEK) then split read() calls.
+			// TODO(QPT-754): This assertion on the captured body will fail until
+			// the eBPF recvfrom hooks filter out MSG_PEEK events. The wget output
+			// itself is correct, but the captured artifact body will be corrupted
+			// (headers leaking into body).
+			result := wget(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output)
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Requests, 1)
+			assert.Equal(t, "GET", events.Requests[0].Method)
+
+			require.Len(t, events.Artifacts, 1)
+			assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, events.Artifacts[0].Type)
+
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			assert.Equal(t, "application/json", tx.Response.ContentType)
+			// This is the key assertion — captured body should match the actual
+			// response. With the MSG_PEEK bug, headers leak into this field.
+			assert.Equal(t, expectedBody, string(tx.Response.Body))
+		})
+	})
+}

@@ -60,17 +60,42 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	if c.ObjectStoreS3Config.AccessURL != "" {
 		f.accessURL = c.ObjectStoreS3Config.AccessURL
 	}
-	if c.ObjectStoreS3Config.AccessKey.String() == "" {
-		if c.ObjectStoreS3Config.AccessKey.Type == config.ValueSourceType_ENV {
-			return fmt.Errorf("s3 access key env var (%s) is empty or not set", c.ObjectStoreS3Config.AccessKey.Value)
+
+	// Check if credentials are provided
+	accessKey := c.ObjectStoreS3Config.AccessKey.String()
+	secretKey := c.ObjectStoreS3Config.SecretKey.String()
+
+	// Both credentials must be provided together, or both omitted
+	hasAccessKey := accessKey != ""
+	hasSecretKey := secretKey != ""
+
+	if hasAccessKey != hasSecretKey {
+		// One is provided but not the other - this is an error
+		if hasAccessKey {
+			return errors.New("secret_key is required when access_key is provided")
 		}
-		return errors.New("access_key is required")
+		return errors.New("access_key is required when secret_key is provided")
 	}
-	if c.ObjectStoreS3Config.SecretKey.String() == "" {
-		if c.ObjectStoreS3Config.SecretKey.Type == config.ValueSourceType_ENV {
-			return fmt.Errorf("s3 secret key env var (%s) is empty or not set", c.ObjectStoreS3Config.SecretKey.Value)
-		}
-		return errors.New("secret_key is required")
+
+	// If AccessKey has type ENV but the env var is empty, that's a config error
+	if c.ObjectStoreS3Config.AccessKey.Type == config.ValueSourceType_ENV &&
+		c.ObjectStoreS3Config.AccessKey.Value != "" &&
+		accessKey == "" {
+		return fmt.Errorf("s3 access key env var (%s) is empty or not set", c.ObjectStoreS3Config.AccessKey.Value)
+	}
+
+	// If SecretKey has type ENV but the env var is empty, that's a config error
+	if c.ObjectStoreS3Config.SecretKey.Type == config.ValueSourceType_ENV &&
+		c.ObjectStoreS3Config.SecretKey.Value != "" &&
+		secretKey == "" {
+		return fmt.Errorf("s3 secret key env var (%s) is empty or not set", c.ObjectStoreS3Config.SecretKey.Value)
+	}
+
+	// Log the credential mode being used
+	if hasAccessKey && hasSecretKey {
+		f.logger.Debug("using explicit S3 credentials from config")
+	} else {
+		f.logger.Debug("no explicit S3 credentials configured, will use IAM credential chain")
 	}
 
 	s, err := minio.NewS3ObjectStore(
@@ -78,8 +103,8 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		c.ObjectStoreS3Config.Endpoint,
 		c.ObjectStoreS3Config.Bucket,
 		c.ObjectStoreS3Config.Region,
-		c.ObjectStoreS3Config.AccessKey.String(),
-		c.ObjectStoreS3Config.SecretKey.String(),
+		accessKey,
+		secretKey,
 		c.ObjectStoreS3Config.Insecure)
 	if err != nil {
 		return fmt.Errorf("failed to create s3 object store: %w", err)

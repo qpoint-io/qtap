@@ -1,0 +1,6 @@
+type: s3
+id: s3-iam-store
+endpoint: s3.amazonaws.com
+bucket: my-iam-bucket
+region: us-west-2
+# access_key and secret_key intentionally omitted for IAM auth

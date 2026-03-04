@@ -8,11 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/qpoint-io/qtap/pkg/services/client"
 	"go.uber.org/zap"
@@ -23,8 +21,6 @@ type LocalConfigProvider struct {
 	logger     *zap.Logger
 	configPath string
 	callback   func(*Config) (func(), error)
-	sigChan    chan os.Signal
-	done       chan struct{}
 	mu         sync.Mutex
 	// URL-specific fields
 	isURL     bool
@@ -50,7 +46,6 @@ func NewLocalConfigProvider(logger *zap.Logger, configPath string) *LocalConfigP
 	return &LocalConfigProvider{
 		logger:     logger,
 		configPath: configPath,
-		done:       make(chan struct{}),
 		isURL:      isURL,
 		cacheFile:  cacheFile,
 	}
@@ -70,13 +65,6 @@ func (p *LocalConfigProvider) Start() error {
 		return fmt.Errorf("initial config load failed: %w", err)
 	}
 
-	// Set up signal handler for SIGHUP
-	p.sigChan = make(chan os.Signal, 1)
-	signal.Notify(p.sigChan, syscall.SIGHUP)
-
-	// Start watching for SIGHUP
-	go p.watchSignals()
-
 	return nil
 }
 
@@ -84,15 +72,6 @@ func (p *LocalConfigProvider) Start() error {
 func (p *LocalConfigProvider) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	if p.sigChan == nil {
-		return
-	}
-
-	signal.Stop(p.sigChan)
-	close(p.done)
-	close(p.sigChan)
-	p.sigChan = nil
 
 	// Clean up cache file if it exists
 	if p.isURL && p.cacheFile != "" {
@@ -114,21 +93,6 @@ func (p *LocalConfigProvider) OnConfigChange(callback func(*Config) (func(), err
 // Reload forces a configuration reload
 func (p *LocalConfigProvider) Reload() error {
 	return p.loadAndNotify()
-}
-
-// watchSignals monitors for SIGHUP signals to reload config
-func (p *LocalConfigProvider) watchSignals() {
-	for {
-		select {
-		case <-p.sigChan:
-			p.logger.Info("SIGHUP received, reloading configuration")
-			if err := p.loadAndNotify(); err != nil {
-				p.logger.Error("Failed to reload config after SIGHUP", zap.Error(err))
-			}
-		case <-p.done:
-			return
-		}
-	}
 }
 
 // loadAndNotify loads the config and calls the registered callback

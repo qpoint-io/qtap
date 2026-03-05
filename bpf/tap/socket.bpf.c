@@ -2009,6 +2009,13 @@ SEC("tracepoint/syscalls/sys_enter_recvmsg")
 int syscall__probe_entry_recvmsg(struct trace_event_raw_sys_enter *ctx) {
 	int32_t fd        = (int)ctx->args[0];
 	void *msghdr_ptr  = (void *)ctx->args[1];
+	int flags         = (int)ctx->args[2];
+
+	// Skip MSG_PEEK calls — same rationale as recvfrom (QPT-754).
+	if (flags & 0x2) { // MSG_PEEK
+		return 0;
+	}
+
 	uint64_t pid_tgid = bpf_get_current_pid_tgid();
 
 	struct socket_op_key s_key = {};

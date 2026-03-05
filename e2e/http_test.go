@@ -332,3 +332,198 @@ func TestLanguageNonIntrospective(t *testing.T) {
 func curl(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
 	return ctx.Exec("curl", append([]string{"--silent", "--show-error", "--max-time", "2.5"}, args...)...)
 }
+
+func wget(ctx *e2e.TestContext, args ...string) e2e.ExecResult {
+	return ctx.Exec("wget", append([]string{"-q", "-O", "-", "--timeout=3"}, args...)...)
+}
+
+// TestHTTP_WgetMsgPeek is a regression test for QPT-754 / QPT-988.
+//
+// wget uses MSG_PEEK flag in recvfrom() syscalls during plaintext HTTP reads.
+// This causes qtap's eBPF probes to see the same data bytes twice — once for
+// the peek and once for the actual read — corrupting the HTTP parser state so
+// that response headers leak into the captured body.
+//
+// This test will FAIL until the MSG_PEEK fix is applied (filtering peek
+// events in the eBPF recvfrom hooks). The curl subtest serves as a baseline
+// to prove the test harness itself works correctly.
+func TestHTTP_WgetMsgPeek(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+
+	expectedBody := `{"message":"hello","status":"ok"}`
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, expectedBody)
+	}))
+	defer server.Close()
+
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}, func(t *testing.T) {
+		t.Run("curl_baseline", func(t *testing.T) {
+			// curl does a single large recvfrom without MSG_PEEK — no corruption
+			result := curl(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output)
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Requests, 1)
+			assert.Equal(t, "GET", events.Requests[0].Method)
+
+			require.Len(t, events.Artifacts, 1)
+			assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, events.Artifacts[0].Type)
+
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			assert.Equal(t, "application/json", tx.Response.ContentType)
+			assert.Equal(t, expectedBody, string(tx.Response.Body))
+		})
+
+		t.Run("wget_msgpeek", func(t *testing.T) {
+			// wget uses recvfrom(..., MSG_PEEK) then split read() calls.
+			// TODO(QPT-754): This assertion on the captured body will fail until
+			// the eBPF recvfrom hooks filter out MSG_PEEK events. The wget output
+			// itself is correct, but the captured artifact body will be corrupted
+			// (headers leaking into body).
+			result := wget(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output)
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Requests, 1)
+			assert.Equal(t, "GET", events.Requests[0].Method)
+
+			require.Len(t, events.Artifacts, 1)
+			assert.Equal(t, eventstore.ArtifactType_HTTPTransaction, events.Artifacts[0].Type)
+
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			assert.Equal(t, "application/json", tx.Response.ContentType)
+			// This is the key assertion — captured body should match the actual
+			// response. With the MSG_PEEK bug, headers leak into this field.
+			assert.Equal(t, expectedBody, string(tx.Response.Body))
+		})
+	})
+}
+
+// TestHTTP_WgetMsgPeekLargeBody is a more aggressive regression test for
+// QPT-754 / QPT-988. Uses a large response body to force wget's MSG_PEEK
+// split read pattern: peek 511 bytes, read headers, read body separately.
+// Small responses may fit in a single read and not trigger the corruption.
+func TestHTTP_WgetMsgPeekLargeBody(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+
+	// Build a body large enough to force wget's split read pattern.
+	// wget peeks 511 bytes with MSG_PEEK, then reads headers separately,
+	// then reads body in another call. We need headers + body > 511 bytes
+	// so the body spans a separate read() call after the peek.
+	bodyData := map[string]interface{}{
+		"message": "This is a larger response body designed to trigger wget MSG_PEEK split reads",
+		"padding": strings.Repeat("abcdefghij", 50), // 500 bytes of padding
+		"status":  "ok",
+		"items":   []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"},
+	}
+	expectedBodyBytes, err := json.Marshal(bodyData)
+	require.NoError(t, err)
+	expectedBody := string(expectedBodyBytes)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-Id", "test-msgpeek-large")
+		w.WriteHeader(http.StatusOK)
+		w.Write(expectedBodyBytes)
+	}))
+	defer server.Close()
+
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+
+		var pluginConfYaml yaml.Node
+		err := pluginConfYaml.Encode(&httpcapture.HttpCaptureConfig{
+			Level:  httpcapture.CaptureLevelFull,
+			Format: httpcapture.OutputFormatJSON,
+		})
+		require.NoError(t, err)
+
+		c.Stacks[c.Tap.Http.Stack] = config.Stack{
+			Plugins: []config.Plugin{
+				{
+					Type:   string(httpcapture.PluginTypeHttpCapture),
+					Config: pluginConfYaml,
+				},
+				{
+					Type: string(report.PluginTypeReport),
+				},
+			},
+		}
+	}, func(t *testing.T) {
+		t.Run("curl_baseline", func(t *testing.T) {
+			result := curl(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output)
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Artifacts, 1)
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			assert.Equal(t, expectedBody, string(tx.Response.Body),
+				"curl captured body should match exactly")
+		})
+
+		t.Run("wget_msgpeek_large", func(t *testing.T) {
+			result := wget(ctx, server.URL)
+			require.NoError(t, result.Err)
+			require.Equal(t, expectedBody, result.Output,
+				"wget stdout should have correct body (wget itself works fine)")
+
+			events := result.AwaitEvents(1)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+
+			require.Len(t, events.Artifacts, 1)
+			var tx httpcapture.HttpTransaction
+			err := json.Unmarshal(events.Artifacts[0].Data, &tx)
+			require.NoError(t, err)
+			assert.Equal(t, "GET", tx.Request.Method)
+			// This is the key assertion — with MSG_PEEK bug, the captured body
+			// will contain leaked headers instead of (or mixed with) the actual
+			// JSON body. QPT-754 fix should make this pass.
+			assert.Equal(t, expectedBody, string(tx.Response.Body),
+				"captured body should match actual response (fails with MSG_PEEK bug: headers leak into body)")
+		})
+	})
+}

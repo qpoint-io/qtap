@@ -16,8 +16,9 @@ type filterInstance struct {
 
 	eventstore eventstore.EventStore
 
-	reqheaders plugins.Headers
-	resheaders plugins.Headers
+	reqheaders     plugins.Headers
+	resheaders     plugins.Headers
+	promoteHeaders []string
 
 	startTime  time.Time
 	finishTime time.Time
@@ -104,6 +105,28 @@ func (h *filterInstance) buildBaseRequest() eventstore.Request {
 	}
 
 	r.SetRequestID(meta.RequestID())
+
+	// Promote configured headers into CustomHeaders
+	if len(h.promoteHeaders) > 0 {
+		for _, key := range h.promoteHeaders {
+			if h.reqheaders != nil {
+				if val, ok := h.reqheaders.Get(key); ok {
+					if r.CustomHeaders == nil {
+						r.CustomHeaders = make(map[string]string)
+					}
+					r.CustomHeaders["req."+key] = val.String()
+				}
+			}
+			if h.resheaders != nil {
+				if val, ok := h.resheaders.Get(key); ok {
+					if r.CustomHeaders == nil {
+						r.CustomHeaders = make(map[string]string)
+					}
+					r.CustomHeaders["res."+key] = val.String()
+				}
+			}
+		}
+	}
 
 	// Scan for auth tokens
 	authTokenSource, authToken, authTokenFound := h.scanForAuthTokens()

@@ -14,22 +14,29 @@ const (
 )
 
 type Config struct {
-	Tags []string `json:"tags"`
+	Tags    []string `yaml:"tags" json:"tags"`
+	Headers []string `yaml:"headers" json:"headers"`
 }
 
 type Factory struct {
 	logger *zap.Logger
+	config Config
 }
 
 func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.logger = logger
+
+	if err := config.Decode(&f.config); err != nil {
+		logger.Error("error decoding config", zap.Error(err))
+	}
 }
 
 func (f *Factory) NewHttpInstance(ctx plugins.PluginContext, svcs *services.ServiceRegistry) plugins.HttpPluginInstance {
 	f.logger.Debug("new plugin instance created")
 	fi := &filterInstance{
-		logger: f.logger,
-		ctx:    ctx,
+		logger:         f.logger,
+		ctx:            ctx,
+		promoteHeaders: f.config.Headers,
 	}
 
 	if es, err := services.GetService[eventstore.EventStore](ctx.Context(), svcs, eventstore.TypeEventStore, ""); err != nil {

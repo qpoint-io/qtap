@@ -54,6 +54,9 @@ stacks:
               level: full
 
       - type: report_usage
+        # config:
+        #   headers:
+        #     - x-request-id
 tap:
   direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true

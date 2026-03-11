@@ -26,6 +26,12 @@ stacks:
               expr: http.res.status >= 400 && http.res.status < 500
               mode: full
       - type: report_usage
+        # config:
+        #   # Promote HTTP headers into custom attributes on reported events.
+        #   # Request headers become "req.<header>", response headers become "res.<header>".
+        #   headers:
+        #     - x-request-id
+        #     - content-type
 tap:
   direction: egress # (all|egress|egress-external|egress-internal|ingress)
   ignore_loopback: true

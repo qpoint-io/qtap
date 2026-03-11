@@ -16,8 +16,9 @@ type filterInstance struct {
 
 	eventstore eventstore.EventStore
 
-	reqheaders plugins.Headers
-	resheaders plugins.Headers
+	reqheaders     plugins.Headers
+	resheaders     plugins.Headers
+	promoteHeaders []string
 
 	startTime  time.Time
 	finishTime time.Time
@@ -105,6 +106,9 @@ func (h *filterInstance) buildBaseRequest() eventstore.Request {
 
 	r.SetRequestID(meta.RequestID())
 
+	// Promote configured headers into CustomHeaders
+	r.CustomHeaders = promoteHeaders(h.promoteHeaders, h.reqheaders, h.resheaders)
+
 	// Scan for auth tokens
 	authTokenSource, authToken, authTokenFound := h.scanForAuthTokens()
 	if authTokenFound {
@@ -140,4 +144,34 @@ func (h *filterInstance) scanForAuthTokens() (string, string, bool) {
 	}
 
 	return "", "", false
+}
+
+// promoteHeaders copies the values of the given header keys from the request
+// and/or response into a map keyed by "req.<key>" / "res.<key>". Returns nil
+// when no headers match.
+func promoteHeaders(keys []string, reqheaders, resheaders plugins.Headers) map[string]string {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	var out map[string]string
+	for _, key := range keys {
+		if reqheaders != nil {
+			if val, ok := reqheaders.Get(key); ok {
+				if out == nil {
+					out = make(map[string]string)
+				}
+				out["req."+key] = val.String()
+			}
+		}
+		if resheaders != nil {
+			if val, ok := resheaders.Get(key); ok {
+				if out == nil {
+					out = make(map[string]string)
+				}
+				out["res."+key] = val.String()
+			}
+		}
+	}
+	return out
 }

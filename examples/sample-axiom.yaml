@@ -19,6 +19,9 @@ stacks:
           mode: summary
           format: console
       - type: report_usage
+        # config:
+        #   headers:
+        #     - x-request-id
 tap:
   direction: egress-external
   ignore_loopback: true

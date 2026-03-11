@@ -79,6 +79,8 @@ type Request struct {
 	WrBytes int64 `json:"bytesSent"`
 	RdBytes int64 `json:"bytesReceived"`
 
+	CustomHeaders map[string]string `json:"customHeaders,omitempty"`
+
 	RequestAuthToken
 }
 

@@ -30,6 +30,12 @@ stacks:
               level: full
 
       - type: report_usage
+        config:
+          # Promote HTTP headers into OTel span attributes.
+          # Request headers become "req.<header>", response headers become "res.<header>".
+          headers:
+            - x-request-id
+            - content-type
 tap:
   direction: egress # (egress|egress-external|egress-internal)
   ignore_loopback: true

@@ -13,6 +13,9 @@ stacks:
     plugins:
       - type: http_metrics
       - type: report_usage
+        # config:
+        #   headers:
+        #     - x-request-id
       - type: http_capture
         config:
           level: summary # (none|summary|headers|full)

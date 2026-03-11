@@ -157,7 +157,6 @@ func (s *targetScanner) Scan(ctx context.Context, target *ExeScannable) (*ScanRe
 		s.logger.Debug("scanning target",
 			zap.String("path", target.Path),
 			zap.String("hash", hash),
-			zap.Time("mtime", elf.Mtime()),
 		)
 		for probeName, probe := range s.probes {
 			probeRes, err := probe.Scan(ctx, scannable)

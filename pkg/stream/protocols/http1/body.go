@@ -43,10 +43,16 @@ func expectsResponseBody(reqMethod string, resp *Response) bool {
 		return true
 	}
 
-	// Servers are allowed to withhold content-length or transfer-encoding
-	// and just keep sending data until the connection is closed.
-	// RFC 9112 Section 6.3
-	return strings.EqualFold(resp.Headers.Get("Connection"), "close")
+	// RFC 9112 Section 6.3: When no Content-Length or Transfer-Encoding is present,
+	// the response body is terminated by the server closing the connection.
+	//
+	// For HTTP/1.1, the server MUST send Connection: close to signal this.
+	// For HTTP/1.0, close-delimited is the default (no keep-alive means close).
+	connClose := strings.EqualFold(resp.Headers.Get("Connection"), "close")
+	connKeepAlive := strings.EqualFold(resp.Headers.Get("Connection"), "keep-alive")
+	isHTTP10 := strings.HasPrefix(resp.Proto, "HTTP/1.0")
+
+	return connClose || (isHTTP10 && !connKeepAlive)
 }
 
 // expectsBody determines if a request or response should have a body

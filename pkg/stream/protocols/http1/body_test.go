@@ -138,9 +138,10 @@ func TestExpectsResponseBody(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:      "GET with 200 and no body headers",
+			name:      "HTTP/1.1 with 200 and no body headers",
 			reqMethod: "GET",
 			response: &Response{
+				Proto:      "HTTP/1.1",
 				StatusCode: 200,
 				Headers:    http.Header{},
 			},
@@ -158,15 +159,92 @@ func TestExpectsResponseBody(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:      "with Connection close and no Content-Length or Transfer-Encoding",
+			name:      "HTTP/1.1 with Connection close and no Content-Length or Transfer-Encoding",
 			reqMethod: "GET",
 			response: &Response{
+				Proto:      "HTTP/1.1",
 				StatusCode: 200,
 				Headers: http.Header{
 					"Connection": []string{"close"},
 				},
 			},
 			expected: true,
+		},
+		{
+			name:      "HTTP/1.0 with no body headers - close-delimited by default",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 200,
+				Headers:    http.Header{},
+			},
+			expected: true,
+		},
+		{
+			name:      "HTTP/1.0 with Connection keep-alive but no CL/TE",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 200,
+				Headers: http.Header{
+					"Connection": []string{"keep-alive"},
+				},
+			},
+			expected: false,
+		},
+		{
+			name:      "HTTP/1.0 with Connection close",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 200,
+				Headers: http.Header{
+					"Connection": []string{"close"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "HTTP/1.0 with Content-Length",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 200,
+				Headers: http.Header{
+					"Content-Length": []string{"100"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name:      "HEAD request with HTTP/1.0 - never has body",
+			reqMethod: "HEAD",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 200,
+				Headers:    http.Header{},
+			},
+			expected: false,
+		},
+		{
+			name:      "HTTP/1.0 204 No Content - never has body",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 204,
+				Headers:    http.Header{},
+			},
+			expected: false,
+		},
+		{
+			name:      "HTTP/1.0 304 Not Modified - never has body",
+			reqMethod: "GET",
+			response: &Response{
+				Proto:      "HTTP/1.0",
+				StatusCode: 304,
+				Headers:    http.Header{},
+			},
+			expected: false,
 		},
 	}
 

@@ -7,6 +7,7 @@ const (
 	ObjectStoreType_CONSOLE  ObjectStoreType = "stdout"
 	ObjectStoreType_QPOINT   ObjectStoreType = "qpoint"
 	ObjectStoreType_S3       ObjectStoreType = "s3"
+	ObjectStoreType_OTEL     ObjectStoreType = "otel"
 )
 
 type ServiceObjectStore struct {
@@ -23,6 +24,8 @@ func (s ServiceObjectStore) ServiceType() string {
 		return "objectstore.s3"
 	case ObjectStoreType_CONSOLE:
 		return "objectstore.console"
+	case ObjectStoreType_OTEL:
+		return "objectstore.otel"
 	case ObjectStoreType_DISABLED:
 		return "objectstore.noop"
 	case "e2e": // TODO(e2e)
@@ -35,6 +38,7 @@ func (s ServiceObjectStore) ServiceType() string {
 type ObjectStoreConfig struct {
 	ObjectStoreQPointWarehouseConfig `yaml:",inline,omitempty"`
 	ObjectStoreS3Config              `yaml:",inline,omitempty"`
+	ObjectStoreOTelConfig            `yaml:",inline,omitempty"`
 	EventStore                       EventStoreSelector `yaml:"event_store"`
 }
 
@@ -56,6 +60,20 @@ type ObjectStoreS3Config struct {
 type EventStoreSelector struct {
 	ID       string `yaml:"id"`
 	Disabled bool   `yaml:"disabled"`
+}
+
+type ObjectStoreOTelConfig struct {
+	OTelEndpoint string                 `yaml:"otel_endpoint"`
+	Protocol     string                 `yaml:"protocol"`
+	Headers      map[string]ValueSource `yaml:"headers"`
+	ServiceName  string                 `yaml:"service_name"`
+	Environment  string                 `yaml:"environment"`
+	TLS          ObjectStoreOTelTLS     `yaml:"tls"`
+}
+
+type ObjectStoreOTelTLS struct {
+	Enabled            bool `yaml:"enabled"`
+	InsecureSkipVerify bool `yaml:"insecure_skip_verify"`
 }
 
 type ObjectStoreSelector struct {

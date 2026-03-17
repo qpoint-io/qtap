@@ -1,0 +1,51 @@
+# This is a simple example of a qtap config that captures HTTP transactions and
+# streams artifact data (headers, bodies) to a ClickStack instance via the OTel
+# objectstore. This replaces many small S3 files with batched OTLP log records,
+# which ClickHouse can ingest efficiently via ClickPipes.
+#
+# Start the ClickStack local image with:
+# ```
+# docker run \
+#    -p 8080:8080 \
+#    -p 4317:4317 \
+#    -p 4318:4318 \
+#    -e BETA_CH_OTEL_JSON_SCHEMA_ENABLED=true \
+#    clickhouse/clickstack-local:latest
+# ```
+#
+# Then visit http://localhost:8080 to access the HyperDX UI.
+# Create a source with table name "otel_logs" to view the data.
+
+version: 2
+services:
+    event_stores:
+        - type: otel
+          endpoint: "localhost:4317"
+          protocol: grpc
+          service_name: "qtap"
+          environment: "production"
+          tls:
+              enabled: false
+    object_stores:
+        - type: otel
+          otel_endpoint: "localhost:4317"
+          protocol: grpc
+          service_name: "qtap"
+          environment: "production"
+          tls:
+              enabled: false
+stacks:
+    basic_reporting:
+        plugins:
+            - type: http_capture
+              config:
+                  level: full # (none|summary|details|full)
+                  format: json # (json|text)
+
+            - type: report_usage
+tap:
+    direction: egress # (egress|egress-external|egress-internal)
+    ignore_loopback: true
+    audit_include_dns: false
+    http:
+        stack: basic_reporting

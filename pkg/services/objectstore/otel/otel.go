@@ -44,7 +44,7 @@ func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 			log.String("artifact.content_type", artifact.ContentType),
 			log.String("artifact.digest", artifact.Digest()),
 			log.Int64("artifact.size_bytes", int64(len(artifact.Data))),
-			log.String("artifact.data", string(artifact.Data)),
+			log.Bytes("artifact.data", artifact.Data),
 		}
 
 		// Add connection metadata if available

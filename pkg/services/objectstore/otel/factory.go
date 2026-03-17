@@ -22,6 +22,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.uber.org/zap"
 	"golang.org/x/term"
+	"google.golang.org/grpc"
 )
 
 // ensure we implement the ObjectStore interface
@@ -133,7 +134,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		sdklog.WithProcessor(
 			sdklog.NewBatchProcessor(exporter,
 				sdklog.WithExportInterval(time.Second),
-				sdklog.WithExportMaxBatchSize(512),
+				sdklog.WithExportMaxBatchSize(32), // Smaller batches for large payload data
 			),
 		),
 	)
@@ -175,6 +176,8 @@ func (f *Factory) FactoryType() services.ServiceType {
 func (f *Factory) createGRPCExporter(ctx context.Context, endpoint string, c config.ObjectStoreOTelConfig) (sdklog.Exporter, error) {
 	opts := []otlploggrpc.Option{
 		otlploggrpc.WithEndpoint(endpoint),
+		// Object store payloads can be large, increase max message size to 32MB
+		otlploggrpc.WithDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(32 * 1024 * 1024))),
 	}
 
 	// Configure TLS

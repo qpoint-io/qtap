@@ -67,6 +67,33 @@ func TestObjectStoreUnmarshal(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:     "otel objectstore",
+			filename: "testdata/objectstore_otel.yaml",
+			want: ServiceObjectStore{
+				Type: ObjectStoreType_OTEL,
+				ID:   "otel-clickhouse",
+				ObjectStoreConfig: ObjectStoreConfig{
+					ObjectStoreOTelConfig: ObjectStoreOTelConfig{
+						OTelEndpoint: "localhost:4317",
+						Protocol:     "grpc",
+						ServiceName:  "qtap",
+						Environment:  "production",
+						Headers: map[string]ValueSource{
+							"api-key": {
+								Type:  "text",
+								Value: "test-key",
+							},
+						},
+						TLS: ObjectStoreOTelTLS{
+							Enabled:            false,
+							InsecureSkipVerify: false,
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name:     "disabled objectstore",
 			filename: "testdata/objectstore_disabled.yaml",
 			want: ServiceObjectStore{

@@ -1,0 +1,13 @@
+type: otel
+id: otel-clickhouse
+otel_endpoint: "localhost:4317"
+protocol: grpc
+service_name: "qtap"
+environment: "production"
+headers:
+  api-key:
+    type: text
+    value: test-key
+tls:
+  enabled: false
+  insecure_skip_verify: false

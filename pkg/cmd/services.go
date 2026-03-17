@@ -12,6 +12,7 @@ import (
 	eventstoreotel "github.com/qpoint-io/qtap/pkg/services/eventstore/otel"
 	objectstoreconsole "github.com/qpoint-io/qtap/pkg/services/objectstore/console"
 	objectstorenoop "github.com/qpoint-io/qtap/pkg/services/objectstore/noop"
+	objectstoreotel "github.com/qpoint-io/qtap/pkg/services/objectstore/otel"
 	objecstores3 "github.com/qpoint-io/qtap/pkg/services/objectstore/s3"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/services/rulekitsvc"
@@ -29,6 +30,7 @@ var (
 		func() services.Factory { return &objectstoreconsole.Factory{} },
 		func() services.Factory { return &objectstorenoop.Factory{} },
 		func() services.Factory { return &objecstores3.Factory{} },
+		func() services.Factory { return &objectstoreotel.Factory{} },
 
 		// Add more services here...
 		func() services.Factory { return &rulekitsvc.Factory{} },

@@ -131,6 +131,95 @@ func TestHttpTransactionToJSONFormat(t *testing.T) {
 			},
 			expectedJSONError: false,
 		},
+		{
+			name: "Transaction with tags",
+			transaction: HttpTransaction{
+				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
+				Metadata: Metadata{
+					Tags: []string{"env:production", "team:backend"},
+				},
+				Request: Request{
+					Method: "GET",
+					URL:    "https://example.com",
+				},
+				Response: Response{
+					Status: 200,
+				},
+			},
+			expectedJSON: map[string]any{
+				"transaction_time": "2025-05-20T10:00:00Z",
+				"metadata": map[string]any{
+					"tags": []any{"env:production", "team:backend"},
+				},
+				"request": map[string]any{
+					"method": "GET",
+					"url":    "https://example.com",
+				},
+				"response": map[string]any{
+					"status": float64(200),
+				},
+			},
+			expectedJSONError: false,
+		},
+		{
+			name: "Nil tags are omitted from JSON",
+			transaction: HttpTransaction{
+				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
+				Metadata: Metadata{
+					ProcessExe: "/usr/bin/curl",
+					Tags:       nil,
+				},
+				Request: Request{
+					Method: "GET",
+					URL:    "https://example.com",
+				},
+				Response: Response{
+					Status: 200,
+				},
+			},
+			expectedJSON: map[string]any{
+				"transaction_time": "2025-05-20T10:00:00Z",
+				"metadata": map[string]any{
+					"process_exe": "/usr/bin/curl",
+				},
+				"request": map[string]any{
+					"method": "GET",
+					"url":    "https://example.com",
+				},
+				"response": map[string]any{
+					"status": float64(200),
+				},
+			},
+			expectedJSONError: false,
+		},
+		{
+			name: "Empty tags are not included in JSON",
+			transaction: HttpTransaction{
+				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
+				Metadata: Metadata{
+					Tags: []string{},
+				},
+				Request: Request{
+					Method: "GET",
+					URL:    "https://example.com",
+				},
+				Response: Response{
+					Status: 200,
+				},
+			},
+			expectedJSON: map[string]any{
+				"transaction_time": "2025-05-20T10:00:00Z",
+				"metadata":         map[string]any{},
+				"request": map[string]any{
+					"method": "GET",
+					"url":    "https://example.com",
+				},
+				"response": map[string]any{
+					"status": float64(200),
+				},
+			},
+			expectedJSONError: false,
+		},
 	}
 
 	for _, tc := range tests {

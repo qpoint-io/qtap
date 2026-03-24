@@ -275,7 +275,11 @@ func (t *HttpTransaction) ToString() string {
 		text.WriteString("  Process: " + t.Metadata.ProcessExe + "\n")
 	}
 	text.WriteString("  Bytes Sent: " + strconv.FormatInt(t.Metadata.BytesSent, 10) + "\n")
-	text.WriteString("  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n\n")
+	text.WriteString("  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n")
+	if tags := t.Metadata.Tags; len(tags) > 0 {
+		text.WriteString("  Tags: " + strings.Join(tags, ", ") + "\n")
+	}
+	text.WriteString("\n")
 
 	// Add request info
 	text.WriteString("Request:\n")

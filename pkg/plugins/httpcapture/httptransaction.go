@@ -41,7 +41,7 @@ type Metadata struct {
 	RequestID      string   `json:"request_id,omitempty"`
 	ConnectionID   string   `json:"connection_id,omitempty"`
 	EndpointID     string   `json:"endpoint_id,omitempty"`
-	Tags           []string `json:"tags,omitzero"`
+	Tags           []string `json:"tags,omitempty"`
 }
 
 // Request contains HTTP request information

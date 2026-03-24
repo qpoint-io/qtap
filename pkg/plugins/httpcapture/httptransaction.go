@@ -30,17 +30,18 @@ type HttpTransaction struct {
 
 // Metadata contains process and connection information
 type Metadata struct {
-	ProcessID      string `json:"process_id,omitempty"`
-	ProcessExe     string `json:"process_exe,omitempty"`
-	ContainerName  string `json:"container_name,omitempty"`
-	ContainerImage string `json:"container_image,omitempty"`
-	PodName        string `json:"pod_name,omitempty"`
-	PodNamespace   string `json:"pod_namespace,omitempty"`
-	BytesSent      int64  `json:"bytes_sent,omitempty"`
-	BytesReceived  int64  `json:"bytes_received,omitempty"`
-	RequestID      string `json:"request_id,omitempty"`
-	ConnectionID   string `json:"connection_id,omitempty"`
-	EndpointID     string `json:"endpoint_id,omitempty"`
+	ProcessID      string   `json:"process_id,omitempty"`
+	ProcessExe     string   `json:"process_exe,omitempty"`
+	ContainerName  string   `json:"container_name,omitempty"`
+	ContainerImage string   `json:"container_image,omitempty"`
+	PodName        string   `json:"pod_name,omitempty"`
+	PodNamespace   string   `json:"pod_namespace,omitempty"`
+	BytesSent      int64    `json:"bytes_sent,omitempty"`
+	BytesReceived  int64    `json:"bytes_received,omitempty"`
+	RequestID      string   `json:"request_id,omitempty"`
+	ConnectionID   string   `json:"connection_id,omitempty"`
+	EndpointID     string   `json:"endpoint_id,omitempty"`
+	Tags           []string `json:"tags,omitzero"`
 }
 
 // Request contains HTTP request information
@@ -118,6 +119,10 @@ func getMetadata(meta plugins.Meta) Metadata {
 			m.PodName = p.Name
 			m.PodNamespace = p.Namespace
 		}
+	}
+
+	if t := meta.Tags(); t != nil {
+		m.Tags = t.List()
 	}
 
 	return m

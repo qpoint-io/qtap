@@ -3,6 +3,7 @@ package httpcapture
 import (
 	"encoding/json"
 	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,18 +31,18 @@ type HttpTransaction struct {
 
 // Metadata contains process and connection information
 type Metadata struct {
-	ProcessID      string   `json:"process_id,omitempty"`
-	ProcessExe     string   `json:"process_exe,omitempty"`
-	ContainerName  string   `json:"container_name,omitempty"`
-	ContainerImage string   `json:"container_image,omitempty"`
-	PodName        string   `json:"pod_name,omitempty"`
-	PodNamespace   string   `json:"pod_namespace,omitempty"`
-	BytesSent      int64    `json:"bytes_sent,omitempty"`
-	BytesReceived  int64    `json:"bytes_received,omitempty"`
-	RequestID      string   `json:"request_id,omitempty"`
-	ConnectionID   string   `json:"connection_id,omitempty"`
-	EndpointID     string   `json:"endpoint_id,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
+	ProcessID      string              `json:"process_id,omitempty"`
+	ProcessExe     string              `json:"process_exe,omitempty"`
+	ContainerName  string              `json:"container_name,omitempty"`
+	ContainerImage string              `json:"container_image,omitempty"`
+	PodName        string              `json:"pod_name,omitempty"`
+	PodNamespace   string              `json:"pod_namespace,omitempty"`
+	BytesSent      int64               `json:"bytes_sent,omitempty"`
+	BytesReceived  int64               `json:"bytes_received,omitempty"`
+	RequestID      string              `json:"request_id,omitempty"`
+	ConnectionID   string              `json:"connection_id,omitempty"`
+	EndpointID     string              `json:"endpoint_id,omitempty"`
+	Tags           map[string][]string `json:"tags,omitempty"`
 }
 
 // Request contains HTTP request information
@@ -122,7 +123,7 @@ func getMetadata(meta plugins.Meta) Metadata {
 	}
 
 	if t := meta.Tags(); t != nil {
-		m.Tags = t.List()
+		m.Tags = t.Map()
 	}
 
 	return m
@@ -277,7 +278,10 @@ func (t *HttpTransaction) ToString() string {
 	text.WriteString("  Bytes Sent: " + strconv.FormatInt(t.Metadata.BytesSent, 10) + "\n")
 	text.WriteString("  Bytes Received: " + strconv.FormatInt(t.Metadata.BytesReceived, 10) + "\n")
 	if tags := t.Metadata.Tags; len(tags) > 0 {
-		text.WriteString("  Tags: " + strings.Join(tags, ", ") + "\n")
+		text.WriteString("  Tags:\n")
+		for _, k := range slices.Sorted(maps.Keys(tags)) {
+			text.WriteString("    " + k + ": " + strings.Join(tags[k], ", ") + "\n")
+		}
 	}
 	text.WriteString("\n")
 

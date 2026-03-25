@@ -136,7 +136,10 @@ func TestHttpTransactionToJSONFormat(t *testing.T) {
 			transaction: HttpTransaction{
 				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
 				Metadata: Metadata{
-					Tags: []string{"env:production", "team:backend"},
+					Tags: map[string][]string{
+						"env":  {"production"},
+						"team": {"backend"},
+					},
 				},
 				Request: Request{
 					Method: "GET",
@@ -149,7 +152,10 @@ func TestHttpTransactionToJSONFormat(t *testing.T) {
 			expectedJSON: map[string]any{
 				"transaction_time": "2025-05-20T10:00:00Z",
 				"metadata": map[string]any{
-					"tags": []any{"env:production", "team:backend"},
+					"tags": map[string]any{
+						"env":  []any{"production"},
+						"team": []any{"backend"},
+					},
 				},
 				"request": map[string]any{
 					"method": "GET",
@@ -197,7 +203,7 @@ func TestHttpTransactionToJSONFormat(t *testing.T) {
 			transaction: HttpTransaction{
 				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
 				Metadata: Metadata{
-					Tags: []string{},
+					Tags: map[string][]string{},
 				},
 				Request: Request{
 					Method: "GET",
@@ -332,6 +338,30 @@ func TestHttpTransactionToText(t *testing.T) {
 				"Method: GET",
 				"URL: https://example.com",
 				"Status: 200",
+			},
+		},
+		{
+			name: "Transaction with tags in text",
+			transaction: HttpTransaction{
+				TransactionTime: time.Date(2025, 5, 20, 10, 0, 0, 0, time.UTC),
+				Metadata: Metadata{
+					Tags: map[string][]string{
+						"env":  {"production"},
+						"team": {"backend", "infra"},
+					},
+				},
+				Request: Request{
+					Method: "GET",
+					URL:    "https://example.com",
+				},
+				Response: Response{
+					Status: 200,
+				},
+			},
+			expectedSubstrings: []string{
+				"Tags:",
+				"env: production",
+				"team: backend, infra",
 			},
 		},
 	}

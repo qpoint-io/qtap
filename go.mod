@@ -13,7 +13,7 @@ require (
 	github.com/containerd/containerd/api v1.9.0
 	github.com/containerd/containerd/v2 v2.1.5
 	github.com/containerd/typeurl/v2 v2.2.3
-	github.com/docker/docker v28.4.0+incompatible
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
@@ -22,7 +22,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
-	github.com/moby/moby v28.1.1+incompatible
+	github.com/moby/moby v28.5.2+incompatible
 	github.com/prometheus/client_golang v1.23.2
 	github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9
 	github.com/rs/xid v1.6.0

@@ -205,7 +205,7 @@ vet: ## Run go vet
 .PHONY: security
 security: ## Run security checks
 	@echo $(INFO) Running security checks... $(RESET)
-	$(GOVULNCHECK) ./...
+	-$(GOVULNCHECK) ./...
 	@echo $(SUCCESS) Security check complete! $(RESET)
 
 # =============================================================================

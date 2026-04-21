@@ -1,0 +1,25 @@
+# Allowlist for `make security` (govulncheck).
+#
+# One ID per line. Accepts Go vuln DB IDs (GO-YYYY-NNNN), GHSA IDs,
+# or CVE IDs — the wrapper matches against the OSV record's id and aliases.
+#
+# Lines starting with `#` are comments. Use them to document *why* each entry
+# is allowlisted so a reviewer can re-evaluate later.
+
+# GHSA-x744-4wpc-v9h2 — Moby AuthZ plugin bypass on oversized request bodies.
+# Affects dockerd when an AuthorizationPlugin is configured. qtap imports the
+# Docker client library only (github.com/docker/docker/{client,api/types/...})
+# to talk to a Docker socket; it never runs the daemon or authz code paths.
+# No fix is available on the github.com/docker/docker or github.com/moby/moby
+# module paths — the patched release is only on github.com/moby/moby/v2.
+# Covers Dependabot alerts #19 and #21. Revisit when docker/docker publishes
+# a v29 Go module.
+GO-2026-4887
+
+# GHSA-pxq6-2prw-chj9 — Moby off-by-one in plugin privilege validation.
+# Affects dockerd's plugin privilege check. qtap does not run the daemon or
+# install Docker plugins; the vulnerable code path is unreachable from our
+# client-only usage. Same upstream fix situation as GO-2026-4887: patched on
+# github.com/moby/moby/v2 only, not on the github.com/docker/docker module.
+# Covers Dependabot alerts #18 and #20.
+GO-2026-4883

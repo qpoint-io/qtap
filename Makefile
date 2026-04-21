@@ -203,9 +203,9 @@ vet: ## Run go vet
 	@echo $(SUCCESS) Vet complete! $(RESET)
 
 .PHONY: security
-security: ## Run security checks
+security: ## Run security checks (allowlist: .govulncheck-allow)
 	@echo $(INFO) Running security checks... $(RESET)
-	$(GOVULNCHECK) ./...
+	@bash $(ROOT_DIR)/scripts/security.sh ./...
 	@echo $(SUCCESS) Security check complete! $(RESET)
 
 # =============================================================================

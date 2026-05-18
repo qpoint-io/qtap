@@ -22,7 +22,6 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049
 	github.com/minio/minio-go/v7 v7.0.92
-	github.com/moby/moby v28.1.1+incompatible
 	github.com/prometheus/client_golang v1.23.2
 	github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9
 	github.com/rs/xid v1.6.0
@@ -348,7 +347,7 @@ require (
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.42.0
 	golang.org/x/telemetry v0.0.0-20260209163413-e7419c687ee4 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.10.0 // indirect

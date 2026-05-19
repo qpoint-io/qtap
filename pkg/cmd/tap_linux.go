@@ -14,7 +14,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/cilium/ebpf/ringbuf"
-	"github.com/moby/moby/pkg/parsers/kernel"
 	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
 	"github.com/qpoint-io/qtap/pkg/config"
@@ -28,6 +27,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/openssl"
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
+	"github.com/qpoint-io/qtap/pkg/kernel"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
 	httpmetrics "github.com/qpoint-io/qtap/pkg/plugins/http"
@@ -171,7 +171,11 @@ func runTapCmd(logger *zap.Logger) {
 		telemetry.GetSysInfoAsFields(),
 	)
 
-	if !kernel.CheckKernelVersion(5, 10, 0) {
+	meetsMinimumKernel, err := kernel.CheckVersion(5, 10, 0)
+	if err != nil {
+		logger.Fatal("unable to check kernel version", zap.Error(err))
+	}
+	if !meetsMinimumKernel {
 		logger.Fatal("Qtap requires kernel version 5.10 or greater.")
 	}
 

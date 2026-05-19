@@ -59,6 +59,16 @@ jobs:
           fi
           
           if [ "$WARNING_FOUND" = true ]; then
+            # Some source changes, especially dev dependency bumps, may not change the
+            # generated single-file app. Verify the build before warning.
+            npm ci --include=dev --ignore-scripts --no-audit --no-fund --prefix pkg/devtools/app
+            npm run build --prefix pkg/devtools/app
+
+            if git diff --quiet -- 'pkg/devtools/app/dist/**'; then
+              echo "warning=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
             echo "warning=true" >> $GITHUB_OUTPUT
             # Store changed files (escape newlines for GitHub output)
             echo "changed_files<<EOF" >> $GITHUB_OUTPUT
@@ -71,7 +81,7 @@ jobs:
               FILE_COUNT=$(echo "$SOURCE_CHANGES" | grep -v '^$' | wc -l | tr -d ' ')
             fi
             echo "file_count=$FILE_COUNT" >> $GITHUB_OUTPUT
-            echo "::warning ::Changes were detected in pkg/devtools/app but no changes were found in pkg/devtools/app/dist. Did you forget to run 'npm run build' before committing?"
+            echo "::warning ::Changes were detected in pkg/devtools/app but the generated dist output was not committed. Please run 'npm run build' in pkg/devtools/app and commit the updated build files."
             exit 1
           else
             echo "warning=false" >> $GITHUB_OUTPUT

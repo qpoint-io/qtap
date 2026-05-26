@@ -178,6 +178,31 @@ func TestChunkedDataProcessing(t *testing.T) {
 	require.Equal(t, 200, state.Response.StatusCode)
 }
 
+func TestKeepAliveResponseEmitsDoneWithoutExplicitClose(t *testing.T) {
+	requestData := loadTestData(t, "requests/get_simple.txt")
+	responseData := loadTestData(t, "responses/get_200_with_body.txt")
+
+	recorder := NewTestCallbackRecorder(WithTimeout(200 * time.Millisecond))
+	parser := NewParser(t.Context(), recorder)
+	t.Cleanup(func() {
+		_ = parser.Close()
+	})
+
+	require.NoError(t, parser.ProcessEvent(PhaseRequest, requestData))
+
+	reqEvent, err := recorder.WaitForEvent(EventRequest)
+	require.NoError(t, err)
+	require.Equal(t, "GET", reqEvent.Request.Method)
+
+	require.NoError(t, parser.ProcessEvent(PhaseResponse, responseData))
+
+	respEvent, err := recorder.WaitForEvent(EventResponse)
+	require.NoError(t, err)
+	require.Equal(t, 200, respEvent.Response.StatusCode)
+
+	require.NoError(t, recorder.WaitForCompletion(), "keep-alive transaction should complete without waiting for parser.Close")
+}
+
 // Example using the advanced test helpers
 func TestAdvancedChunkedTransmission(t *testing.T) {
 	requestData := loadTestData(t, "requests/get_simple.txt")

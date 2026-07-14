@@ -1,9 +1,9 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26.5-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod main.go ./
-RUN go mod tidy && go build -o kafka-client .
+COPY go.mod go.sum main.go ./
+RUN go mod download && go build -o kafka-client .
 
 FROM alpine:latest
 

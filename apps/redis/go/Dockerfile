@@ -1,9 +1,9 @@
-FROM golang:1.26.5-alpine AS builder
+FROM golang:1.26.2-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod go.sum main.go ./
-RUN go mod download && go build -o redis-client .
+COPY go.mod main.go ./
+RUN go mod tidy && go build -o redis-client .
 
 FROM alpine:latest
 

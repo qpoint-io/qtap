@@ -23,3 +23,19 @@ GO-2026-4887
 # github.com/moby/moby/v2 only, not on the github.com/docker/docker module.
 # Covers Dependabot alerts #18 and #20.
 GO-2026-4883
+
+# These Docker archive/copy advisories affect dockerd's server-side archive
+# extraction and bind-mount handling. qtap imports github.com/docker/docker as
+# an API client and does not embed or run the daemon implementation. The
+# github.com/docker/docker module has no patched release; fixes are published
+# only on github.com/moby/moby/v2. Revisit when the Docker client module moves
+# to that path or publishes a fixed version.
+GO-2026-5617
+GO-2026-5668
+GO-2026-5746
+
+# golang.org/x/crypto/openpgp is deprecated as a package, but qtap does not
+# import it. govulncheck reports this as a module-only finding because qtap
+# uses other x/crypto packages through validator. There is no fixed x/crypto
+# version; revisit if openpgp ever appears in `go list -deps -test ./...`.
+GO-2026-5932

@@ -145,7 +145,7 @@ func getRuntimeService(logger *zap.Logger, criRuntimeEndpoint string) (rs cri.Ru
 		var err error
 		logger.Debug("attempting to connect to runtime service", zap.String("endpoint", e))
 
-		rs, err = remote.NewRemoteRuntimeService(e, DefaultRuntimeTimeout, nil, nil)
+		rs, err = remote.NewRemoteRuntimeService(context.Background(), e, DefaultRuntimeTimeout, nil, false)
 		if err != nil {
 			if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
 				err = errors.New("no such file or directory")

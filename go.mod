@@ -51,18 +51,22 @@ require (
 
 require (
 	connectrpc.com/connect v1.20.0
+	github.com/ably/ably-go v1.4.1
 	github.com/anthropics/anthropic-sdk-go v1.58.0
 	github.com/jonfriesen/trie-url-classifier v0.0.2
 	github.com/openai/openai-go v1.12.0
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
+	github.com/qpoint-io/debounce v0.0.2
 	github.com/qpoint-io/proto v0.0.0-20260225185424-000aa3d12427
 	golang.org/x/arch v0.29.0
 )
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.6-20250307204501-0409229c3780.1 // indirect
+	github.com/ably/vcdiff-go v0.0.2 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
@@ -70,6 +74,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/ugorji/go/codec v1.1.9 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 )
 

@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/e2e"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
@@ -21,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -526,4 +529,384 @@ func TestHTTP_WgetMsgPeekLargeBody(t *testing.T) {
 				"captured body should match actual response (fails with MSG_PEEK bug: headers leak into body)")
 		})
 	})
+}
+
+func TestHTTP_ReverseProxy(t *testing.T) {
+	ctx := e2ectx.TestCtx(t)
+	ctx.WithConfig(t, func(c *config.Config) {
+		c.Tap.IgnoreLoopback = false
+		c.Tap.Direction = config.TrafficDirection_EGRESS
+	}, func(t *testing.T) {
+		echoCtx := e2ectx.TestCtx(t)
+		echoServer := echoHTTPServer(echoCtx)
+		echoCtx.L.Warn("echoServer", zap.String("url", echoServer.String()))
+
+		t.Run("caddy", func(t *testing.T) {
+			caddyCtx := e2ectx.TestCtx(t)
+			caddy, err := testcontainers.Run(
+				caddyCtx, "caddy:2-alpine",
+				testcontainers.WithHostConfigModifier(func(hc *container.HostConfig) {
+					hc.PidMode = "host"
+				}),
+				testcontainers.WithLogConsumerConfig(newLogOnFailureCollector(t)),
+				testcontainers.WithExposedPorts("80/tcp"),
+				testcontainers.WithWaitStrategy(wait.ForHTTP("/").WithStartupTimeout(10*time.Second)),
+				testcontainers.WithEnv(map[string]string{
+					"QPOINT_TAGS": "ctxid:" + caddyCtx.ID,
+				}),
+				testcontainers.WithFiles(testcontainers.ContainerFile{
+					ContainerFilePath: "/etc/caddy/Caddyfile",
+					FileMode:          0o644,
+					Reader: strings.NewReader(`
+						:80
+						respond / "Hello from proxy!" 200
+						reverse_proxy /proxy* ` + echoServer.String() + ` {
+							transport http {
+								keepalive off
+							}
+						}`,
+					),
+				}),
+			)
+			require.NoError(t, err)
+
+			caddyIP, err := caddy.ContainerIP(ctx)
+			require.NoError(t, err)
+
+			// wait until we scan the caddy process
+			inspect, err := caddy.Inspect(ctx)
+			require.NoError(t, err)
+			caddyPID := inspect.State.Pid
+			caddyCtx.L.Debug("waiting for caddy process to be ready", zap.Int("pid", caddyPID))
+			err = caddyCtx.WaitForProcess(e2e.NewProcessKey(caddy.ID, caddyPID), 15*time.Second)
+			require.NoError(t, err)
+			caddyCtx.L.Debug("caddy process is ready")
+			time.Sleep(2 * time.Second)
+
+			// proxy-terminated request
+			// ----
+			curlCtx := e2ectx.TestCtx(t)
+			httpReq := curl(curlCtx, caddyIP, "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "Hello from proxy!", httpReq.Output)
+
+			events := curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn := events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Contains(t, conn.Source.(*eventstore.ConnectionEndpointLocal).Exe, "curl")
+			assert.Equal(t, caddyIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req := events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+			assert.Equal(t, "text/plain; charset=utf-8", req.ContentType)
+
+			// proxy-to-backend request
+			// ----
+			curlCtx = e2ectx.TestCtx(t)
+			httpReq = curl(curlCtx, caddyIP+`/proxy`, "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "hello world\n", httpReq.Output)
+
+			// test curl connection
+			events = curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, caddyIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req = events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+			assert.Equal(t, "text/plain; charset=utf-8", req.ContentType)
+
+			// test proxy -> backend connection
+			events = caddyCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, caddyIP, conn.Source.(*eventstore.ConnectionEndpointLocal).Address.IP.String())
+			assert.Equal(t, echoServer.Hostname(), conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+		})
+
+		t.Run("traefik", func(t *testing.T) {
+			traefikCtx := e2ectx.TestCtx(t)
+			traefik, err := testcontainers.Run(
+				traefikCtx, "traefik:v3",
+				testcontainers.WithHostConfigModifier(func(hc *container.HostConfig) {
+					hc.PidMode = "host"
+				}),
+				testcontainers.WithLogConsumerConfig(newLogOnFailureCollector(t)),
+				testcontainers.WithExposedPorts("80/tcp"),
+				testcontainers.WithWaitStrategy(wait.ForHTTP("/ping").WithPort("80/tcp").WithStartupTimeout(10*time.Second)),
+				testcontainers.WithEnv(map[string]string{
+					"QPOINT_TAGS": "ctxid:" + traefikCtx.ID,
+				}),
+				testcontainers.WithFiles(
+					testcontainers.ContainerFile{
+						ContainerFilePath: "/etc/traefik/traefik.yml",
+						FileMode:          0o644,
+						Reader: strings.NewReader(`
+api:
+  insecure: true
+ping:
+  entryPoint: web
+entryPoints:
+  web:
+    address: ":80"
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+`,
+						),
+					},
+					testcontainers.ContainerFile{
+						ContainerFilePath: "/etc/traefik/dynamic.yml",
+						FileMode:          0o644,
+						Reader: strings.NewReader(`
+http:
+  routers:
+    proxy:
+      rule: "Path(\"/proxy\")"
+      service: backend
+      priority: 1
+  services:
+    backend:
+      loadBalancer:
+        servers:
+          - url: "` + echoServer.String() + `"
+        serversTransport: no-keepalive
+  serversTransports:
+    no-keepalive:
+      maxIdleConnsPerHost: -1
+      forwardingTimeouts:
+        idleConnTimeout: -1
+`,
+						),
+					},
+				),
+			)
+			require.NoError(t, err)
+
+			traefikIP, err := traefik.ContainerIP(ctx)
+			require.NoError(t, err)
+
+			// wait until we scan the traefik process
+			inspect, err := traefik.Inspect(ctx)
+			require.NoError(t, err)
+			traefikPID := inspect.State.Pid
+			traefikCtx.L.Debug("waiting for traefik process to be ready", zap.Int("pid", traefikPID))
+			err = traefikCtx.WaitForProcess(e2e.NewProcessKey(traefik.ID, traefikPID), 15*time.Second)
+			require.NoError(t, err)
+			traefikCtx.L.Debug("traefik process is ready")
+			time.Sleep(2 * time.Second)
+
+			// proxy-terminated request
+			// ----
+			curlCtx := e2ectx.TestCtx(t)
+			httpReq := curl(curlCtx, traefikIP+"/ping", "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "OK", httpReq.Output)
+
+			events := curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn := events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Contains(t, conn.Source.(*eventstore.ConnectionEndpointLocal).Exe, "curl")
+			assert.Equal(t, traefikIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req := events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+
+			// proxy-to-backend request
+			// ----
+			curlCtx = e2ectx.TestCtx(t)
+			httpReq = curl(curlCtx, traefikIP+`/proxy`, "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "hello world\n", httpReq.Output)
+
+			// test curl connection
+			events = curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, traefikIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req = events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+			assert.Equal(t, "text/plain; charset=utf-8", req.ContentType)
+
+			// test proxy -> backend connection
+			events = traefikCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, traefikIP, conn.Source.(*eventstore.ConnectionEndpointLocal).Address.IP.String())
+			assert.Equal(t, echoServer.Hostname(), conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+		})
+
+		t.Run("envoy", func(t *testing.T) {
+			envoyCtx := e2ectx.TestCtx(t)
+			envoy, err := testcontainers.Run(
+				envoyCtx, "envoyproxy/envoy:v1.31-latest",
+				testcontainers.WithHostConfigModifier(func(hc *container.HostConfig) {
+					hc.PidMode = "host"
+				}),
+				testcontainers.WithLogConsumerConfig(newLogOnFailureCollector(t)),
+				testcontainers.WithExposedPorts("80/tcp"),
+				testcontainers.WithWaitStrategy(wait.ForHTTP("/").WithPort("80/tcp").WithStartupTimeout(10*time.Second)),
+				testcontainers.WithEnv(map[string]string{
+					"QPOINT_TAGS": "ctxid:" + envoyCtx.ID,
+				}),
+				testcontainers.WithFiles(testcontainers.ContainerFile{
+					ContainerFilePath: "/etc/envoy/envoy.yaml",
+					FileMode:          0o644,
+					Reader: strings.NewReader(`
+static_resources:
+  listeners:
+  - name: listener_http
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 80
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/proxy" }
+                route:
+                  cluster: echo_service
+                  timeout: 0s
+              - match: { prefix: "/" }
+                direct_response:
+                  status: 200
+                  body:
+                    inline_string: "Hello from proxy!"
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: echo_service
+    connect_timeout: 1s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    common_http_protocol_options:
+      max_requests_per_connection: 1
+    load_assignment:
+      cluster_name: echo_service
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address:
+                address: ` + echoServer.Hostname() + `
+                port_value: 5678
+`),
+				}),
+				testcontainers.WithCmd("-c", "/etc/envoy/envoy.yaml"),
+			)
+			require.NoError(t, err)
+
+			envoyIP, err := envoy.ContainerIP(ctx)
+			require.NoError(t, err)
+
+			// wait until we scan the envoy process
+			inspect, err := envoy.Inspect(ctx)
+			require.NoError(t, err)
+			envoyPID := inspect.State.Pid
+			envoyCtx.L.Debug("waiting for envoy process to be ready", zap.Int("pid", envoyPID))
+			err = envoyCtx.WaitForProcess(e2e.NewProcessKey(envoy.ID, envoyPID), 15*time.Second)
+			require.NoError(t, err)
+			envoyCtx.L.Debug("envoy process is ready")
+			time.Sleep(2 * time.Second)
+
+			// proxy-terminated request
+			// ----
+			curlCtx := e2ectx.TestCtx(t)
+			httpReq := curl(curlCtx, envoyIP, "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "Hello from proxy!", httpReq.Output)
+
+			events := curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn := events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Contains(t, conn.Source.(*eventstore.ConnectionEndpointLocal).Exe, "curl")
+			assert.Equal(t, envoyIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req := events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+
+			// proxy-to-backend request
+			// ----
+			curlCtx = e2ectx.TestCtx(t)
+			httpReq = curl(curlCtx, envoyIP+`/proxy`, "-H", "Connection: close")
+			require.NoError(t, httpReq.Err)
+			require.Equal(t, "hello world\n", httpReq.Output)
+
+			// test curl connection
+			events = curlCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, envoyIP, conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+
+			require.Len(t, events.Requests, 1)
+			req = events.Requests[0]
+			assert.Equal(t, "GET", req.Method)
+			assert.Equal(t, "text/plain; charset=utf-8", req.ContentType)
+
+			// test proxy -> backend connection
+			events = envoyCtx.Events(1)
+			require.Len(t, events.Connections, 1)
+			conn = events.Connections[0]
+			assert.Equal(t, eventstore.Direction_EgressInternal, conn.Direction)
+			assert.Equal(t, eventstore.L7Protocol_HTTP1, conn.L7Protocol)
+			assert.Equal(t, envoyIP, conn.Source.(*eventstore.ConnectionEndpointLocal).Address.IP.String())
+			assert.Equal(t, echoServer.Hostname(), conn.Destination.(*eventstore.ConnectionEndpointRemote).Address.IP.String())
+		})
+	})
+}
+
+type logOnFailureCollector struct {
+	t    *testing.T
+	logs bytes.Buffer
+}
+
+func newLogOnFailureCollector(t *testing.T) *testcontainers.LogConsumerConfig {
+	c := &logOnFailureCollector{t: t}
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("container logs:\n%s\n", c.logs.String())
+		}
+	})
+	return &testcontainers.LogConsumerConfig{
+		Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
+		Consumers: []testcontainers.LogConsumer{c},
+	}
+}
+
+func (lc *logOnFailureCollector) Accept(l testcontainers.Log) {
+	lc.logs.Write(l.Content)
 }

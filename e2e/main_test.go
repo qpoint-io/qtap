@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/internal/tap"
+	"github.com/qpoint-io/qtap/pkg/ca"
+	"github.com/qpoint-io/qtap/pkg/cap"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/devtools"
@@ -19,9 +22,13 @@ import (
 	"github.com/qpoint-io/qtap/pkg/e2e"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
+	"github.com/qpoint-io/qtap/pkg/egress"
+	egressEbpf "github.com/qpoint-io/qtap/pkg/egress/ebpf"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
+	"github.com/qpoint-io/qtap/pkg/plugins/errordetection"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
+	"github.com/qpoint-io/qtap/pkg/plugins/llm"
 	loggerPlugin "github.com/qpoint-io/qtap/pkg/plugins/logger"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
@@ -163,6 +170,8 @@ func mainSetup() error {
 		wrapper.Catch(accesslogs.NewConsoleHttpFilter()),
 		wrapper.Catch(&httpcapture.Factory{}),
 		wrapper.Catch(devtoolsManager.PluginFactory()),
+		wrapper.Catch(&errordetection.Factory{}),
+		wrapper.Catch(&llm.Factory{}),
 	}
 
 	// TODO(e2e)
@@ -299,10 +308,79 @@ func mainSetup() error {
 		return fmt.Errorf("creating socket event manager: %w", err)
 	}
 
+	// initialize a cert store
+	certStore := egress.NewCertStore(100, logger)
+	if err := certStore.Init(); err != nil {
+		panic(fmt.Errorf("failed to initialize certificate store: %w", err))
+	}
+
+	// get the root cert bytes
+	rootCert, err := certStore.GetRootCertBytes()
+	if err != nil {
+		panic(fmt.Errorf("failed to get root certificate: %w", err))
+	}
+
+	logger.Info("starting certificate injector")
+	certsObjs := tap.CertsObjects{}
+	strategy := ca.StrategyFromString("inline")
+
+	if strategy == ca.InjectStrategyEbpf {
+		if err := cap.CanBpfProbeWriteUser(); err != nil {
+			if errors.Is(err, cap.ErrBpfProbeWriteUser) {
+				logger.Fatal("bpf_probe_write_user is not allowed, cannot use ebpf strategy for cert injection", zap.Error(err))
+			}
+			logger.Fatal("failed to check if bpf_probe_write_user is allowed", zap.Error(err))
+		}
+
+		certsObjs = tap.CertsObjects{}
+		if err := tap.LoadCertsObjects(&certsObjs, nil); err != nil {
+			panic(fmt.Errorf("failed to load BPF programs and maps: %w", err))
+		}
+		e2ectx.RegisterErrCloser(certsObjs.Close)
+	}
+
+	// init a ca manager
+	caManager := ca.NewCaManager(rootCert, strategy, logger, &certsObjs, &tapObjs, pm)
+	if err := caManager.Start(e2ectx); err != nil {
+		panic(fmt.Errorf("failed to start ca manager: %w", err))
+	}
+	e2ectx.RegisterErrCloser(caManager.Stop)
+
+	// add the ca manager as a process observer
+	pm.Observe(caManager)
+
+	// add JAVA_HOME to process manager env mask
+	pm.MaskEnvVars([]string{"JAVA_HOME"})
+
+	// set the ssl cert env vars to process manager env mask
+	pm.MaskEnvVars(ca.SslCertEnvVars)
+	pm.MaskEnvVars(ca.KeystoreEnvVars)
+
+	// init a router
+	router, err := egressEbpf.NewRouter(logger, &tapObjs)
+	if err != nil {
+		return fmt.Errorf("creating egress router: %w", err)
+	}
+
+	if router != nil {
+		stopEgressManager, err := SetupEgressManager(
+			logger,
+			connectionManager,
+			&tapObjs,
+			certStore,
+			router,
+			caManager,
+		)
+		if err != nil {
+			return fmt.Errorf("setting up egress manager: %w", err)
+		}
+		e2ectx.RegisterErrCloser(stopEgressManager)
+	}
+
 	// Initialize TLS probes
-	tlsProbes := "openssl"
+	tlsProbes := "openssl,gotls,nodetls,javassl"
 	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
-	tlsManager, err := InitTLSProbes(logger, tlsProbes, &tapObjs)
+	tlsManager, err := InitTLSProbes(e2ectx, logger, tlsProbes, &tapObjs, connectionManager, confManager)
 	if err != nil {
 		return fmt.Errorf("initializing TLS probes: %w", err)
 	}

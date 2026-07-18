@@ -42,6 +42,10 @@ github.com/Microsoft/hcsshim v0.15.0-rc.1 h1:FbbwtQmiD+BVHynGkx5S65JkLyhkEiiTP8n
 github.com/Microsoft/hcsshim v0.15.0-rc.1/go.mod h1:HWvvUPIy9HF6LotILj1G4VyS065rcLQ6tqj6tMUdOfI=
 github.com/OpenPeeDeeP/depguard/v2 v2.2.1 h1:vckeWVESWp6Qog7UZSARNqfu/cZqvki8zsuj3piCMx4=
 github.com/OpenPeeDeeP/depguard/v2 v2.2.1/go.mod h1:q4DKzC4UcVaAvcfd41CZh0PWpGgzrVxUYBlgKNGquUo=
+github.com/ably/ably-go v1.4.1 h1:4FKLNjfXzJRT1Ji+VYfdfNc5B93LxQD4bi0kwyDrPF8=
+github.com/ably/ably-go v1.4.1/go.mod h1:nyQqGxucYeo5J19EohhfNEkfrprPVesLnMfaNit+Ovs=
+github.com/ably/vcdiff-go v0.0.2 h1:zEtkNUtcwNnoScnkEFptYl5hEwEMZcacWdXc56qB4Ws=
+github.com/ably/vcdiff-go v0.0.2/go.mod h1:y8j31IVCZtYwwwLZMGMwdrkP6RY2mDi3tM9zZ/X1/do=
 github.com/advbet/sseclient v0.0.0-20250521071159-d88bf8fc2362 h1:Pxu+kVTeqx2doeph2N8IRALLfy8BPOvIfxTp4l5s1xg=
 github.com/advbet/sseclient v0.0.0-20250521071159-d88bf8fc2362/go.mod h1:zNKTXU32QFoHEDj+AfOgXLJ7/9wLgIlrXhAuIyIQIfI=
 github.com/alecthomas/assert/v2 v2.11.0 h1:2Q9r3ki8+JYXvGsDyBXwH3LcJ+WK5D0gc5E8vS6K3D0=
@@ -157,6 +161,8 @@ github.com/ckaznocha/intrange v0.3.1 h1:j1onQyXvHUsPWujDH6WIjhyH26gkRt/txNlV7Lsp
 github.com/ckaznocha/intrange v0.3.1/go.mod h1:QVepyz1AkUoFQkpEqksSYpNpUo3c5W7nWh/s6SHIJJk=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/cncf/udpa/go v0.0.0-20191209042840-269d4d468f6f/go.mod h1:M8M6+tZqaGXZJjfX53e64911xZQV5JYwmTeXPW+k8Sc=
+github.com/coder/websocket v1.8.12 h1:5bUXkEPPIbewrnkU8LTCLVaxi4N4J8ahufH2vlo4NAo=
+github.com/coder/websocket v1.8.12/go.mod h1:LNVeNrXQZfe5qhS9ALED3uA+l5pPqvwXg3CKoDBB2gs=
 github.com/containerd/cgroups/v3 v3.1.3 h1:eUNflyMddm18+yrDmZPn3jI7C5hJ9ahABE5q6dyLYXQ=
 github.com/containerd/cgroups/v3 v3.1.3/go.mod h1:PKZ2AcWmSBsY/tJUVhtS/rluX0b1uq1GmPO1ElCmbOw=
 github.com/containerd/containerd/api v1.11.1 h1:h8nfoDW9+fNsC/9TwiAHj8B1GzXKtR4eFtkhi/X5RLU=
@@ -599,6 +605,8 @@ github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEo
 github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.20.1 h1:XwbrGOIplXW/AU3YhIhLODXMJYyC1isLFfYCsTEycfc=
 github.com/prometheus/procfs v0.20.1/go.mod h1:o9EMBZGRyvDrSPH1RqdxhojkuXstoe4UlK79eF5TGGo=
+github.com/qpoint-io/debounce v0.0.2 h1:77niCt+dHCe2AAcDEOCCHwTvuz5QGeZSl1dV1vUsbgY=
+github.com/qpoint-io/debounce v0.0.2/go.mod h1:I7W2+bfEGfqnBnLamibCmwSD01Ho/Y5nQDuH2T0n4zk=
 github.com/qpoint-io/proto v0.0.0-20260225185424-000aa3d12427 h1:qrWhOu/JOdYxN0WajYKUAA3fTW4ijStZjuu5Kh8u+30=
 github.com/qpoint-io/proto v0.0.0-20260225185424-000aa3d12427/go.mod h1:skmvjPXyocMjYDVWrbGtlajdNbrC8NDKZJdGDwYuBKk=
 github.com/qpoint-io/rulekit v0.0.0-20250520133345-50b8c2fe01a9 h1:lmhLag5XcK4+H8Xh6+eOjsroVTvgs+TqSF67FKFVJJY=
@@ -726,6 +734,9 @@ github.com/tomarrell/wrapcheck/v2 v2.10.0 h1:SzRCryzy4IrAH7bVGG4cK40tNUhmVmMDuJu
 github.com/tomarrell/wrapcheck/v2 v2.10.0/go.mod h1:g9vNIyhb5/9TQgumxQyOEqDHsmGYcGsVMOx/xGkqdMo=
 github.com/tommy-muehle/go-mnd/v2 v2.5.1 h1:NowYhSdyE/1zwK9QCLeRb6USWdoif80Ie+v+yU8u1Zw=
 github.com/tommy-muehle/go-mnd/v2 v2.5.1/go.mod h1:WsUAkMJMYww6l/ufffCD3m+P7LEvr8TnZn9lwVDlgzw=
+github.com/ugorji/go v1.1.9/go.mod h1:chLrngdsg43geAaeId+nXO57YsDdl5OZqd/QtBiD19g=
+github.com/ugorji/go/codec v1.1.9 h1:J/7hhpkQwgypRNvaeh/T5gzJ2gEI/l8S3qyRrdEa1fA=
+github.com/ugorji/go/codec v1.1.9/go.mod h1:+SWgpdqOgdW5sBaiDfkHilQ1SxQ1hBkq/R+kHfL7Suo=
 github.com/ultraware/funlen v0.2.0 h1:gCHmCn+d2/1SemTdYMiKLAHFYxTYz7z9VIDRaTGyLkI=
 github.com/ultraware/funlen v0.2.0/go.mod h1:ZE0q4TsJ8T1SQcjmkhN/w+MceuatI6pBFSxxyteHIJA=
 github.com/ultraware/whitespace v0.2.0 h1:TYowo2m9Nfj1baEQBjuHzvMRbp19i+RCcRYrSWoFa+g=

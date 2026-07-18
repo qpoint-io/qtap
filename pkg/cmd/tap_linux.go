@@ -20,6 +20,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ca"
 	"github.com/qpoint-io/qtap/pkg/cap"
 	"github.com/qpoint-io/qtap/pkg/config"
+	"github.com/qpoint-io/qtap/pkg/config/remote"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/container"
 	"github.com/qpoint-io/qtap/pkg/devtools"
@@ -35,6 +36,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/egress"
 	egresEbpf "github.com/qpoint-io/qtap/pkg/egress/ebpf"
+	"github.com/qpoint-io/qtap/pkg/heartbeat"
+	"github.com/qpoint-io/qtap/pkg/httpclient"
 	"github.com/qpoint-io/qtap/pkg/kernel"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
@@ -48,6 +51,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
+	"github.com/qpoint-io/qtap/pkg/register"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/reporter"
 	"github.com/qpoint-io/qtap/pkg/status"
@@ -74,6 +78,8 @@ var (
 	javasslLoaderBasePath    string
 	javasslAgentBasePath     string
 	enableEgressController   bool
+	registrationToken        string
+	registrationEndpoint     string
 )
 
 var (
@@ -126,6 +132,14 @@ func init() {
 	rootCmd.Flags().BoolVar(&enableEgressController, "enable-egress-controller",
 		egressControllerEnabledFromEnv(),
 		"Enable the egress controller (MITM forwarding with CA injection)")
+
+	// Control-plane registration options
+	rootCmd.Flags().StringVar(&registrationEndpoint, "registration-endpoint",
+		getEnvOr("REGISTRATION_ENDPOINT", "https://api.qpoint.io"),
+		"Control-plane registration endpoint")
+	rootCmd.Flags().StringVar(&registrationToken, "registration-token",
+		getEnvOr("REGISTRATION_TOKEN", ""),
+		"Control-plane registration token (enables managed config, heartbeats, and live updates)")
 
 	// Initialize flags with environment variable fallbacks
 	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
@@ -228,6 +242,15 @@ func runTapCmd(logger *zap.Logger) {
 		}
 	}
 
+	// Ensure a registration token passed by flag is also visible via the
+	// REGISTRATION_TOKEN env var, which ValueSource-based config (pulse,
+	// warehouse) reads to resolve the Qpoint token consistently.
+	if registrationToken != "" {
+		if t := os.Getenv("REGISTRATION_TOKEN"); !strings.EqualFold(t, registrationToken) {
+			_ = os.Setenv("REGISTRATION_TOKEN", registrationToken)
+		}
+	}
+
 	// Create config provider based on command line flags
 	var provider config.ConfigProvider
 
@@ -235,10 +258,16 @@ func runTapCmd(logger *zap.Logger) {
 	configCtx, configCancel := context.WithCancel(ctx)
 	defer configCancel()
 
-	// Initialize a local config provider
-	if qpointConfig != "" {
+	// Initialize a config provider: explicit config file, control-plane
+	// registration, or the built-in default (in that precedence order).
+	switch {
+	case qpointConfig != "":
 		provider = config.NewLocalConfigProvider(logger, qpointConfig)
-	} else {
+	case registrationToken != "":
+		var registrationCleanup func()
+		provider, registrationCleanup = newRegistrationProvider(logger)
+		defer registrationCleanup()
+	default:
 		logger.Warn("no config file provided, using default config")
 		provider = config.NewDefaultConfigProvider(logger, enableDevTools)
 	}
@@ -294,6 +323,9 @@ func runTapCmd(logger *zap.Logger) {
 
 	pm := process.NewProcessManager(logger, procEbpfMan)
 	configManager.SubscribeSetter(pm)
+
+	// if the active config has a pulse eventstore, start a heartbeat with its creds
+	defer startPulseHeartbeat(logger, configManager)()
 
 	// Initialize container detection
 	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
@@ -589,6 +621,81 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 	procMan := ebpfProcess.New(logger, objs.TapMaps.ProcessMetaMap, procManRB, procManTps)
 
 	return procMan, nil
+}
+
+// newRegistrationProvider connects to the managed control plane using the
+// registration token: it starts the deploy heartbeat, fetches registration,
+// and returns a remote config provider fed by live Ably updates, plus a
+// cleanup func to stop the heartbeat and close the Ably connection.
+func newRegistrationProvider(logger *zap.Logger) (config.ConfigProvider, func()) {
+	var cleanups []func()
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+
+	// start the deploy heartbeat (every 24h)
+	hb, err := heartbeat.New(logger, registrationEndpoint, registrationToken, time.Hour*24, heartbeat.Deploy)
+	if err != nil {
+		logger.Fatal("creating heartbeat", zap.Error(err))
+	}
+	hb.Start()
+	cleanups = append(cleanups, hb.Stop)
+
+	// use the control-plane client to fetch registration
+	qpointClient := httpclient.New(registrationToken)
+	registration, err := register.FetchRegistration(qpointClient, registrationEndpoint)
+	if err != nil {
+		logger.Fatal("failed to fetch registration", zap.Error(err))
+	}
+
+	remoteProvider := remote.NewRemoteConfigProvider(logger, registrationEndpoint, qpointClient)
+
+	// setup the Ably updater for live config pushes
+	ablyUpdater := remote.NewAblyUpdater(logger, registration.AblyToken)
+	if err := ablyUpdater.Init(); err != nil {
+		logger.Fatal("failed to initialize Ably updater", zap.Error(err))
+	}
+	cleanups = append(cleanups, func() { _ = ablyUpdater.Close() })
+
+	if err := remoteProvider.RegisterWatcher(
+		ablyUpdater,
+		registration.OrgID+"-deploy",
+		"config.changed",
+		time.Second*5,
+		100,
+	); err != nil {
+		logger.Fatal("failed to register Ably watcher", zap.Error(err))
+	}
+
+	return remoteProvider, cleanup
+}
+
+// startPulseHeartbeat starts a 5-minute pulse heartbeat if the active config
+// has a pulse eventstore, using its credentials. Returns a no-op cleanup when
+// no pulse eventstore is configured.
+func startPulseHeartbeat(logger *zap.Logger, configManager *config.ConfigManager) func() {
+	cfg := configManager.GetConfig()
+	if !cfg.Services.HasAnyEventStores() {
+		return func() {}
+	}
+	for _, es := range cfg.Services.EventStores {
+		if es.Type != config.EventStoreType_PULSE {
+			continue
+		}
+		endpoint := es.URL
+		if endpoint == "" {
+			endpoint = DefaultPulseURL
+		}
+		hb, err := heartbeat.New(logger, endpoint, es.Token.String(), time.Minute*5, heartbeat.Pulse)
+		if err != nil {
+			logger.Fatal("creating pulse heartbeat", zap.Error(err))
+		}
+		hb.Start()
+		return hb.Stop
+	}
+	return func() {}
 }
 
 // initEgressController wires up the MITM egress controller (cert store, CA

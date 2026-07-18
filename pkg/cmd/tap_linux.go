@@ -25,6 +25,9 @@ import (
 	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
+	"github.com/qpoint-io/qtap/pkg/ebpf/tls/gotls"
+	"github.com/qpoint-io/qtap/pkg/ebpf/tls/javassl"
+	"github.com/qpoint-io/qtap/pkg/ebpf/tls/nodetls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/openssl"
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
 	"github.com/qpoint-io/qtap/pkg/kernel"
@@ -107,7 +110,7 @@ func init() {
 
 	// Initialize flags with environment variable fallbacks
 	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
-		getEnvOr("TLS_PROBES", "openssl"),
+		getEnvOr("TLS_PROBES", "nodetls,openssl,gotls,javassl"),
 		"Comma-separated list of TLS probes to use")
 
 	rootCmd.Flags().StringVar(&httpBufferSize, "http-buffer-size",
@@ -418,7 +421,7 @@ func runTapCmd(logger *zap.Logger) {
 
 	// Initialize TLS probes
 	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
-	tlsManager, err := InitTLSProbes(logger, tlsProbes, &tapObjs)
+	tlsManager, err := InitTLSProbes(ctx, logger, tlsProbes, &tapObjs, connectionManager, configManager)
 	if err != nil {
 		panic(fmt.Errorf("failed to initialize TLS probes: %w", err))
 	}
@@ -553,7 +556,7 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 	return procMan, nil
 }
 
-func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects) (*tls.TlsManager, error) {
+func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects, connEvents *connection.Manager, configManager *config.ConfigManager) (*tls.TlsManager, error) {
 	// Split the string and trim whitespace
 	tlsProbesList := strings.Split(tlsProbesStr, ",")
 	for i, probe := range tlsProbesList {
@@ -565,6 +568,30 @@ func InitTLSProbes(logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects
 	for _, mode := range tlsProbesList {
 		mode = strings.ToLower(mode)
 		switch mode {
+		case "javassl":
+			// create the java ssl engine bridge
+			sslEngineBridge, err := newEbpfJavaSslEngineBridge(objs)
+			if err != nil {
+				return nil, fmt.Errorf("creating javassl engine bridge: %w", err)
+			}
+			sslEngineManager := javassl.NewSslEngineManager(logger, sslEngineBridge, connEvents)
+			if err := sslEngineManager.Start(); err != nil {
+				return nil, fmt.Errorf("starting javassl engine bridge: %w", err)
+			}
+
+			probes = append(probes, javassl.NewProbe(
+				ctx,
+				logger,
+				sslEngineManager,
+				newEbpfJavaSslProbesCreator(objs),
+			))
+
+			// add the ssl engine manager as a config subscriber
+			configManager.SubscribeSetter(sslEngineManager)
+		case "nodetls":
+			probes = append(probes, nodetls.NewProbe(logger, objs.TapMaps.NodeTlsSymaddrsMap, newEbpfNodeTlsProbesCreator(objs)))
+		case "gotls":
+			probes = append(probes, gotls.NewProbe(logger, objs.TapMaps.GoTlsSymaddrsMap, newEbpfGoTlsProbesCreator(objs)))
 		case "openssl":
 			probe := openssl.NewProbe(logger, NewEbpfOpenSSLprobesCreator(objs))
 			probes = append(probes, probe)
@@ -668,6 +695,10 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 			common.NewUretprobe("SSL_write", objs.TapPrograms.OpensslProbeRetSSL_write),
 			common.NewUretprobe("SSL_write_ex", objs.TapPrograms.OpensslProbeRetSSL_writeEx),
 			common.NewUretprobe("SSL_new", objs.TapPrograms.OpensslProbeRetSSL_new),
+
+			// node required openssl uprobes
+			common.NewUprobe("SSL_set_cert_cb", objs.TapPrograms.NodetlsProbeEntrySSL_setCertCb),
+			common.NewUprobe("SSL_free", objs.TapPrograms.NodetlsProbeEntrySSL_free),
 		}
 	}
 }

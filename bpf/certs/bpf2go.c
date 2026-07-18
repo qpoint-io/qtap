@@ -19,15 +19,5 @@
  */
 
 #include "certs.bpf.c"
-#include "gotls.bpf.c"
-#include "javassl.bpf.c"
-#include "nodetls.bpf.c"
-#include "openssl.bpf.c"
-#include "process.bpf.c"
-#include "protocol.bpf.c"
-#include "socket.bpf.c"
-#include "sock_pid_fd.bpf.c"
-#include "redirector.bpf.c"
-#include "settings.bpf.c"
 
 char _license[] SEC("license") = "GPL";

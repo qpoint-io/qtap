@@ -1,0 +1,17 @@
+{
+    "go": {
+        "versions": ">= 1.14",
+        "inspect": "./internal/tap/tls/gotls/gobin/offsets/std_offset_template.go",
+        "fields": {
+            "runtime.g": [
+                "goid"
+            ],
+            "crypto/tls.Conn": [
+                "conn"
+            ],
+            "internal/poll.FD": [
+                "Sysfd"
+            ]
+        }
+    }
+}

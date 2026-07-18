@@ -1,0 +1,54 @@
+{
+  "data": {
+    "crypto/tls.Conn": {
+      "conn": {
+        "versions": {
+          "oldest": "1.14.0",
+          "newest": "1.26.3"
+        },
+        "offsets": [
+          {
+            "offset": 0,
+            "since": "1.14.0"
+          }
+        ]
+      }
+    },
+    "internal/poll.FD": {
+      "Sysfd": {
+        "versions": {
+          "oldest": "1.14.0",
+          "newest": "1.26.3"
+        },
+        "offsets": [
+          {
+            "offset": 16,
+            "since": "1.14.0"
+          }
+        ]
+      }
+    },
+    "runtime.g": {
+      "goid": {
+        "versions": {
+          "oldest": "1.14.0",
+          "newest": "1.26.3"
+        },
+        "offsets": [
+          {
+            "offset": 152,
+            "since": "1.14.0"
+          },
+          {
+            "offset": 160,
+            "since": "1.23.0"
+          },
+          {
+            "offset": 152,
+            "since": "1.25.0"
+          }
+        ]
+      }
+    }
+  }
+}

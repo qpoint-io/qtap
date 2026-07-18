@@ -347,6 +347,22 @@ $(BIN_DIR) $(DIST_DIR) $(DOCS_DIR):
 	mkdir -p $@
 
 # =============================================================================
+# 📦 Docker
+# =============================================================================
+DOCKER_IMAGE ?= us-docker.pkg.dev/qpoint-edge/public/qtap
+DOCKER_TAG   ?= latest
+
+.PHONY: docker-build
+docker-build: ## Build the production Docker image
+	@echo $(WORKING) Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)... $(RESET)
+	docker build --target=prod -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	@echo $(SUCCESS) Docker image built! $(RESET)
+
+.PHONY: docker-push
+docker-push: ## Push the production Docker image
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+# =============================================================================
 # 💡 Help
 # =============================================================================
 .PHONY: help

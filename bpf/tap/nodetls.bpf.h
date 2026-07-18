@@ -1,4 +1,5 @@
 /*
+ * This code runs using libbpf in the Linux kernel.
  * Copyright 2025 - The Qpoint Authors
  *
  * This program is free software; you can redistribute it and/or modify
@@ -18,16 +19,19 @@
  * SPDX-License-Identifier: GPL-2.0
  */
 
-#include "certs.bpf.c"
-#include "gotls.bpf.c"
-#include "javassl.bpf.c"
-#include "nodetls.bpf.c"
-#include "openssl.bpf.c"
-#include "process.bpf.c"
-#include "protocol.bpf.c"
-#include "socket.bpf.c"
-#include "sock_pid_fd.bpf.c"
-#include "redirector.bpf.c"
-#include "settings.bpf.c"
+#pragma once
 
-char _license[] SEC("license") = "GPL";
+#include "vmlinux.h"
+
+// Functions that implement the TLS helpers interface
+// These are exposed to be registered with the TLS helpers system, but
+// no direct calls from OpenSSL to these functions should exist
+
+// Update the ssl -> tlswrap mapping
+int update_node_ssl_tls_wrap_map(uintptr_t ssl);
+
+// Retrieve the fd from node internals
+int32_t get_fd_from_node(uint64_t pid_tgid, uintptr_t ssl);
+
+// Remove the ssl -> tlswrap mapping
+int remove_node_ssl_tls_wrap_map(uintptr_t ssl);

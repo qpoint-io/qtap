@@ -38,9 +38,13 @@ import (
 	"github.com/qpoint-io/qtap/pkg/kernel"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
+	"github.com/qpoint-io/qtap/pkg/plugins/dlp"
+	"github.com/qpoint-io/qtap/pkg/plugins/errordetection"
 	httpmetrics "github.com/qpoint-io/qtap/pkg/plugins/http"
 	"github.com/qpoint-io/qtap/pkg/plugins/httpcapture"
+	"github.com/qpoint-io/qtap/pkg/plugins/llm"
 	"github.com/qpoint-io/qtap/pkg/plugins/logger"
+	"github.com/qpoint-io/qtap/pkg/plugins/qscan"
 	"github.com/qpoint-io/qtap/pkg/plugins/report"
 	"github.com/qpoint-io/qtap/pkg/plugins/wrapper"
 	"github.com/qpoint-io/qtap/pkg/process"
@@ -81,7 +85,11 @@ var (
 		wrapper.Catch(&httpcapture.Factory{}),
 		wrapper.Catch(&httpmetrics.Factory{}),
 
-		// Add more plugins here...
+		// Pro plugins
+		wrapper.Catch(&dlp.Factory{}),
+		wrapper.Catch(&errordetection.Factory{}),
+		wrapper.Catch(&qscan.Factory{}),
+		wrapper.Catch(&llm.Factory{}),
 	}
 
 	persistentPlugins []config.Plugin

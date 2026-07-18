@@ -1,0 +1,65 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            clang \
+            clang-format \
+            libelf-dev \
+            linux-headers-generic \
+            linux-libc-dev \
+            llvm \
+            openjdk-17-jdk \
+            pkg-config
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: 14
+          platform: any
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Build JVM assets
+        run: make build-jvm
+
+      - name: Run E2E tests
+        env:
+          JUNIT_REPORT: true
+        run: sudo make e2e
+
+      - name: Test Summary
+        uses: test-summary/action@v2
+        with:
+          paths: "/tmp/e2e-tests-results.xml"
+        if: always()

@@ -51,6 +51,8 @@ require (
 
 require golang.org/x/arch v0.29.0
 
+require github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0 // indirect
+
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
 	4d63.com/gochecknoglobals v0.2.2 // indirect

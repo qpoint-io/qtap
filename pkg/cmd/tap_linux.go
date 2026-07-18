@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,8 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/buildinfo"
+	"github.com/qpoint-io/qtap/pkg/ca"
+	"github.com/qpoint-io/qtap/pkg/cap"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
 	"github.com/qpoint-io/qtap/pkg/container"
@@ -30,6 +33,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/nodetls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/openssl"
 	"github.com/qpoint-io/qtap/pkg/ebpf/trace"
+	"github.com/qpoint-io/qtap/pkg/egress"
+	egresEbpf "github.com/qpoint-io/qtap/pkg/egress/ebpf"
 	"github.com/qpoint-io/qtap/pkg/kernel"
 	"github.com/qpoint-io/qtap/pkg/plugins"
 	"github.com/qpoint-io/qtap/pkg/plugins/accesslogs"
@@ -64,6 +69,7 @@ var (
 	enableDevTools           bool
 	javasslLoaderBasePath    string
 	javasslAgentBasePath     string
+	enableEgressController   bool
 )
 
 var (
@@ -109,6 +115,9 @@ func init() {
 	rootCmd.Flags().StringVar(&tlsOkStrategy, "set-tls-ok",
 		getEnvOr("SET_TLS_OK", "on-cert-inject"),
 		"When to mark forwarded traffic as OK for TLS termination (on-cert-inject, on-cert-read)")
+	rootCmd.Flags().BoolVar(&enableEgressController, "enable-egress-controller",
+		getEnvOr("ENABLE_EGRESS_CONTROLLER", "false") == "true",
+		"Enable the egress controller (MITM forwarding with CA injection)")
 
 	// Initialize flags with environment variable fallbacks
 	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
@@ -427,6 +436,12 @@ func runTapCmd(logger *zap.Logger) {
 		panic(fmt.Errorf("failed to create socket event manager: %w", err))
 	}
 
+	// initialize egress controller
+	if enableEgressController {
+		egressCleanup := initEgressController(ctx, logger, pm, connectionManager, &tapObjs)
+		defer egressCleanup()
+	}
+
 	// Initialize TLS probes
 	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
 	tlsManager, err := InitTLSProbes(ctx, logger, tlsProbes, &tapObjs, connectionManager, configManager)
@@ -562,6 +577,93 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 	procMan := ebpfProcess.New(logger, objs.TapMaps.ProcessMetaMap, procManRB, procManTps)
 
 	return procMan, nil
+}
+
+// initEgressController wires up the MITM egress controller (cert store, CA
+// injection, and traffic router) and returns a cleanup func to stop it.
+func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.Manager, connectionManager *connection.Manager, tapObjs *tap.TapObjects) func() {
+	var cleanups []func()
+	cleanup := func() {
+		for i := len(cleanups) - 1; i >= 0; i-- {
+			cleanups[i]()
+		}
+	}
+
+	// initialize a cert store
+	certStore := egress.NewCertStore(sanCertMaxSize, logger)
+	if err := certStore.Init(); err != nil {
+		panic(fmt.Errorf("failed to initialize certificate store: %w", err))
+	}
+
+	// get the root cert bytes
+	rootCert, err := certStore.GetRootCertBytes()
+	if err != nil {
+		panic(fmt.Errorf("failed to get root certificate: %w", err))
+	}
+
+	logger.Info("starting certificate injector")
+	certsObjs := tap.CertsObjects{}
+	strategy := ca.StrategyFromString(certInjectionStrategy)
+
+	if strategy == ca.InjectStrategyEbpf {
+		if err := cap.CanBpfProbeWriteUser(); err != nil {
+			if errors.Is(err, cap.ErrBpfProbeWriteUser) {
+				logger.Fatal("bpf_probe_write_user is not allowed, cannot use ebpf strategy for cert injection", zap.Error(err))
+			}
+			logger.Fatal("failed to check if bpf_probe_write_user is allowed", zap.Error(err))
+		}
+
+		if err := tap.LoadCertsObjects(&certsObjs, nil); err != nil {
+			panic(fmt.Errorf("failed to load BPF programs and maps: %w", err))
+		}
+		cleanups = append(cleanups, func() { certsObjs.Close() })
+	}
+
+	// init a ca manager
+	caManager := ca.NewCaManager(rootCert, strategy, logger, &certsObjs, tapObjs, pm)
+	if err := caManager.Start(ctx); err != nil {
+		panic(fmt.Errorf("failed to start ca manager: %w", err))
+	}
+	cleanups = append(cleanups, func() {
+		if err := caManager.Stop(); err != nil {
+			logger.Error("failed to stop ca manager", zap.Error(err))
+		}
+	})
+
+	// add the ca manager as a process observer
+	pm.Observe(caManager)
+
+	// add JAVA_HOME to process manager env mask
+	pm.MaskEnvVars([]string{"JAVA_HOME"})
+
+	// set the ssl cert env vars to process manager env mask
+	pm.MaskEnvVars(ca.SslCertEnvVars)
+	pm.MaskEnvVars(ca.KeystoreEnvVars)
+
+	// init a router
+	router, err := egresEbpf.NewRouter(logger, tapObjs)
+	if err != nil && !errors.Is(err, cap.ErrCgroupsV2NotEnabled) {
+		logger.Error("failed to create egress router", zap.Error(err))
+	}
+
+	if router != nil {
+		logger.Info("starting egress controller")
+		tlsOk := egress.TLSOkStrategyFromString(tlsOkStrategy)
+		m := egress.NewEgressManager(certStore, logger, router, tlsOk, egress.WithConnEventer(connectionManager))
+		if err := m.Start(); err != nil {
+			logger.Fatal("failed to start egress manager", zap.Error(err))
+		}
+		cleanups = append(cleanups, func() {
+			if err := m.Stop(); err != nil {
+				logger.Error("failed to stop egress manager", zap.Error(err))
+			}
+		})
+
+		// add egress manager as a ca observer
+		caManager.Observe(m)
+	}
+
+	return cleanup
 }
 
 func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects, connEvents *connection.Manager, configManager *config.ConfigManager) (*tls.TlsManager, error) {

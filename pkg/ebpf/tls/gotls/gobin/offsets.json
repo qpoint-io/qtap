@@ -4,7 +4,7 @@
       "conn": {
         "versions": {
           "oldest": "1.14.0",
-          "newest": "1.26.3"
+          "newest": "1.26.5"
         },
         "offsets": [
           {
@@ -18,7 +18,7 @@
       "Sysfd": {
         "versions": {
           "oldest": "1.14.0",
-          "newest": "1.26.3"
+          "newest": "1.26.5"
         },
         "offsets": [
           {
@@ -32,7 +32,7 @@
       "goid": {
         "versions": {
           "oldest": "1.14.0",
-          "newest": "1.26.3"
+          "newest": "1.26.5"
         },
         "offsets": [
           {

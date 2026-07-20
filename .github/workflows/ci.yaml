@@ -11,11 +11,17 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    name: Linux AMD64 quality
+    runs-on: ubuntu-22.04
+    env:
+      BPF2GO_CC: clang-14
+      BPF2GO_STRIP: llvm-strip-14
+      GONOSUMDB: ""
+      GOPRIVATE: ""
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
       
       - name: Install system dependencies
         run: |
@@ -29,7 +35,8 @@ jobs:
             llvm \
             libelf-dev \
             linux-headers-generic \
-            linux-libc-dev
+            linux-libc-dev \
+            openjdk-17-jdk-headless
 
       - name: Set up Clang
         uses: egor-tensin/setup-clang@v1
@@ -40,7 +47,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.5"
+          go-version-file: go.mod
           cache: true
 
       - name: Run CI

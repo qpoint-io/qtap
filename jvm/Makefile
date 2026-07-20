@@ -2,7 +2,8 @@
 ARCH := $(shell uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 
 # Compiler and tool configuration
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk-$(ARCH)
+DETECTED_JAVA_HOME := $(shell command -v javac >/dev/null 2>&1 && dirname "$$(dirname "$$(readlink -f "$$(command -v javac)")")")
+JAVA_HOME ?= $(if $(DETECTED_JAVA_HOME),$(DETECTED_JAVA_HOME),/usr/lib/jvm/java-17-openjdk-$(ARCH))
 JAVAC = $(JAVA_HOME)/bin/javac
 JAR = $(JAVA_HOME)/bin/jar
 CC = gcc
@@ -67,9 +68,15 @@ JRE_VERSION_UNDERSCORE = $(subst +,_,$(JRE_VERSION))
 JRE_BASE_URL = https://github.com/adoptium/temurin17-binaries/releases/download/jdk-$(JRE_VERSION)
 JRE_BUNDLE = $(BUILD_DIR)/custom-jre.tar.gz
 
-.PHONY: all clean java c jre
+.PHONY: all check-java clean java c jre
 
-all: dirs java c jre
+all: java c
+
+check-java:
+	@if [ ! -x "$(JAVAC)" ]; then \
+		echo 'JDK 17 is required; install openjdk-17-jdk-headless or set JAVA_HOME.' >&2; \
+		exit 1; \
+	fi
 
 dirs:
 	@mkdir -p $(BUILD_DIR) $(LOADER_BUILD_DIR) $(QTAP_BUILD_DIR) $(JAVASSL_BUILD_DIR) $(C_BUILD_DIR)
@@ -78,19 +85,19 @@ dirs:
 java: $(LOADER_JAR) $(QTAP_JAR) $(JAVASSL_JAR) $(JRE_BUNDLE)
 
 # Loader JAR - just needs the LoadAgent class
-$(LOADER_JAR): $(LOADER_SRC) $(LOADER_MANIFEST)
+$(LOADER_JAR): $(LOADER_SRC) $(LOADER_MANIFEST) | dirs
 	@mkdir -p $(LOADER_BUILD_DIR)
 	$(JAVAC) -d $(LOADER_BUILD_DIR) $(LOADER_SRC)
 	$(JAR) cmf $(LOADER_MANIFEST) $@ -C $(LOADER_BUILD_DIR) $(JAVA_PACKAGE_PATH)/LoadAgent.class
 
 # JavaSsl JAR - just needs the JavaSsl class
-$(JAVASSL_JAR): $(JAVASSL_SRC) $(JAVASSL_MANIFEST)
+$(JAVASSL_JAR): $(JAVASSL_SRC) $(JAVASSL_MANIFEST) | dirs
 	@mkdir -p $(JAVASSL_BUILD_DIR)
 	$(JAVAC) --release 8 -d $(JAVASSL_BUILD_DIR) $(JAVASSL_SRC)
 	$(JAR) cmf $(JAVASSL_MANIFEST) $@ -C $(JAVASSL_BUILD_DIR) $(JAVA_PACKAGE_PATH)/JavaSsl.class
 
 # Qtap JAR - needs all classes and ASM dependencies
-$(QTAP_JAR): $(QTAP_SRC) $(QTAP_MANIFEST) $(BUILD_DIR)/$(ASM_JAR) $(BUILD_DIR)/$(ASM_COMMONS_JAR) $(BUILD_DIR)/$(ASM_UTIL_JAR)
+$(QTAP_JAR): $(QTAP_SRC) $(QTAP_MANIFEST) $(BUILD_DIR)/$(ASM_JAR) $(BUILD_DIR)/$(ASM_COMMONS_JAR) $(BUILD_DIR)/$(ASM_UTIL_JAR) | dirs
 	# Always clean the build directory to ensure consistency
 	rm -rf $(QTAP_BUILD_DIR)
 	@mkdir -p $(QTAP_BUILD_DIR)
@@ -107,30 +114,30 @@ $(QTAP_JAR): $(QTAP_SRC) $(QTAP_MANIFEST) $(BUILD_DIR)/$(ASM_JAR) $(BUILD_DIR)/$
 	$(JAR) cmf $(QTAP_MANIFEST) $@ -C $(QTAP_BUILD_DIR) .
 
 # C targets
-c: dirs $(C_TARGET)
+c: $(C_TARGET)
 
 $(C_TARGET): $(C_OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-$(C_BUILD_DIR)/%.o: c/%.c
+$(C_BUILD_DIR)/%.o: c/%.c | dirs
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Download dependencies
-$(BUILD_DIR)/$(ASM_JAR):
+$(BUILD_DIR)/$(ASM_JAR): | dirs
 	curl -L $(ASM_URL) -o $@
 
-$(BUILD_DIR)/$(ASM_COMMONS_JAR):
+$(BUILD_DIR)/$(ASM_COMMONS_JAR): | dirs
 	curl -L $(ASM_COMMONS_URL) -o $@
 
-$(BUILD_DIR)/$(ASM_UTIL_JAR):
+$(BUILD_DIR)/$(ASM_UTIL_JAR): | dirs
 	curl -L $(ASM_UTIL_URL) -o $@
 
 install-gjf: $(GJF_JAR)
 
-$(GJF_JAR):
+$(GJF_JAR): | dirs
 	curl -L $(GJF_URL) -o $@
 
-$(JRE_BUNDLE):
+$(JRE_BUNDLE): | dirs
 	@echo "DEBUG: Building JRE bundle at $@, dependencies: $^"
 	@echo "DEBUG: JRE_BUNDLE variable is: $(JRE_BUNDLE)"
 	@mkdir -p $(BUILD_DIR)
@@ -148,20 +155,21 @@ $(JRE_BUNDLE):
 	echo "Downloading $${TAR_FILE}..."; \
 	curl -L "$${DOWNLOAD_URL}" -o "$(BUILD_DIR)/$${TAR_FILE}"; \
 	echo "Extracting JDK..."; \
-	mkdir -p /tmp/temp-jre; \
-	tar -xzf "$(BUILD_DIR)/$${TAR_FILE}" -C /tmp/temp-jre --strip-components=1; \
+	TEMP_DIR=$$(mktemp -d); \
+	trap 'rm -rf "$$TEMP_DIR" "$(BUILD_DIR)/$${TAR_FILE}"' EXIT; \
+	mkdir -p "$$TEMP_DIR/jdk"; \
+	tar -xzf "$(BUILD_DIR)/$${TAR_FILE}" -C "$$TEMP_DIR/jdk" --strip-components=1; \
 	echo "Creating minimal JRE with jlink..."; \
-	/tmp/temp-jre/bin/jlink \
-		--module-path /tmp/temp-jre/jmods \
+	"$$TEMP_DIR/jdk/bin/jlink" \
+		--module-path "$$TEMP_DIR/jdk/jmods" \
 		--add-modules java.base,jdk.attach \
-		--output /tmp/custom-jre \
+		--output "$$TEMP_DIR/custom-jre" \
 		--strip-debug \
 		--ignore-signing-information \
 		--no-header-files \
 		--no-man-pages; \
 	echo "Creating compressed bundle..."; \
-	tar -czf $@ -C /tmp custom-jre; \
-	rm -rf /tmp/temp-jre /tmp/custom-jre "$(BUILD_DIR)/$${TAR_FILE}"; \
+	tar -czf $@ -C "$$TEMP_DIR" custom-jre; \
 	echo "JRE bundle created: $@"
 
 .PHONY: fmt

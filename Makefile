@@ -55,6 +55,11 @@ ROOT_DIR ?= $(shell pwd)
 BIN_DIR ?= $(ROOT_DIR)/bin
 BPF_DIR ?= $(ROOT_DIR)/bpf
 DIST_DIR ?= $(ROOT_DIR)/dist
+JVM_ASSET_NAMES := custom-jre.tar.gz libqtap.so qtap-loader.jar qtap.jar java-ssl.jar
+JVM_BUILD_ASSETS := $(addprefix jvm/dist/,$(JVM_ASSET_NAMES))
+JVM_EMBED_DIR := pkg/ebpf/tls/javassl/dist
+BPF2GO_CC ?= clang-14
+BPF2GO_STRIP ?= llvm-strip-14
 
 # Source Files
 GOFILES = $(shell find . -type f -name '*.go' -not -path "./vendor/*" -not -path "./.git/*")
@@ -121,7 +126,7 @@ RESET := $(shell printf "$(RST)")
 # 🎯 Core Build System
 # =============================================================================
 .PHONY: build
-build: $(BIN_DIR) generate build-jvm ## Build for the current platform
+build: generate | $(BIN_DIR) ## Build for the current platform
 	@echo $(INFO) Building $(BINARY_NAME)... $(RESET)
 	CGO_ENABLED=$(CGO_ENABLED) \
 	$(GO) build -tags '$(ALL_TAGS)' \
@@ -135,9 +140,16 @@ build: $(BIN_DIR) generate build-jvm ## Build for the current platform
 .PHONY: build-jvm
 build-jvm: ## Build the Java SSL agent and stage it for embedding
 	@echo $(INFO) Building JVM agent... $(RESET)
+	$(MAKE) -C jvm check-java
 	$(MAKE) -C jvm
-	@mkdir -p pkg/ebpf/tls/javassl/dist
-	@cp jvm/dist/custom-jre.tar.gz jvm/dist/libqtap.so jvm/dist/qtap-loader.jar jvm/dist/qtap.jar jvm/dist/java-ssl.jar pkg/ebpf/tls/javassl/dist/
+	@for asset in $(JVM_BUILD_ASSETS); do \
+		if [ ! -s "$$asset" ]; then \
+			echo "JVM build did not produce $$asset" >&2; \
+			exit 1; \
+		fi; \
+	done
+	@mkdir -p $(JVM_EMBED_DIR)
+	@cp $(JVM_BUILD_ASSETS) $(JVM_EMBED_DIR)/
 	@echo $(SUCCESS) JVM agent built! $(RESET)
 
 .PHONY: build-devtools
@@ -160,25 +172,26 @@ run-config: build ## Run the application with a specific config
 	./bin/$(BINARY_NAME) --log-level=$(LOG_LEVEL) --log-encoding=console --config=$$(find ./examples -type f -name "*.yaml" | go tool gum filter --prompt="> " --indicator=">" --placeholder="Select a config file..." --header="Select a config file to run")
 
 .PHONY: generate
-generate: ## Run code generation
+generate: build-jvm ## Run code generation
 	@echo $(WORKING) Running code generation... $(RESET)
-	$(GO) generate ./...
+	BPF2GO_CC=$(BPF2GO_CC) BPF2GO_STRIP=$(BPF2GO_STRIP) $(GO) generate ./...
 	@echo $(SUCCESS) Generation complete! $(RESET)
 
 # =============================================================================
 # 🧪 Testing & Quality
 # =============================================================================
 .PHONY: test
-test: ## Run tests
+test: build-jvm ## Run tests
 	@echo $(INFO) Running tests... $(RESET)
 	$(GOTESTSUM) --format pkgname --hide-summary=skipped --format-hide-empty-pkg --format-icons=hivis -- \
 		-timeout $(TEST_TIMEOUT) \
+		$(TEST_FLAGS) \
 		-run '$(TEST_PATTERN)' \
 		$(if $(SKIP_PATTERN),-skip '$(SKIP_PATTERN)') \
 		./...
 
 .PHONY: e2e
-e2e: ## Run e2e tests
+e2e: build-jvm ## Run e2e tests
 	@echo $(INFO) Running e2e tests... $(RESET)
 	$(GOTESTSUM) --format testname --format-hide-empty-pkg --format-icons=hivis \
 		--junitfile /tmp/e2e-tests-results.xml \
@@ -190,13 +203,19 @@ e2e: ## Run e2e tests
 		./e2e/...
 
 .PHONY: lint
-lint: ## Run linters
+lint: build-jvm ## Run linters
 	@echo $(INFO) Running linters... $(RESET)
-	$(GOLANGCI_LINT) run  --config ./.golangci.yaml --fix
+	$(GOLANGCI_LINT) run --config ./.golangci.yaml
 	@echo $(SUCCESS) Lint complete! $(RESET)
 
+.PHONY: lint-fix
+lint-fix: build-jvm ## Run linters and apply safe fixes
+	@echo $(INFO) Running linters with fixes... $(RESET)
+	$(GOLANGCI_LINT) run --config ./.golangci.yaml --fix
+	@echo $(SUCCESS) Lint fixes complete! $(RESET)
+
 .PHONY: fmt
-fmt: ## Format code
+fmt: build-jvm ## Format code
 	@echo $(INFO) Formatting Go code... $(RESET)
 	$(GO) fmt ./...
 	@echo $(SUCCESS) Format Go complete! $(RESET)
@@ -205,13 +224,13 @@ fmt: ## Format code
 	@echo $(SUCCESS) Format BPF complete! $(RESET)
 
 .PHONY: vet
-vet: ## Run go vet
+vet: build-jvm ## Run go vet
 	@echo $(INFO) Running go vet... $(RESET)
 	$(GO) vet ./...
 	@echo $(SUCCESS) Vet complete! $(RESET)
 
 .PHONY: security
-security: ## Run security checks (allowlist: .govulncheck-allow)
+security: build-jvm ## Run security checks (allowlist: .govulncheck-allow)
 	@echo $(INFO) Running security checks... $(RESET)
 	@bash $(ROOT_DIR)/scripts/security.sh ./...
 	@echo $(SUCCESS) Security check complete! $(RESET)
@@ -220,7 +239,7 @@ security: ## Run security checks (allowlist: .govulncheck-allow)
 # 🏗️ Build Variations
 # =============================================================================
 .PHONY: build-all
-build-all: $(DIST_DIR) ## Build for all platforms
+build-all: build-jvm $(DIST_DIR) ## Build for all platforms
 	@echo $(WORKING) Building for all platforms... $(RESET)
 	@$(foreach platform,$(PLATFORMS),\
 		$(eval OS := $(word 1,$(subst /, ,$(platform)))) \
@@ -258,24 +277,26 @@ build-race: build
 # 🔄 CI/CD Integration
 # =============================================================================
 .PHONY: ci
-ci: ## Run CI pipeline
+ci: build-jvm ## Run CI pipeline
 	@echo $(INFO) Running CI pipeline... $(RESET)
 	$(MAKE) deps-verify
-	$(GO) fix ./...
+	$(MAKE) generate
 	$(MAKE) lint
+	$(MAKE) vet
 	$(MAKE) security
-	if [ -n "$$(git status --porcelain)" ]; then \
-		if [ "$${ENV}" = "dev" ]; then \
-			echo $(WARN) Working tree is not clean. This will fail CI checks. $(RESET); \
-		else \
-			git status; \
-			git --no-pager diff; \
-			echo 'Working tree is not clean, did you forget to run "make fmt" or "make generate"?'; \
-			exit 1; \
-		fi \
-	fi
+	$(MAKE) clean-check
 	$(MAKE) test
+	$(MAKE) build
 	@echo $(SUCCESS) CI pipeline complete! $(RESET)
+
+.PHONY: clean-check
+clean-check: ## Fail when tracked or untracked source changes are present
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		git status --short; \
+		git --no-pager diff; \
+		echo 'Working tree is not clean; run make fmt and make generate, then commit the results.'; \
+		exit 1; \
+	fi
 
 # =============================================================================
 # 🧹 Cleanup & Maintenance
@@ -283,7 +304,8 @@ ci: ## Run CI pipeline
 .PHONY: clean
 clean: ## Clean build artifacts
 	@echo $(TRASH) Cleaning build artifacts... $(RESET)
-	rm -rf $(BIN_DIR) $(DIST_DIR)
+	rm -rf $(BIN_DIR) $(DIST_DIR) $(JVM_EMBED_DIR)
+	$(MAKE) -C jvm clean
 	$(GO) clean -cache -testcache -modcache
 	@echo $(SUCCESS) Clean complete! $(RESET)
 

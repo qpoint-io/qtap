@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -18,9 +19,17 @@ import (
 const CGROUP_PATH = "/sys/fs/cgroup"
 
 type Router struct {
-	logger *zap.Logger
-	objs   *tap.TapObjects
-	links  []link.Link
+	mu           sync.Mutex
+	logger       *zap.Logger
+	objs         *tap.TapObjects
+	links        []attachedLink
+	attachCgroup func(link.CgroupOptions) (attachedLink, error)
+	started      bool
+	cleanupErr   error
+}
+
+type attachedLink interface {
+	Close() error
 }
 
 func NewRouter(logger *zap.Logger, objs *tap.TapObjects) (*Router, error) {
@@ -41,72 +50,90 @@ func NewRouter(logger *zap.Logger, objs *tap.TapObjects) (*Router, error) {
 	return &Router{
 		logger: logger,
 		objs:   objs,
-		links:  []link.Link{},
+		links:  []attachedLink{},
+		attachCgroup: func(opts link.CgroupOptions) (attachedLink, error) {
+			return link.AttachCgroup(opts)
+		},
 	}, nil
 }
 
 func (a *Router) Start() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.started {
+		return nil
+	}
+	if a.cleanupErr != nil {
+		return fmt.Errorf("router cleanup failed; refusing to start: %w", a.cleanupErr)
+	}
+	if len(a.links) != 0 {
+		return errors.New("router has links pending cleanup")
+	}
+
 	// ensure the cgroup path exists
 	if _, err := os.Stat(CGROUP_PATH); os.IsNotExist(err) {
 		return fmt.Errorf("cgroup path does not exist: %s", CGROUP_PATH)
 	}
 
-	// attach ipv4 connect probe
-	connect4Link, err := link.AttachCgroup(link.CgroupOptions{
-		Path:    CGROUP_PATH,
-		Attach:  ebpf.AttachCGroupInet4Connect,
-		Program: a.objs.CgConnect4,
-	})
-	if err != nil {
-		return fmt.Errorf("attaching CgConnect4 program to cgroup: %w", err)
+	attachments := []struct {
+		name    string
+		attach  ebpf.AttachType
+		program *ebpf.Program
+	}{
+		{name: "CgConnect4", attach: ebpf.AttachCGroupInet4Connect, program: a.objs.CgConnect4},
+		{name: "CgConnect6", attach: ebpf.AttachCGroupInet6Connect, program: a.objs.CgConnect6},
+		{name: "CgSockOps", attach: ebpf.AttachCGroupSockOps, program: a.objs.CgSockOps},
+		{name: "CgSockOpt", attach: ebpf.AttachCGroupGetsockopt, program: a.objs.CgSockOpt},
 	}
-	a.links = append(a.links, connect4Link)
 
-	// attach ipv6 connect probe
-	connect6Link, err := link.AttachCgroup(link.CgroupOptions{
-		Path:    CGROUP_PATH,
-		Attach:  ebpf.AttachCGroupInet6Connect,
-		Program: a.objs.CgConnect6,
-	})
-	if err != nil {
-		return fmt.Errorf("attaching CgConnect6 program to cgroup: %w", err)
+	attached := make([]attachedLink, 0, len(attachments))
+	for _, attachment := range attachments {
+		attachedLink, err := a.attachCgroup(link.CgroupOptions{
+			Path:    CGROUP_PATH,
+			Attach:  attachment.attach,
+			Program: attachment.program,
+		})
+		if err != nil {
+			closeErrs := closeLinks(attached)
+			a.links = nil
+			a.cleanupErr = errors.Join(closeErrs...)
+			return errors.Join(
+				fmt.Errorf("attaching %s program to cgroup: %w", attachment.name, err),
+				a.cleanupErr,
+			)
+		}
+		attached = append(attached, attachedLink)
 	}
-	a.links = append(a.links, connect6Link)
-
-	// attach sockops probe
-	sockopsLink, err := link.AttachCgroup(link.CgroupOptions{
-		Path:    CGROUP_PATH,
-		Attach:  ebpf.AttachCGroupSockOps,
-		Program: a.objs.CgSockOps,
-	})
-	if err != nil {
-		return fmt.Errorf("attaching CgSockOps program to cgroup: %w", err)
-	}
-	a.links = append(a.links, sockopsLink)
-
-	// attach sockopt probe
-	sockoptLink, err := link.AttachCgroup(link.CgroupOptions{
-		Path:    CGROUP_PATH,
-		Attach:  ebpf.AttachCGroupGetsockopt,
-		Program: a.objs.CgSockOpt,
-	})
-	if err != nil {
-		return fmt.Errorf("attaching CgSockOpt program to cgroup: %w", err)
-	}
-	a.links = append(a.links, sockoptLink)
+	a.links = attached
+	a.started = true
 
 	return nil
 }
 
-func (a *Router) Stop() error {
-	// close the links
-	for _, link := range a.links {
-		if err := link.Close(); err != nil {
-			return fmt.Errorf("closing link: %w", err)
+func closeLinks(links []attachedLink) []error {
+	var errs []error
+	for _, attachedLink := range links {
+		if err := attachedLink.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing link: %w", err))
 		}
 	}
+	return errs
+}
 
-	return nil
+func (a *Router) Stop() error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.cleanupErr != nil {
+		return a.cleanupErr
+	}
+
+	errs := closeLinks(a.links)
+	a.links = nil
+	a.started = false
+	a.cleanupErr = errors.Join(errs...)
+	return a.cleanupErr
 }
 
 // SetMgmtAddrs configures the listen addresses in the eBPF map

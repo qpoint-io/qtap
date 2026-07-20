@@ -2,6 +2,7 @@ package egress
 
 import (
 	"crypto/x509"
+	"net"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,17 @@ func TestCert_AddDomain(t *testing.T) {
 
 	assert.Contains(t, cert.template.DNSNames, "example.com")
 	assert.NotNil(t, cert.cert.Certificate[0])
+}
+
+func TestCert_AddIPAddress(t *testing.T) {
+	store := NewCertStore(10, zap.NewNop())
+	require.NoError(t, store.Init())
+	cert, err := NewSANCert(store.rootCert)
+	require.NoError(t, err)
+
+	require.NoError(t, cert.AddDomain("192.0.2.1"))
+	require.Contains(t, cert.template.IPAddresses, net.ParseIP("192.0.2.1"))
+	require.Empty(t, cert.template.DNSNames)
 }
 
 func TestCertStore_Init(t *testing.T) {

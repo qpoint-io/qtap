@@ -293,11 +293,13 @@ func (p *Process) SetTlsOk(tlsOk bool) error {
 	}
 
 	// set the tls ok
+	previous := p.tlsOk
 	p.tlsOk = tlsOk
 
 	// notify the eventer that the process has changed
 	if p.notifier != nil {
 		if err := p.notifier(); err != nil {
+			p.tlsOk = previous
 			return fmt.Errorf("calling eventer notifier: %w", err)
 		}
 	}

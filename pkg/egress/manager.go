@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/qpoint-io/qtap/pkg/ca"
 	"github.com/qpoint-io/qtap/pkg/connection"
@@ -38,6 +39,13 @@ type Router interface {
 const CGROUP_PATH = "/sys/fs/cgroup"
 
 type EgressManager struct {
+	mu              sync.Mutex
+	started         bool
+	stopping        bool
+	shutdownStarted bool
+	stopped         bool
+	stopDone        chan struct{}
+
 	// logger
 	logger *zap.Logger
 
@@ -85,8 +93,22 @@ func NewEgressManager(certStore *CertStore, logger *zap.Logger, router Router, t
 }
 
 func (m *EgressManager) Start() error {
+	if m == nil {
+		return errors.New("egress manager is nil")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.started {
+		return nil
+	}
+	if m.shutdownStarted {
+		return errors.New("egress manager cannot be restarted after stop")
+	}
+
 	if m.router == nil {
 		m.logger.Warn("router is nil, skipping egress manager start")
+		m.started = true
 		return nil
 	}
 
@@ -131,7 +153,13 @@ func (m *EgressManager) Start() error {
 	}
 	// start the forwarder
 	if err := f.Start(); err != nil {
-		return fmt.Errorf("starting forwarder: %w", err)
+		startErr := fmt.Errorf("starting forwarder: %w", err)
+		if stopErr := f.Stop(); stopErr != nil {
+			m.forwarder = f
+			m.shutdownStarted = true
+			return errors.Join(startErr, fmt.Errorf("rolling back forwarder: %w", stopErr))
+		}
+		return startErr
 	}
 
 	// set the forwarder
@@ -139,24 +167,80 @@ func (m *EgressManager) Start() error {
 
 	// Start the eBPF router
 	if err := m.router.Start(); err != nil {
-		return fmt.Errorf("starting router: %w", err)
+		routerErr := fmt.Errorf("starting router: %w", err)
+		routerStopErr := m.router.Stop()
+		var forwarderStopErr error
+		if routerStopErr == nil {
+			forwarderStopErr = f.Stop()
+			if forwarderStopErr == nil {
+				m.forwarder = nil
+			}
+		}
+		if forwarderStopErr != nil {
+			forwarderStopErr = fmt.Errorf("rolling back forwarder: %w", forwarderStopErr)
+		}
+		if routerStopErr != nil {
+			routerStopErr = fmt.Errorf("rolling back router: %w", routerStopErr)
+		}
+		if forwarderStopErr != nil || routerStopErr != nil {
+			m.shutdownStarted = true
+		}
+		return errors.Join(routerErr, forwarderStopErr, routerStopErr)
 	}
+	m.started = true
 
 	return nil
 }
 
 func (m *EgressManager) Stop() error {
-	// stop the forwarder
-	if err := m.forwarder.Stop(); err != nil {
-		return fmt.Errorf("stopping forwarder: %w", err)
+	if m == nil {
+		return nil
 	}
 
-	// stop the router
-	if err := m.router.Stop(); err != nil {
-		return fmt.Errorf("stopping router: %w", err)
-	}
+	for {
+		m.mu.Lock()
+		if m.stopped {
+			m.mu.Unlock()
+			return nil
+		}
+		if m.stopping {
+			stopDone := m.stopDone
+			m.mu.Unlock()
+			<-stopDone
+			continue
+		}
+		m.started = false
+		m.stopping = true
+		m.shutdownStarted = true
+		m.stopDone = make(chan struct{})
+		forwarder := m.forwarder
+		router := m.router
+		m.mu.Unlock()
 
-	return nil
+		var errs []error
+		routerStopped := true
+		if router != nil {
+			if err := router.Stop(); err != nil {
+				errs = append(errs, fmt.Errorf("stopping router: %w", err))
+				routerStopped = false
+			}
+		}
+		if routerStopped && forwarder != nil {
+			if err := forwarder.Stop(); err != nil {
+				errs = append(errs, fmt.Errorf("stopping forwarder: %w", err))
+			}
+		}
+
+		m.mu.Lock()
+		m.stopping = false
+		if len(errs) == 0 {
+			m.stopped = true
+		}
+		close(m.stopDone)
+		m.mu.Unlock()
+
+		return errors.Join(errs...)
+	}
 }
 
 func (m *EgressManager) CertRead(p *process.Process, path string) error {
@@ -189,6 +273,13 @@ func (m *EgressManager) CertInjected(p *process.Process, path string, rootID uin
 		return fmt.Errorf("setting tls ok: %w", err)
 	}
 
+	return nil
+}
+
+func (m *EgressManager) CertRemoved(p *process.Process, path string, rootID uint64) error {
+	if err := p.SetTlsOk(false); err != nil {
+		return fmt.Errorf("revoking tls ok: %w", err)
+	}
 	return nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"sync"
 	"time"
 
@@ -65,7 +66,11 @@ func NewSANCert(rootCert *Cert) (*Cert, error) {
 
 func (c *Cert) AddDomain(domain string) error {
 	// update the template
-	c.template.DNSNames = append(c.template.DNSNames, domain)
+	if ip := net.ParseIP(domain); ip != nil {
+		c.template.IPAddresses = append(c.template.IPAddresses, ip)
+	} else {
+		c.template.DNSNames = append(c.template.DNSNames, domain)
+	}
 
 	// create the cert
 	bytes, err := x509.CreateCertificate(

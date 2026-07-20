@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/qpoint-io/qtap/pkg/process"
-	"go.uber.org/zap"
 )
 
 var SslCertEnvVars = []string{
@@ -101,19 +100,14 @@ func (c *Container) scanCertFile(certFile string, fileType FileType, p *process.
 			c.certs.Store(location, cert)
 		}
 
-		// inject the cert file in a goroutine because speed is critical here
-		go func(certfile string) {
-			// inject the cert
-			err := cert.Inject(p.Pid, p.RootID)
+		if err := cert.Inject(p.Pid, p.RootID); err != nil {
+			return false, fmt.Errorf("failed to inject cert %s: %w", location, err)
+		}
 
-			if err != nil {
-				c.logger.Error("failed to inject cert", zap.Error(err))
-				return
-			}
-
-			// notify observers
-			c.certInjected(p.Pid, location)
-		}(location)
+		// notify observers
+		if err := c.certInjected(p.Pid, location); err != nil {
+			return false, fmt.Errorf("notifying certificate injection for %s: %w", location, err)
+		}
 	}
 
 	return true, nil

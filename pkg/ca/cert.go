@@ -1,8 +1,8 @@
 package ca
 
 import (
-	"bytes"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,6 +30,11 @@ const (
 	Keystore
 )
 
+type certMap interface {
+	Put(key, value any) error
+	Delete(key any) error
+}
+
 type Cert struct {
 	// orignal cert location on the filesystem
 	Location string
@@ -44,7 +49,8 @@ type Cert struct {
 	strategy InjectStrategy
 
 	// processes map
-	processes *synq.Map[int, struct{}]
+	processes  *synq.Map[int, struct{}]
+	mapCleared map[int]bool
 
 	// replacement location
 	replacement string
@@ -59,20 +65,23 @@ type Cert struct {
 	installed bool
 
 	// did we create the file?
-	createdFile bool
+	createdFile  bool
+	originalData []byte
+	originalMode os.FileMode
 
 	// logger
 	logger *zap.Logger
 
-	// bpf objects
-	certObjs *tap.CertsObjects
-	tapObjs  *tap.TapObjects
+	// bpf maps
+	injectedMap certMap
+	watchedMap  certMap
 
 	// java keystore password
 	keystorePassword string
 
 	// mutex
-	mu sync.Mutex
+	mu           sync.Mutex
+	transitionMu sync.Mutex
 }
 
 type CertOption func(*Cert)
@@ -95,15 +104,20 @@ func NewCert(
 	opts ...CertOption,
 ) *Cert {
 	cert := &Cert{
-		Location:  location,
-		pidOne:    pidOne,
-		caBytes:   caBytes,
-		strategy:  strategy,
-		fileType:  fileType,
-		logger:    logger,
-		certObjs:  certObjs,
-		tapObjs:   captureObjs,
-		processes: synq.NewMap[int, struct{}](),
+		Location:   location,
+		pidOne:     pidOne,
+		caBytes:    caBytes,
+		strategy:   strategy,
+		fileType:   fileType,
+		logger:     logger,
+		processes:  synq.NewMap[int, struct{}](),
+		mapCleared: make(map[int]bool),
+	}
+	if certObjs != nil {
+		cert.injectedMap = certObjs.PidCertMap
+	}
+	if captureObjs != nil {
+		cert.watchedMap = captureObjs.PidCertMap
 	}
 
 	// apply the optional configurations
@@ -115,6 +129,9 @@ func NewCert(
 }
 
 func (m *Cert) Inject(pid int, rootID uint64) error {
+	m.transitionMu.Lock()
+	defer m.transitionMu.Unlock()
+
 	// set the process information
 	m.rootID = rootID
 
@@ -139,12 +156,20 @@ func (m *Cert) Inject(pid int, rootID uint64) error {
 	}
 
 	// add the process to the cert's processes map
+	delete(m.mapCleared, pid)
 	m.processes.Store(pid, struct{}{})
 
 	return nil
 }
 
+func (m *Cert) SetNamespacePID(pid int) {
+	m.transitionMu.Lock()
+	defer m.transitionMu.Unlock()
+	m.pidOne = pid
+}
+
 func (m *Cert) injectWithEbpf(pid int) error {
+	wasInstalled := m.isInstalled()
 	// generate the replacement location
 	m.generateReplacementName()
 
@@ -172,12 +197,19 @@ func (m *Cert) injectWithEbpf(pid int) error {
 
 	// install the cert
 	if err := m.install(originalFullPath, customFullPath); err != nil {
+		m.retainPendingInstall(pid)
 		return fmt.Errorf("failed to install cert: %w", err)
 	}
 
 	// set the cert key in the bpf map
 	if err := m.setInjected(pid, original, custom); err != nil {
-		return fmt.Errorf("failed to set cert key in bpf map: %w", err)
+		mapErr := fmt.Errorf("failed to set cert key in bpf map: %w", err)
+		if !wasInstalled {
+			if rollbackErr := m.rollbackInstall(pid, m.removeWithEbpf); rollbackErr != nil {
+				return errors.Join(mapErr, fmt.Errorf("rolling back cert installation: %w", rollbackErr))
+			}
+		}
+		return mapErr
 	}
 
 	// log the injection
@@ -187,6 +219,7 @@ func (m *Cert) injectWithEbpf(pid int) error {
 }
 
 func (m *Cert) injectNative(pid int) error {
+	wasInstalled := m.isInstalled()
 	// determine the path to the cert file
 	fullPath := filepath.Join("/proc", strconv.Itoa(m.pidOne), "root", m.Location)
 
@@ -198,12 +231,19 @@ func (m *Cert) injectNative(pid int) error {
 
 	// install the cert
 	if err := m.install("", fullPath); err != nil {
+		m.retainPendingInstall(pid)
 		return fmt.Errorf("failed to install cert: %w", err)
 	}
 
 	// set the cert key in the bpf map
 	if err := m.setWatched(pid, m.Location); err != nil {
-		return fmt.Errorf("failed to set cert key in bpf map: %w", err)
+		mapErr := fmt.Errorf("failed to set cert key in bpf map: %w", err)
+		if !wasInstalled {
+			if rollbackErr := m.rollbackInstall(pid, m.removeNative); rollbackErr != nil {
+				return errors.Join(mapErr, fmt.Errorf("rolling back cert installation: %w", rollbackErr))
+			}
+		}
+		return mapErr
 	}
 
 	// log the injection
@@ -212,7 +252,20 @@ func (m *Cert) injectNative(pid int) error {
 	return nil
 }
 
-func (m *Cert) install(originalFullPath, customFullPath string) error {
+func (m *Cert) rollbackInstall(pid int, remove func() error) error {
+	if err := remove(); err != nil {
+		// Retain ownership so normal shutdown can retry the cleanup.
+		m.processes.Store(pid, struct{}{})
+		return err
+	}
+
+	m.mu.Lock()
+	m.installed = false
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *Cert) install(originalFullPath, customFullPath string) (retErr error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -221,13 +274,37 @@ func (m *Cert) install(originalFullPath, customFullPath string) error {
 		return nil
 	}
 
-	// create an empty file at custom if it doesn't exist
-	if !fileExists(customFullPath) {
+	// Snapshot the target so failures and final cleanup can restore it exactly.
+	if fileExists(customFullPath) {
+		info, err := os.Stat(customFullPath)
+		if err != nil {
+			return fmt.Errorf("failed to stat existing file at %s: %w", customFullPath, err)
+		}
+		m.originalData, err = os.ReadFile(customFullPath)
+		if err != nil {
+			return fmt.Errorf("failed to snapshot existing file at %s: %w", customFullPath, err)
+		}
+		m.originalMode = info.Mode()
+		m.createdFile = false
+	} else {
 		if err := os.WriteFile(customFullPath, []byte{}, 0o644); err != nil {
 			return fmt.Errorf("failed to create empty file at %s: %w", customFullPath, err)
 		}
 		m.createdFile = true
+		m.originalData = nil
+		m.originalMode = 0
 	}
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		if rollbackErr := m.restoreFile(customFullPath); rollbackErr != nil {
+			m.installed = true
+			retErr = errors.Join(retErr, fmt.Errorf("restoring failed installation: %w", rollbackErr))
+		} else {
+			m.installed = false
+		}
+	}()
 
 	// copy the contents of the ca source file to the custom file, if it exists
 	if originalFullPath != "" && fileExists(originalFullPath) {
@@ -251,6 +328,20 @@ func (m *Cert) install(originalFullPath, customFullPath string) error {
 	m.installed = true
 
 	return nil
+}
+
+func (m *Cert) retainPendingInstall(pid int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.installed {
+		m.processes.Store(pid, struct{}{})
+	}
+}
+
+func (m *Cert) isInstalled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.installed
 }
 
 func (m *Cert) injectPEM(destination string) error {
@@ -315,45 +406,64 @@ func (m *Cert) injectKeystore(destination string) error {
 }
 
 func (m *Cert) Remove(pid int) error {
+	m.transitionMu.Lock()
+	defer m.transitionMu.Unlock()
+
+	return m.remove(pid, false)
+}
+
+func (m *Cert) RemovePreservingMap(pid int) error {
+	m.transitionMu.Lock()
+	defer m.transitionMu.Unlock()
+	return m.remove(pid, true)
+}
+
+func (m *Cert) remove(pid int, preserveMap bool) error {
 	// ensure this process is in the cert's processes map
 	if _, ok := m.processes.Load(pid); !ok {
 		return nil
 	}
 
-	// remove the process from the cert's processes map
+	lastProcess := m.processes.Len() == 1
+	if preserveMap {
+		m.mapCleared[pid] = true
+	}
+	if !m.mapCleared[pid] {
+		// Disable redirection/watch state before removing trust material.
+		if m.strategy == InjectStrategyEbpf {
+			if err := m.unsetInjected(pid, m.Location); err != nil {
+				return fmt.Errorf("failed to unset cert key in bpf map: %w", err)
+			}
+		} else {
+			if err := m.unsetWatched(pid, m.Location); err != nil {
+				return fmt.Errorf("failed to unset cert key in bpf map: %w", err)
+			}
+		}
+		m.mapCleared[pid] = true
+	}
+
+	if lastProcess && m.installed {
+		if m.strategy == InjectStrategyEbpf {
+			if err := m.removeWithEbpf(); err != nil {
+				return fmt.Errorf("failed to remove cert with ebpf: %w", err)
+			}
+		}
+
+		if m.strategy == InjectStrategyInline {
+			if err := m.removeNative(); err != nil {
+				return fmt.Errorf("failed to remove cert: %w", err)
+			}
+		}
+	}
+
+	// Keep the process registered until every cleanup operation succeeds so a
+	// later stop can retry a partially completed removal.
 	m.processes.Delete(pid)
-
-	// unset the cert key in the bpf map
-	if m.strategy == InjectStrategyEbpf {
-		if err := m.unsetInjected(pid, m.Location); err != nil {
-			return fmt.Errorf("failed to unset cert key in bpf map: %w", err)
-		}
-	} else {
-		if err := m.unsetWatched(pid, m.Location); err != nil {
-			return fmt.Errorf("failed to unset cert key in bpf map: %w", err)
-		}
-	}
-
-	// if we're not empty, we're done
-	if !m.isEmpty() {
-		return nil
-	}
-
-	// nothing to clean up if the cert wasn't installed
-	if !m.installed {
-		return nil
-	}
-
-	if m.strategy == InjectStrategyEbpf {
-		if err := m.removeWithEbpf(); err != nil {
-			return fmt.Errorf("failed to remove cert with ebpf: %w", err)
-		}
-	}
-
-	if m.strategy == InjectStrategyInline {
-		if err := m.removeNative(); err != nil {
-			return fmt.Errorf("failed to remove cert: %w", err)
-		}
+	delete(m.mapCleared, pid)
+	if lastProcess {
+		m.mu.Lock()
+		m.installed = false
+		m.mu.Unlock()
 	}
 
 	return nil
@@ -362,114 +472,61 @@ func (m *Cert) Remove(pid int) error {
 func (m *Cert) removeWithEbpf() error {
 	// determine the path to the custom cert file
 	customFullPath := filepath.Join("/proc", strconv.Itoa(m.pidOne), "root", m.replacement)
-
-	// nothing to do if the file doesn't exist
-	if !fileExists(customFullPath) {
-		return nil
-	}
-
-	// remove the custom file
-	if err := os.Remove(customFullPath); err != nil {
-		return fmt.Errorf("failed to remove mount source file at %s: %w", customFullPath, err)
-	}
-
-	return nil
+	return m.restoreFile(customFullPath)
 }
 
 func (m *Cert) removeNative() error {
 	// determine the path to the cert file
 	fullPath := filepath.Join("/proc", strconv.Itoa(m.pidOne), "root", m.Location)
+	return m.restoreFile(fullPath)
+}
 
-	// nothing to do if the file doesn't exist
-	if !fileExists(fullPath) {
+func (m *Cert) restoreFile(path string) error {
+	if m.createdFile {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing created certificate file at %s: %w", path, err)
+		}
 		return nil
 	}
 
-	// remove the cert file if we created it
-	if m.createdFile {
-		if err := os.Remove(fullPath); err != nil {
-			return fmt.Errorf("failed to remove mount source file at %s: %w", fullPath, err)
-		}
+	if err := os.WriteFile(path, m.originalData, m.originalMode.Perm()); err != nil {
+		return fmt.Errorf("restoring certificate file at %s: %w", path, err)
 	}
-
-	// if we didn't create the file, we need to remove the cert from the file
-	if !m.createdFile {
-		switch m.fileType {
-		case PEM:
-			if err := m.removePEM(fullPath); err != nil {
-				return fmt.Errorf("failed to remove PEM file: %w", err)
-			}
-		case Keystore:
-			if err := m.removeKeystore(fullPath); err != nil {
-				return fmt.Errorf("failed to remove Keystore file: %w", err)
-			}
-		}
+	if err := os.Chmod(path, m.originalMode); err != nil {
+		return fmt.Errorf("restoring certificate mode at %s: %w", path, err)
 	}
-
-	return nil
-}
-
-func (m *Cert) removePEM(destination string) error {
-	// Read the entire file
-	content, err := os.ReadFile(destination)
-	if err != nil {
-		return fmt.Errorf("failed to read destination file: %w", err)
-	}
-
-	// Encode our injected certificate for comparison
-	injectedCert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: m.caBytes})
-
-	// Find and remove only our injected certificate
-	newContent := bytes.ReplaceAll(content, injectedCert, []byte{})
-
-	// Write the updated content back to the file
-	if err := os.WriteFile(destination, newContent, 0644); err != nil {
-		return fmt.Errorf("failed to write updated content to file: %w", err)
-	}
-
-	return nil
-}
-
-func (m *Cert) removeKeystore(destination string) error {
-	// define the keystore file and password
-	keystoreFile := destination
-	password := []byte(m.keystorePassword)
-
-	// read the existing keystore
-	ks, err := readKeyStore(keystoreFile, password)
-	if err != nil {
-		return fmt.Errorf("failed to read keystore file %s: %w", keystoreFile, err)
-	}
-
-	// remove the certificate
-	ks.DeleteEntry("Qtap Injected CA")
-
-	// save the updated keystore
-	if err := writeKeyStore(ks, keystoreFile, password); err != nil {
-		return fmt.Errorf("failed to write keystore file %s: %w", keystoreFile, err)
-	}
-
 	return nil
 }
 
 func (m *Cert) RemoveAll() error {
+	m.transitionMu.Lock()
+	defer m.transitionMu.Unlock()
+
+	var errs []error
+
 	// iterate over the processes and remove them
 	m.processes.Iter(func(pid int, _ struct{}) bool {
-		if err := m.Remove(pid); err != nil {
-			m.logger.Error("failed to remove process from cert", zap.Error(err))
-			return false
+		if err := m.remove(pid, false); err != nil {
+			errs = append(errs, fmt.Errorf("removing process %d: %w", pid, err))
 		}
 		return true
 	})
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func (c *Cert) IsEmpty() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.transitionMu.Lock()
+	defer c.transitionMu.Unlock()
 
 	return c.isEmpty()
+}
+
+func (c *Cert) HasProcess(pid int) bool {
+	c.transitionMu.Lock()
+	defer c.transitionMu.Unlock()
+	_, exists := c.processes.Load(pid)
+	return exists
 }
 
 func (c *Cert) isEmpty() bool {
@@ -482,6 +539,10 @@ type CertKey struct {
 }
 
 func (m *Cert) setInjected(pid int, filePath string, replacement string) error {
+	if m.injectedMap == nil {
+		return errors.New("cert eBPF map is unavailable")
+	}
+
 	// create a new cert key
 	key := CertKey{}
 
@@ -498,10 +559,14 @@ func (m *Cert) setInjected(pid int, filePath string, replacement string) error {
 	value[255] = 0
 
 	// set the cert key in the bpf map
-	return m.certObjs.PidCertMap.Put(key, value)
+	return m.injectedMap.Put(key, value)
 }
 
 func (m *Cert) unsetInjected(pid int, filePath string) error {
+	if m.injectedMap == nil {
+		return errors.New("cert eBPF map is unavailable")
+	}
+
 	// create a new cert key
 	key := CertKey{}
 
@@ -513,10 +578,14 @@ func (m *Cert) unsetInjected(pid int, filePath string) error {
 	key.FilePath[255] = 0
 
 	// unset the cert key in the bpf map
-	return m.certObjs.PidCertMap.Delete(key)
+	return m.injectedMap.Delete(key)
 }
 
 func (m *Cert) setWatched(pid int, filePath string) error {
+	if m.watchedMap == nil {
+		return errors.New("watched certificate eBPF map is unavailable")
+	}
+
 	// create a new cert key
 	key := CertKey{}
 
@@ -528,10 +597,14 @@ func (m *Cert) setWatched(pid int, filePath string) error {
 	key.FilePath[255] = 0
 
 	// set the cert key in the bpf map
-	return m.tapObjs.PidCertMap.Put(key, true)
+	return m.watchedMap.Put(key, true)
 }
 
 func (m *Cert) unsetWatched(pid int, filePath string) error {
+	if m.watchedMap == nil {
+		return errors.New("watched certificate eBPF map is unavailable")
+	}
+
 	// create a new cert key
 	key := CertKey{}
 
@@ -543,7 +616,7 @@ func (m *Cert) unsetWatched(pid int, filePath string) error {
 	key.FilePath[255] = 0
 
 	// unset the cert key in the bpf map
-	return m.tapObjs.PidCertMap.Delete(key)
+	return m.watchedMap.Delete(key)
 }
 
 func (m *Cert) generateReplacementName() {

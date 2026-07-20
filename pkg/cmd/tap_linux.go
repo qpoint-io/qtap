@@ -116,7 +116,7 @@ func init() {
 		getEnvOr("SET_TLS_OK", "on-cert-inject"),
 		"When to mark forwarded traffic as OK for TLS termination (on-cert-inject, on-cert-read)")
 	rootCmd.Flags().BoolVar(&enableEgressController, "enable-egress-controller",
-		getEnvOr("ENABLE_EGRESS_CONTROLLER", "false") == "true",
+		egressControllerEnabledFromEnv(),
 		"Enable the egress controller (MITM forwarding with CA injection)")
 
 	// Initialize flags with environment variable fallbacks
@@ -164,6 +164,10 @@ func init() {
 	rootCmd.Flags().BoolVar(&enableDevTools, "enable-dev-tools",
 		getEnvBoolOr("ENABLE_DEV_TOOLS", false),
 		"Enable local Dev Tools server")
+}
+
+func egressControllerEnabledFromEnv() bool {
+	return getEnvBoolOr("ENABLE_EGRESS_CONTROLLER", false)
 }
 
 // This skeleton version of runrootCmd provides the basic structure

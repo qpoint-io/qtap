@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -47,16 +48,31 @@ type SockAddrIn6 struct {
 }
 
 type Forwarder struct {
-	listen4    string
-	listen6    string
-	logger     *zap.Logger
-	listener4  net.Listener
-	listener6  net.Listener
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         conc.WaitGroup
-	certStore  *CertStore
-	connEvents ConnectionEvents
+	mu              sync.Mutex
+	listen4         string
+	listen6         string
+	logger          *zap.Logger
+	listener4       net.Listener
+	listener6       net.Listener
+	listener4Closed bool
+	listener6Closed bool
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              conc.WaitGroup
+	certStore       *CertStore
+	connEvents      ConnectionEvents
+	handleConn      func(net.Conn)
+	listen          func(network, address string) (net.Listener, error)
+	activeConns     map[*activeConnection]struct{}
+	started         bool
+	stopping        bool
+	shutdownStarted bool
+	stopped         bool
+	stopDone        chan struct{}
+}
+
+type activeConnection struct {
+	conn net.Conn
 }
 
 func familyToString(family int) string {
@@ -68,6 +84,13 @@ func familyToString(family int) string {
 	default:
 		return "unknown"
 	}
+}
+
+func upstreamServerName(clientSNI, destination string) string {
+	if clientSNI != "" {
+		return clientSNI
+	}
+	return destination
 }
 
 func (p *Forwarder) getRawFd(conn net.Conn) (int, error) {
@@ -195,6 +218,9 @@ func NewForwarder(ctx context.Context, logger *zap.Logger, listen4, listen6 stri
 	}
 
 	f.ctx, f.cancel = context.WithCancel(ctx)
+	f.handleConn = f.handleAcceptedConnection
+	f.listen = net.Listen
+	f.activeConns = make(map[*activeConnection]struct{})
 
 	return f, nil
 }
@@ -203,21 +229,54 @@ func (p *Forwarder) Start() error {
 	if p == nil {
 		return errors.New("forwarder is nil")
 	}
-	var err error
-	p.listener4, err = net.Listen("tcp4", p.listen4)
-	if err != nil {
-		return err
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.started {
+		return nil
+	}
+	if p.shutdownStarted {
+		return errors.New("forwarder cannot be restarted after stop")
 	}
 
-	p.listener6, err = net.Listen("tcp6", p.listen6)
-	if err != nil {
-		return err
+	var listener4, listener6 net.Listener
+	var err error
+	if p.listen4 != "" {
+		listener4, err = p.listen("tcp4", p.listen4)
+		if err != nil {
+			return err
+		}
 	}
+
+	if p.listen6 != "" {
+		listener6, err = p.listen("tcp6", p.listen6)
+		if err != nil {
+			bindErr := fmt.Errorf("listening on IPv6: %w", err)
+			if listener4 != nil {
+				if closeErr := listener4.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+					p.listener4 = listener4
+					p.listener4Closed = false
+					p.shutdownStarted = true
+					return errors.Join(bindErr, fmt.Errorf("rolling back IPv4 listener: %w", closeErr))
+				}
+			}
+			return bindErr
+		}
+	}
+	p.listener4 = listener4
+	p.listener6 = listener6
+	p.listener4Closed = false
+	p.listener6Closed = false
 
 	p.logger.Info("forwarder started", zap.String("listen4", p.listen4), zap.String("listen6", p.listen6))
 
-	p.wg.Go(func() { p.acceptConnections(p.listener4) })
-	p.wg.Go(func() { p.acceptConnections(p.listener6) })
+	if p.listener4 != nil {
+		p.wg.Go(func() { p.acceptConnections(p.listener4) })
+	}
+	if p.listener6 != nil {
+		p.wg.Go(func() { p.acceptConnections(p.listener6) })
+	}
+	p.started = true
 
 	return nil
 }
@@ -227,20 +286,86 @@ func (p *Forwarder) Stop() error {
 		return errors.New("forwarder is nil")
 	}
 
-	p.cancel()
-	if p.listener4 != nil {
-		if err := p.listener4.Close(); err != nil {
-			return err
+	for {
+		p.mu.Lock()
+		if p.stopped {
+			p.mu.Unlock()
+			return nil
 		}
-	}
-	if p.listener6 != nil {
-		if err := p.listener6.Close(); err != nil {
-			return err
+		if p.stopping {
+			stopDone := p.stopDone
+			p.mu.Unlock()
+			<-stopDone
+			continue
 		}
+		if !p.started && !p.shutdownStarted {
+			p.mu.Unlock()
+			return nil
+		}
+
+		p.started = false
+		p.stopping = true
+		p.shutdownStarted = true
+		p.stopDone = make(chan struct{})
+		listener4 := p.listener4
+		listener6 := p.listener6
+		closeListener4 := listener4 != nil && !p.listener4Closed
+		closeListener6 := listener6 != nil && !p.listener6Closed
+		activeConns := make([]*activeConnection, 0, len(p.activeConns))
+		for conn := range p.activeConns {
+			activeConns = append(activeConns, conn)
+		}
+		p.cancel()
+		p.mu.Unlock()
+
+		var errs []error
+		listener4Closed := false
+		if closeListener4 {
+			if err := listener4.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, fmt.Errorf("closing IPv4 listener: %w", err))
+			} else {
+				listener4Closed = true
+			}
+		}
+		listener6Closed := false
+		if closeListener6 {
+			if err := listener6.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, fmt.Errorf("closing IPv6 listener: %w", err))
+			} else {
+				listener6Closed = true
+			}
+		}
+		for _, conn := range activeConns {
+			if err := conn.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+				errs = append(errs, fmt.Errorf("closing downstream connection: %w", err))
+			}
+		}
+
+		// A failed close may leave Accept or connection I/O blocked. Preserve the
+		// resource for a later Stop retry instead of waiting forever here.
+		if len(errs) == 0 {
+			p.wg.Wait()
+		}
+
+		p.mu.Lock()
+		if listener4Closed && p.listener4 == listener4 {
+			p.listener4Closed = true
+		}
+		if listener6Closed && p.listener6 == listener6 {
+			p.listener6Closed = true
+		}
+		p.stopping = false
+		if len(errs) == 0 {
+			p.stopped = true
+		}
+		close(p.stopDone)
+		p.mu.Unlock()
+
+		if len(errs) == 0 {
+			p.logger.Info("forwarder stopped")
+		}
+		return errors.Join(errs...)
 	}
-	p.wg.Wait()
-	p.logger.Info("forwarder stopped")
-	return nil
 }
 
 func (p *Forwarder) acceptConnections(listener net.Listener) {
@@ -258,36 +383,60 @@ func (p *Forwarder) acceptConnections(listener net.Listener) {
 				return
 			}
 
-			logger := p.logger.With(
-				zap.String("remote_downstream_addr", conn.RemoteAddr().String()),
-				zap.String("local_downstream_addr", conn.LocalAddr().String()))
-
-			logger.Debug("accepted connection, checking for metadata")
-
-			fd, err := p.getRawFd(conn)
-			if err != nil {
-				logger.Error("failed to get raw connection file descriptor", zap.Error(err))
-				conn.Close()
-				continue
-			}
-
-			meta, err := p.getConnectionMeta(fd, logger)
-			if err != nil {
-				logger.Error("failed to get connection metadata", zap.Error(err))
-				conn.Close()
-				continue
-			}
-
-			fc, err := newConn(conn, meta)
-			if err != nil {
-				logger.Error("failed to create forwarder connection", zap.Error(err))
-				conn.Close()
-				continue
-			}
-
-			go p.handleConnection(logger, fc)
+			p.startConnectionHandler(conn)
 		}
 	}
+}
+
+func (p *Forwarder) startConnectionHandler(conn net.Conn) {
+	p.mu.Lock()
+	if !p.started {
+		p.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
+	active := &activeConnection{conn: conn}
+	p.activeConns[active] = struct{}{}
+	p.wg.Go(func() {
+		defer func() {
+			p.mu.Lock()
+			delete(p.activeConns, active)
+			p.mu.Unlock()
+		}()
+		p.handleConn(conn)
+	})
+	p.mu.Unlock()
+}
+
+func (p *Forwarder) handleAcceptedConnection(downstream net.Conn) {
+	logger := p.logger.With(
+		zap.String("remote_downstream_addr", downstream.RemoteAddr().String()),
+		zap.String("local_downstream_addr", downstream.LocalAddr().String()))
+
+	logger.Debug("accepted connection, checking for metadata")
+
+	fd, err := p.getRawFd(downstream)
+	if err != nil {
+		logger.Error("failed to get raw connection file descriptor", zap.Error(err))
+		downstream.Close()
+		return
+	}
+
+	meta, err := p.getConnectionMeta(fd, logger)
+	if err != nil {
+		logger.Error("failed to get connection metadata", zap.Error(err))
+		downstream.Close()
+		return
+	}
+
+	fc, err := newConn(downstream, meta)
+	if err != nil {
+		logger.Error("failed to create forwarder connection", zap.Error(err))
+		downstream.Close()
+		return
+	}
+
+	p.handleConnection(logger, fc)
 }
 
 func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
@@ -354,21 +503,32 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 	targetAddr := targetIP.String()
 	targetPort := fc.getMeta().OriginalDstAddr.Port
 	remoteUpstreamAddr := net.JoinHostPort(targetAddr, strconv.FormatUint(uint64(targetPort), 10))
+	dialer := net.Dialer{Timeout: 5 * time.Second}
 
 	if isTLSTerminateable {
 		// Establish the TLS connection upstream
 		upstreamTLSConfig := &tls.Config{
 			InsecureSkipVerify: false,
-			ServerName:         hostname,
+			ServerName:         upstreamServerName(hostname, targetAddr),
 			NextProtos:         protocols,
 		}
 
-		usConn, err := tls.Dial("tcp", remoteUpstreamAddr, upstreamTLSConfig)
+		rawUpstreamConn, err := dialer.DialContext(p.ctx, "tcp", remoteUpstreamAddr)
 		if err != nil {
+			logger.Error("failed to connect to original destination", zap.Error(err))
+			return
+		}
+		usConn := tls.Client(rawUpstreamConn, upstreamTLSConfig)
+		upstreamHandshakeCtx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
+		err = usConn.HandshakeContext(upstreamHandshakeCtx)
+		cancel()
+		if err != nil {
+			_ = rawUpstreamConn.Close()
 			logger.Error("upstream TLS handshake failed", zap.Error(err))
 			return
 		}
 		upstreamConn = usConn
+		defer upstreamConn.Close()
 
 		fd, err := p.getRawFd(usConn.NetConn())
 		if err != nil {
@@ -415,7 +575,7 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 				tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
 			},
 			GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				return p.certStore.GetCert(clientHello.ServerName)
+				return p.certStore.GetCert(upstreamServerName(clientHello.ServerName, targetAddr))
 			},
 			NextProtos: downstreamProtos,
 		}
@@ -424,24 +584,23 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 		logger.Debug("initiating downstream TLS handshake")
 
 		// Set a timeout for the handshake
-		handshakeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		handshakeCtx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
 		defer cancel()
 
-		// Use a goroutine to perform the handshake
-		handshakeErr := make(chan error, 1)
-		go func() {
-			err := tlsClientConn.HandshakeContext(handshakeCtx)
-			if err != nil {
-				logger.Debug("handshake error details",
-					zap.Error(err), zap.String("error_type", fmt.Sprintf("%T", err)))
-			}
-			handshakeErr <- err
-		}()
+		err = tlsClientConn.HandshakeContext(handshakeCtx)
+		if err != nil {
+			logger.Debug("handshake error details",
+				zap.Error(err), zap.String("error_type", fmt.Sprintf("%T", err)))
+			if errors.Is(handshakeCtx.Err(), context.DeadlineExceeded) {
+				logger.Error("downstream TLS handshake timed out")
 
-		// Wait for the handshake to complete or timeout
-		select {
-		case err = <-handshakeErr:
-			if err != nil {
+				if p.connEvents != nil {
+					p.connEvents.WriteErrorEvent(
+						fc.getMeta().Cookie,
+						connection.ErrType_ClientTLSHandshakeTimeout,
+						"TLS handshake timed out")
+				}
+			} else if !errors.Is(handshakeCtx.Err(), context.Canceled) {
 				logger.Error("downstream TLS handshake failed", zap.Error(err))
 
 				if p.connEvents != nil {
@@ -450,17 +609,6 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 						connection.ErrType_ClientTLSHandshake,
 						"client handshake failed: "+err.Error())
 				}
-
-				return
-			}
-		case <-handshakeCtx.Done():
-			logger.Error("downstream TLS handshake timed out")
-
-			if p.connEvents != nil {
-				p.connEvents.WriteErrorEvent(
-					fc.getMeta().Cookie,
-					connection.ErrType_ClientTLSHandshakeTimeout,
-					"TLS handshake timed out")
 			}
 			return
 		}
@@ -493,12 +641,13 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 		}
 
 		downstreamConn = fc.bufferedConn
-		usConn, err := net.DialTimeout("tcp", remoteUpstreamAddr, 5*time.Second)
+		usConn, err := dialer.DialContext(p.ctx, "tcp", remoteUpstreamAddr)
 		if err != nil {
 			logger.Error("failed to connect to original destination", zap.Error(err))
 			return
 		}
 		upstreamConn = usConn
+		defer upstreamConn.Close()
 
 		fd, err := p.getRawFd(usConn)
 		if err != nil {
@@ -512,8 +661,6 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 			return
 		}
 	}
-	defer upstreamConn.Close()
-
 	logger.Debug("connections established")
 
 	if p.connEvents != nil {
@@ -556,7 +703,21 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 	go p.proxy(logger, downstreamConn, upstreamConn, errChan, fc.getMeta().Cookie, connection.Ingress, skipTee)
 	go p.proxy(logger, upstreamConn, downstreamConn, errChan, fc.getMeta().Cookie, connection.Egress, skipTee)
 
-	<-errChan
+	ctxDone := p.ctx.Done()
+	for completed := 0; completed < 2; {
+		select {
+		case <-errChan:
+			completed++
+			if completed == 1 {
+				_ = downstreamConn.Close()
+				_ = upstreamConn.Close()
+			}
+		case <-ctxDone:
+			_ = downstreamConn.Close()
+			_ = upstreamConn.Close()
+			ctxDone = nil
+		}
+	}
 
 	logger.Debug("connections closed")
 }

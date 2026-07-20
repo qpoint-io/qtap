@@ -31,9 +31,10 @@ MAINTAINER ?= "Qpoint Team \<hello@qpoint.io\>"
 LOG_LEVEL ?= info
 
 VERSION=$${GIT_VERSION:-$$(git describe --tags --always --dirty)}
-GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+BUILD_TIME := $(BUILD_TIME)
 
 # Go Configuration
 GO ?= go
@@ -126,7 +127,11 @@ RESET := $(shell printf "$(RST)")
 # 🎯 Core Build System
 # =============================================================================
 .PHONY: build
-build: generate | $(BIN_DIR) ## Build for the current platform
+build: generate ## Generate assets and build for the current platform
+	$(MAKE) build-binary
+
+.PHONY: build-binary
+build-binary: build-jvm | $(BIN_DIR) ## Build using the staged generated assets
 	@echo $(INFO) Building $(BINARY_NAME)... $(RESET)
 	CGO_ENABLED=$(CGO_ENABLED) \
 	$(GO) build -tags '$(ALL_TAGS)' \
@@ -291,7 +296,10 @@ ci: build-jvm ## Run CI pipeline
 
 .PHONY: clean-check
 clean-check: ## Fail when tracked or untracked source changes are present
-	@if [ -n "$$(git status --porcelain)" ]; then \
+	@if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \
+		echo 'Working tree check requires a Git checkout.'; \
+		exit 1; \
+	elif [ -n "$$(git status --porcelain)" ]; then \
 		git status --short; \
 		git --no-pager diff; \
 		echo 'Working tree is not clean; run make fmt and make generate, then commit the results.'; \
@@ -345,6 +353,59 @@ version: ## Display version information
 # =============================================================================
 $(BIN_DIR) $(DIST_DIR) $(DOCS_DIR):
 	mkdir -p $@
+
+# =============================================================================
+# 📦 Docker
+# =============================================================================
+DOCKER_IMAGE ?= us-docker.pkg.dev/qpoint-edge/public/qtap
+DOCKER_TAG   ?= latest
+DOCKER_PLATFORM ?= linux/amd64
+
+.PHONY: docker-build
+docker-build: ## Build the production Docker image
+	@echo $(WORKING) Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)... $(RESET)
+	docker build \
+		--platform=$(DOCKER_PLATFORM) \
+		--target=prod \
+		--build-arg GIT_VERSION="$(VERSION)" \
+		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
+		--build-arg GIT_BRANCH="$(GIT_BRANCH)" \
+		--build-arg BUILD_TIME="$(BUILD_TIME)" \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		.
+	@echo $(SUCCESS) Docker image built! $(RESET)
+
+.PHONY: docker-smoke
+docker-smoke: docker-build ## Validate production image metadata and startup
+	@test "$(DOCKER_PLATFORM)" = "linux/amd64"
+	@test "$$(docker image inspect --format '{{.Os}}/{{.Architecture}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "linux/amd64"
+	@test "$$(docker image inspect --format '{{.Config.User}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "0:0"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(VERSION)"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(GIT_COMMIT)"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.created"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(BUILD_TIME)"
+	@docker run --rm $(DOCKER_IMAGE):$(DOCKER_TAG) --version | grep -F "$(VERSION)" >/dev/null
+	@set -eu; \
+		cid=$$(docker run -d \
+			--privileged \
+			--pid=host \
+			--network=host \
+			--ulimit=memlock=-1 \
+			-v /sys:/sys:ro \
+			$(DOCKER_IMAGE):$(DOCKER_TAG) \
+			--httpd-listen=127.0.0.1:0 \
+			--tls-probes=openssl); \
+		trap 'docker rm -f "$$cid" >/dev/null 2>&1 || true' EXIT; \
+		sleep 5; \
+		if [ "$$(docker inspect --format '{{.State.Running}}' "$$cid")" != "true" ]; then \
+			docker logs "$$cid"; \
+			exit 1; \
+		fi; \
+		docker stop -t 15 "$$cid" >/dev/null; \
+		test "$$(docker inspect --format '{{.State.ExitCode}}' "$$cid")" = "0"
+
+.PHONY: docker-push
+docker-push: ## Push the production Docker image
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # =============================================================================
 # 💡 Help

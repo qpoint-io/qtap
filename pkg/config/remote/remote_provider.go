@@ -33,6 +33,7 @@ type RemoteConfigProvider struct {
 	stopCh        chan struct{}
 	watcherStopCh map[string]chan struct{}
 	mu            sync.Mutex
+	fetchMu       sync.Mutex
 }
 
 // RemoteUpdater provides an interface for registering update notifications
@@ -58,9 +59,10 @@ func NewRemoteConfigProvider(
 // Start fetching and watching for config changes
 func (p *RemoteConfigProvider) Start() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	callback := p.callback
+	p.mu.Unlock()
 
-	if p.callback == nil {
+	if callback == nil {
 		return errors.New("no callback registered for config changes")
 	}
 
@@ -155,6 +157,9 @@ func (p *RemoteConfigProvider) RegisterWatcher(
 
 // fetchAndNotify fetches the config and calls the registered callback
 func (p *RemoteConfigProvider) fetchAndNotify() error {
+	p.fetchMu.Lock()
+	defer p.fetchMu.Unlock()
+
 	// Fetch the config from the API
 	url := p.apiEndpoint + "/deploy/config?version=" + ConfigVersion
 
@@ -173,17 +178,19 @@ func (p *RemoteConfigProvider) fetchAndNotify() error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
+	p.mu.Lock()
 	callback := p.callback
+	p.mu.Unlock()
 
 	if callback != nil {
 		wait, err := callback(&payload.Config)
 		if err != nil {
 			return fmt.Errorf("config callback failed: %w", err)
 		}
-		go func() {
+		if wait != nil {
 			wait()
-			p.logger.Info("config load completed")
-		}()
+		}
+		p.logger.Info("config load completed")
 	}
 
 	return nil

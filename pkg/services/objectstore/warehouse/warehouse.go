@@ -17,11 +17,11 @@ var tracer = telemetry.Tracer()
 type ObjectStore struct {
 	services.LogHelper
 	objectstore.BaseObjectStore
-	put        func(logger *zap.Logger, artifact *eventstore.Artifact, eventStore eventstore.EventStore)
+	put        func(ctx context.Context, logger *zap.Logger, artifact *eventstore.Artifact, eventStore eventstore.EventStore)
 	eventStore eventstore.EventStore
 }
 
 func (o *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 	logger := o.Log().With(o.LogFields(artifact)...)
-	go o.put(logger, artifact, o.eventStore)
+	o.put(ctx, logger, artifact, o.eventStore)
 }

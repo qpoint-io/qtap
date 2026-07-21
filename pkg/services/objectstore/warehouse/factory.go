@@ -3,23 +3,27 @@ package warehouse
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"sync/atomic"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/client"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
-	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
 const (
-	TypeWarehouse services.ServiceType = "warehouse"
+	TypeWarehouse        services.ServiceType = "warehouse"
+	maxConcurrentUploads                      = 100
+	closeTimeout                              = 5 * time.Second
 )
 
 var _ services.Factory = &Factory{}
@@ -35,10 +39,37 @@ type Factory struct {
 	url                string
 	token              string
 	client             *http.Client
-	pool               *pool.ContextPool
-	closed             atomic.Bool
+	allowHTTP          bool
+	mu                 sync.Mutex
+	accepting          bool
+	tasks              int
+	drained            chan struct{}
+	taskErr            error
+	slots              chan struct{}
 	next               *Factory
 	eventStoreSelector *config.EventStoreSelector
+}
+
+type Option func(*Factory)
+
+// NewFactory creates a warehouse factory with optional transport overrides.
+func NewFactory(options ...Option) *Factory {
+	factory := &Factory{}
+	for _, option := range options {
+		option(factory)
+	}
+	return factory
+}
+
+// WithHTTPClient injects a client and permits an HTTP endpoint. Production
+// factories use the default HTTPS-only transport path.
+func WithHTTPClient(httpClient *http.Client) Option {
+	return func(factory *Factory) {
+		if httpClient != nil {
+			factory.client = httpClient
+			factory.allowHTTP = true
+		}
+	}
 }
 
 func (f *Factory) Init(ctx context.Context, cfg any) error {
@@ -53,14 +84,41 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		return fmt.Errorf("invalid object store type: %s", c.Type)
 	}
 
-	f.ctx = ctx
-	f.url = c.URL
-	if f.url == "" {
-		f.url = f.DefaultURL
+	endpoint := c.URL
+	if endpoint == "" {
+		endpoint = f.DefaultURL
 	}
-	f.token = c.Token.String()
-	f.client = client.NewHttpClient()
-	f.pool = pool.New().WithContext(ctx).WithMaxGoroutines(100)
+	token := c.Token.String()
+	if strings.TrimSpace(token) == "" {
+		return errors.New("warehouse token is required")
+	}
+	parsedURL, err := url.Parse(endpoint)
+	validScheme := parsedURL != nil && parsedURL.Scheme == "https"
+	if parsedURL != nil && parsedURL.Scheme == "http" && f.allowHTTP && f.client != nil {
+		validScheme = true
+	}
+	if err != nil || parsedURL.Host == "" || !validScheme {
+		return errors.New("warehouse endpoint must be a valid https URL")
+	}
+
+	httpClient := f.client
+	if httpClient == nil {
+		httpClient = client.NewHttpClient()
+	}
+	drained := make(chan struct{})
+	close(drained)
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.ctx = ctx
+	f.url = endpoint
+	f.token = token
+	f.client = httpClient
+	f.accepting = true
+	f.tasks = 0
+	f.drained = drained
+	f.taskErr = nil
+	f.slots = make(chan struct{}, maxConcurrentUploads)
 	f.eventStoreSelector = &c.EventStore
 
 	return nil
@@ -72,10 +130,12 @@ func (f *Factory) Create(ctx context.Context, svcRegistry *services.ServiceRegis
 		return nil, fmt.Errorf("getting event store: %w", err)
 	}
 
-	return &ObjectStore{
+	store := &ObjectStore{
 		put:        f.put,
 		eventStore: eventStore,
-	}, nil
+	}
+	store.SetLogger(f.logger)
+	return store, nil
 }
 
 func (f *Factory) FactoryType() services.ServiceType {
@@ -83,70 +143,128 @@ func (f *Factory) FactoryType() services.ServiceType {
 }
 
 func (f *Factory) Close() error {
-	if f.closed.Load() {
+	ctx, cancel := context.WithTimeout(context.Background(), closeTimeout)
+	defer cancel()
+	return f.Shutdown(ctx)
+}
+
+// Shutdown stops accepting uploads and waits for every accepted task to finish.
+func (f *Factory) Shutdown(ctx context.Context) error {
+	f.mu.Lock()
+	f.accepting = false
+	drained := f.drained
+	f.mu.Unlock()
+
+	if drained == nil {
 		return nil
 	}
 
-	f.closed.Store(true)
-
-	if err := f.pool.Wait(); err != nil {
-		return fmt.Errorf("waiting for warehouse pool to drain: %w", err)
+	// Prefer a completed drain over a concurrently canceled shutdown context.
+	select {
+	case <-drained:
+		return f.uploadError()
+	default:
 	}
 
-	return nil
+	select {
+	case <-drained:
+		return f.uploadError()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (f *Factory) Next(next services.Factory) {
 	if next, ok := next.(*Factory); ok {
+		f.mu.Lock()
+		defer f.mu.Unlock()
 		f.next = next
 	}
 }
 
-func (f *Factory) put(logger *zap.Logger, artifact *eventstore.Artifact, eventStore eventstore.EventStore) {
-	_, span := tracer.Start(f.ctx, "Warehouse.Put", trace.WithSpanKind(trace.SpanKindProducer))
+func (f *Factory) put(ctx context.Context, logger *zap.Logger, artifact *eventstore.Artifact, eventStore eventstore.EventStore) {
+	_, span := tracer.Start(ctx, "Warehouse.Put", trace.WithSpanKind(trace.SpanKindProducer))
 	defer span.End()
 
-	if f.closed.Load() {
-		// if the replacement factory is available, send this there
-		if f.next != nil {
-			f.next.put(logger, artifact, eventStore)
-			return
-		}
-		logger.Error("warehouse is closed")
-		return
-	}
-
-	// save the span context so we can link it to the uploadArtifact span
 	putSpanCtx := span.SpanContext()
-	go f.pool.Go(func(ctx context.Context) error {
-		// this is run in a goroutine and not waited on. we need to link the spans as the context
-		// this function receives is not linked to the parent Put context.
-		ctx, span := tracer.Start(
-			ctx, "Warehouse.uploadArtifact",
+	next, accepted := f.register(func(taskCtx context.Context) error {
+		taskCtx, uploadSpan := tracer.Start(
+			taskCtx, "Warehouse.uploadArtifact",
 			trace.WithSpanKind(trace.SpanKindConsumer),
-			trace.WithLinks(trace.Link{
-				SpanContext: putSpanCtx,
-			}),
+			trace.WithLinks(trace.Link{SpanContext: putSpanCtx}),
 		)
-		defer span.End()
+		defer uploadSpan.End()
 
-		err := f.uploadArtifact(ctx, artifact)
-		if err != nil {
+		if err := f.uploadArtifact(taskCtx, artifact); err != nil {
+			logger.Error("uploading artifact", zap.Error(err))
 			return fmt.Errorf("uploading artifact: %w", err)
 		}
 
 		if eventStore != nil {
-			url, err := url.JoinPath(f.url, "assets", artifact.Digest())
+			assetURL, err := url.JoinPath(f.url, "assets", artifact.Digest())
 			if err != nil {
-				return fmt.Errorf("assembling qpoint warehouse asset URL %w", err)
+				return fmt.Errorf("assembling qpoint warehouse asset URL: %w", err)
 			}
-
-			record := artifact.Record(url)
-			eventStore.Save(ctx, record)
+			eventStore.Save(taskCtx, artifact.Record(assetURL))
 		}
 
 		return nil
 	})
+	if accepted {
+		return
+	}
+	if next != nil {
+		next.put(ctx, logger, artifact, eventStore)
+		return
+	}
+	logger.Error("warehouse is closed")
+}
+
+func (f *Factory) register(task func(context.Context) error) (*Factory, bool) {
+	f.mu.Lock()
+	if !f.accepting {
+		next := f.next
+		f.mu.Unlock()
+		return next, false
+	}
+	if f.tasks == 0 {
+		f.drained = make(chan struct{})
+	}
+	f.tasks++
+	taskCtx := f.ctx
+	slots := f.slots
+	f.mu.Unlock()
+
+	go func() {
+		var err error
+		select {
+		case slots <- struct{}{}:
+			err = task(taskCtx)
+			<-slots
+		case <-taskCtx.Done():
+			err = taskCtx.Err()
+		}
+		f.finishTask(err)
+	}()
+	return nil, true
+}
+
+func (f *Factory) finishTask(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err != nil {
+		f.taskErr = errors.Join(f.taskErr, err)
+	}
+	f.tasks--
+	if f.tasks == 0 {
+		close(f.drained)
+	}
+}
+
+func (f *Factory) uploadError() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.taskErr
 }
 
 func (w *Factory) uploadArtifact(ctx context.Context, artifact *eventstore.Artifact) error {
@@ -170,11 +288,13 @@ func (w *Factory) uploadArtifact(ctx context.Context, artifact *eventstore.Artif
 		w.logger.Error("sending egress request", zap.Error(err))
 		return err
 	}
-	defer resp.Body.Close()
+	resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNotFound {
-		// Artifact already exists
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		return nil
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("warehouse HEAD returned %s", resp.Status)
 	}
 
 	err = w.shipArtifact(ctx, assembledURL, artifact)
@@ -212,6 +332,9 @@ func (w *Factory) shipArtifact(ctx context.Context, url string, artifact *events
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("warehouse PUT returned %s", resp.Status)
+	}
 
 	// debugging
 	// body, err := httputil.DumpResponse(resp, true)

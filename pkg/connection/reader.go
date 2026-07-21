@@ -53,6 +53,7 @@ func (m *Manager) processOpenEvent(event OpenEvent) {
 
 	// store connection
 	m.connections.Store(event.Key(), conn)
+	m.trackConnection(conn)
 
 	m.logger.Debug("socket open event",
 		zap.String("conn_id", conn.ID()),
@@ -227,11 +228,6 @@ func (c *Connection) processCloseEvent(event CloseEvent) {
 		zap.Int64("write_bytes", event.WrBytes),
 		zap.Int64("read_bytes", event.RdBytes),
 	)
-
-	// finalize connection if it's not held
-	if !c.held {
-		c.Close()
-	}
 }
 
 func (c *Connection) processDoneEvent(event DoneEvent) {
@@ -240,14 +236,6 @@ func (c *Connection) processDoneEvent(event DoneEvent) {
 
 	// release the connection
 	c.held = false
-
-	// if the CloseEvent is nil, the socket has not closed yet
-	// so we only release the hold, otherwise we finalize the connection
-	if c.CloseEvent == nil {
-		return
-	}
-
-	c.Close()
 }
 
 func (c *Connection) processTLSClientHelloEvent(event TLSClientHelloEvent) {

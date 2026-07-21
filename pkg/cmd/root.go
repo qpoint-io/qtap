@@ -46,11 +46,14 @@ var (
 			}
 			return nil
 		},
-		Run: func(cmd *cobra.Command, args []string) {
-			logger := initLogger()
+		RunE: func(cmd *cobra.Command, args []string) error {
+			logger, err := initLogger()
+			if err != nil {
+				return err
+			}
 			defer syncLogger(logger)
 
-			runTapCmd(logger)
+			return runTapCmd(logger)
 		},
 	}
 )
@@ -106,7 +109,7 @@ func getEnvIntOr(key string, defaultValue int) int {
 	return defaultValue
 }
 
-func initLogger() *zap.Logger {
+func initLogger() (*zap.Logger, error) {
 	l, err := log.NewLogger(func(cfg *zap.Config) {
 		cfg.DisableCaller = !logCaller
 
@@ -118,14 +121,14 @@ func initLogger() *zap.Logger {
 		}
 	})
 	if err != nil {
-		panic("error: couldn't create a logger: " + err.Error())
+		return nil, fmt.Errorf("create logger: %w", err)
 	}
 
 	// Replace the global logger with the one we just created
 	// This can be accessed via zap.L()
 	zap.ReplaceGlobals(l)
 
-	return l
+	return l, nil
 }
 
 func syncLogger(logger *zap.Logger) {

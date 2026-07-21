@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -194,19 +195,19 @@ func egressControllerEnabledFromEnv() bool {
 
 // This skeleton version of runrootCmd provides the basic structure
 // but will need to be fleshed out with actual implementation
-func runTapCmd(logger *zap.Logger) {
+func runTapCmd(logger *zap.Logger) (retErr error) {
 	ctx, cancelRoot := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancelRoot()
+	shutdown := newShutdownBudget(shutdownTimeout)
+	defer shutdown.Close()
 
 	shutdownTelemetry, err := setupTelemetry(ctx, "tap")
 	if err != nil {
-		logger.Fatal("unable to setup telemetry", zap.Error(err))
+		return fmt.Errorf("setup telemetry: %w", err)
 	}
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := shutdownTelemetry(ctx); err != nil {
-			logger.Error("unable to shutdown tracer provider", zap.Error(err))
+		if err := runCleanup(shutdown.Context(), func() error { return shutdownTelemetry(shutdown.Context()) }); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("shutdown telemetry: %w", err))
 		}
 	}()
 
@@ -219,18 +220,28 @@ func runTapCmd(logger *zap.Logger) {
 
 	meetsMinimumKernel, err := kernel.CheckVersion(5, 10, 0)
 	if err != nil {
-		logger.Fatal("unable to check kernel version", zap.Error(err))
+		return fmt.Errorf("check kernel version: %w", err)
 	}
 	if !meetsMinimumKernel {
-		logger.Fatal("Qtap requires kernel version 5.10 or greater.")
+		return errors.New("Qtap requires kernel version 5.10 or greater")
 	}
 
 	// Check if running as root (required for eBPF)
 	if syscall.Getuid() != 0 {
-		logger.Error("This program requires root privileges to load BPF programs and maps. Please run as root or with sudo.")
-		defer os.Exit(1)
-		return
+		return errors.New("this program requires root privileges to load BPF programs and maps; run as root or with sudo")
 	}
+
+	var ready atomic.Bool
+	statusServer := status.NewBaseStatusServer(httpdListen, logger, ready.Load)
+	if err := statusServer.Start(); err != nil {
+		return fmt.Errorf("start status server: %w", err)
+	}
+	defer func() {
+		ready.Store(false)
+		if err := runCleanup(shutdown.Context(), statusServer.Stop); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop status server: %w", err))
+		}
+	}()
 
 	// Parse deployment tags if provided
 	var dTags tags.List
@@ -246,7 +257,7 @@ func runTapCmd(logger *zap.Logger) {
 	// REGISTRATION_TOKEN env var, which ValueSource-based config (pulse,
 	// warehouse) reads to resolve the Qpoint token consistently.
 	if registrationToken != "" {
-		if t := os.Getenv("REGISTRATION_TOKEN"); !strings.EqualFold(t, registrationToken) {
+		if t := os.Getenv("REGISTRATION_TOKEN"); t != registrationToken {
 			_ = os.Setenv("REGISTRATION_TOKEN", registrationToken)
 		}
 	}
@@ -264,9 +275,18 @@ func runTapCmd(logger *zap.Logger) {
 	case qpointConfig != "":
 		provider = config.NewLocalConfigProvider(logger, qpointConfig)
 	case registrationToken != "":
-		var registrationCleanup func()
-		provider, registrationCleanup = newRegistrationProvider(logger)
-		defer registrationCleanup()
+		var registrationCleanup cleanupFunc
+		provider, registrationCleanup, err = newRegistrationProvider(ctx, logger)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := runCleanup(shutdown.Context(), func() error {
+				return registrationCleanup(shutdown.Context())
+			}); err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("stop registration services: %w", err))
+			}
+		}()
 	default:
 		logger.Warn("no config file provided, using default config")
 		provider = config.NewDefaultConfigProvider(logger, enableDevTools)
@@ -275,74 +295,65 @@ func runTapCmd(logger *zap.Logger) {
 	// Create and start config manager
 	configManager := config.NewConfigManager(logger, provider)
 	if err := configManager.Run(configCtx); err != nil {
-		logger.Fatal("unable to start config manager", zap.Error(err))
+		return fmt.Errorf("start config manager: %w", err)
 	}
 
-	// Register for SIGHUP to reload configuration
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGHUP)
-		for {
-			select {
-			case <-sigCh:
-				logger.Info("SIGHUP received, reloading configuration")
-				if err := configManager.Reload(); err != nil {
-					logger.Error("failed to reload config on SIGHUP", zap.Error(err))
-				}
-			case <-configCtx.Done():
-				return
-			}
-		}
-	}()
+	// Capture SIGHUP now, but do not consume it until all subscribers are wired.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+	defer signal.Stop(sigCh)
 
 	// Load BPF programs and maps
 	logger.Info("loading BPF programs and maps")
 	spec, err := tap.LoadTap()
 	if err != nil {
-		logger.Fatal("failed to load BPF programs and maps", zap.Error(err))
+		return fmt.Errorf("load BPF programs and maps: %w", err)
 	}
 	// write the current pid to the bpf program
 	err = spec.RewriteConstants(map[string]any{
 		"qpid": uint32(os.Getpid()),
 	})
 	if err != nil {
-		logger.Fatal("failed to rewrite constants", zap.Error(err))
+		return fmt.Errorf("rewrite BPF constants: %w", err)
 	}
 	tapObjs := tap.TapObjects{}
 	err = spec.LoadAndAssign(&tapObjs, nil)
 	if err != nil {
-		logger.Fatal("failed to load BPF programs and maps", zap.Error(err))
+		return fmt.Errorf("assign BPF programs and maps: %w", err)
 	}
-	defer tapObjs.Close()
+	defer func() {
+		if err := runCleanup(shutdown.Context(), tapObjs.Close); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close BPF objects: %w", err))
+		}
+	}()
 
 	// Initialize process manager
 	procEbpfMan, err := NewEbpfProcManager(logger, &tapObjs)
 	if err != nil {
-		logger.Fatal("failed to get ebpf proc objs", zap.Error(err))
+		return fmt.Errorf("create eBPF process manager: %w", err)
 	}
 
 	pm := process.NewProcessManager(logger, procEbpfMan)
-	configManager.SubscribeSetter(pm)
-
-	// if the active config has a pulse eventstore, start a heartbeat with its creds
-	defer startPulseHeartbeat(logger, configManager)()
+	if err := configManager.SubscribeSetter(pm); err != nil {
+		return fmt.Errorf("apply initial process configuration: %w", err)
+	}
 
 	// Initialize container detection
 	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
 	if err := containerManager.Start(ctx); err != nil {
-		logger.Fatal("failed to start container manager", zap.Error(err))
+		return fmt.Errorf("start container manager: %w", err)
 	}
 	pm.Observe(process.NewContainerEnricher(containerManager))
 
 	// Initialize BPF trace manager
 	tm, err := trace.NewTraceManager(logger, tapObjs.TraceToggleMap, tapObjs.TraceEvents, pm, bpfTraceQuery)
 	if err != nil {
-		panic(fmt.Errorf("failed to create bpf trace manager: %w", err))
+		return fmt.Errorf("create BPF trace manager: %w", err)
 	}
 
 	// start the bpf trace manager
 	if err := tm.Start(); err != nil {
-		panic(fmt.Errorf("failed to start bpf trace manager: %w", err))
+		return fmt.Errorf("start BPF trace manager: %w", err)
 	}
 
 	// add the bpf trace manager as a process observer
@@ -350,26 +361,26 @@ func runTapCmd(logger *zap.Logger) {
 
 	// cleanup the bpf trace manager
 	defer func() {
-		if err := tm.Stop(); err != nil {
-			logger.Error("unable to cleanup bpf trace manager")
+		if err := runCleanup(shutdown.Context(), tm.Stop); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop BPF trace manager: %w", err))
 		}
 	}()
 
 	// Initialize DNS resolver
 	resolv := dns.NewDNSManager(logger, pm)
 	if err := resolv.Start(); err != nil {
-		panic(fmt.Errorf("failed to start dns manager: %w", err))
+		return fmt.Errorf("start DNS manager: %w", err)
 	}
 	defer func() {
-		if err := resolv.Stop(); err != nil {
-			logger.Error("unable to cleanup dns manager")
+		if err := runCleanup(shutdown.Context(), resolv.Stop); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop DNS manager: %w", err))
 		}
 	}()
 
 	// Parse HTTP buffer size
 	httpBufsize, err := parseSizeString(httpBufferSize)
 	if err != nil {
-		panic(fmt.Errorf("failed to parse http buffer size: %w", err))
+		return fmt.Errorf("parse HTTP buffer size: %w", err)
 	}
 
 	var devtoolsManager *devtools.Manager
@@ -428,10 +439,26 @@ func runTapCmd(logger *zap.Logger) {
 
 	// Initialize service and plugin systems
 	svcFactoryRegistry := services.NewFactoryRegistry()
-	svcManager := services.NewFactoryManager(ctx, logger, svcFactoryRegistry)
+	svcManager := services.NewFactoryManager(context.WithoutCancel(ctx), logger, svcFactoryRegistry)
 	svcManager.AddExtraServices(extraServiceConfigs...)
 	svcManager.RegisterFactory(serviceFactories...)
-	configManager.SubscribeSetter(svcManager)
+	if err := configManager.SubscribeSetter(svcManager); err != nil {
+		return fmt.Errorf("apply initial service configuration: %w", err)
+	}
+	pulseHeartbeatStop, err := startPulseHeartbeat(logger, configManager)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		retErr = errors.Join(retErr, stopPulseHeartbeat(shutdown.Context(), pulseHeartbeatStop))
+	}()
+	defer func() {
+		if err := runCleanup(shutdown.Context(), func() error {
+			return shutdownServices(shutdown.Context(), svcManager)
+		}); err != nil {
+			retErr = errors.Join(retErr, err)
+		}
+	}()
 
 	pluginRegistry := plugins.NewRegistry(pluginFactories...)
 	pluginManager := plugins.NewPluginManager(
@@ -440,11 +467,20 @@ func runTapCmd(logger *zap.Logger) {
 		plugins.SetPluginRegistry(pluginRegistry),
 		plugins.AddPersistentPlugins(persistentPlugins...),
 	)
-	configManager.SubscribeSetter(pluginManager)
-	if err := pluginManager.Start(); err != nil {
-		panic(fmt.Errorf("failed to start plugin manager: %w", err))
+	if err := configManager.SubscribeSetter(pluginManager); err != nil {
+		return fmt.Errorf("apply initial plugin configuration: %w", err)
 	}
-	defer pluginManager.Stop()
+	if err := pluginManager.Start(); err != nil {
+		return fmt.Errorf("start plugin manager: %w", err)
+	}
+	defer func() {
+		if err := runCleanup(shutdown.Context(), func() error {
+			pluginManager.Stop()
+			return nil
+		}); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop plugin manager: %w", err))
+		}
+	}()
 
 	// Initialize stream factory
 	ds := stream.NewStreamFactory(
@@ -465,105 +501,156 @@ func runTapCmd(logger *zap.Logger) {
 	)
 
 	// Subscribe connection manager to config changes
-	configManager.SubscribeSetter(connectionManager)
+	if err := configManager.SubscribeSetter(connectionManager); err != nil {
+		return fmt.Errorf("apply initial connection configuration: %w", err)
+	}
+	defer func() {
+		retErr = errors.Join(retErr, runCleanup(shutdown.Context(), func() error {
+			return shutdownConnections(shutdown.Context(), connectionManager)
+		}))
+	}()
 
 	// init a socket settings manager to push config changes
 	// down into ebpf land
 	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.TapMaps.SocketSettingsMap)
 
 	// Subscribe socket settings manager to config changes
-	configManager.SubscribeSetter(socketSettingManager)
+	if err := configManager.SubscribeSetter(socketSettingManager); err != nil {
+		return fmt.Errorf("apply initial socket configuration: %w", err)
+	}
 
 	// Initialize socket manager
 	socketManager, err := NewEbpfSockManager(logger, connectionManager, &tapObjs)
 	if err != nil {
-		panic(fmt.Errorf("failed to create socket event manager: %w", err))
+		return fmt.Errorf("create socket event manager: %w", err)
 	}
 
 	// initialize egress controller
-	if enableEgressController {
-		egressCleanup := initEgressController(ctx, logger, pm, connectionManager, &tapObjs)
-		defer egressCleanup()
+	egressCleanup, err := initOptionalEgressController(ctx, logger, pm, connectionManager, &tapObjs)
+	if err != nil {
+		return fmt.Errorf("initialize egress controller: %w", err)
 	}
+	defer func() { retErr = errors.Join(retErr, stopEgressController(shutdown.Context(), egressCleanup)) }()
 
 	// Initialize TLS probes
 	logger.Info("starting TLS Probes", zap.String("probes", tlsProbes))
 	tlsManager, err := InitTLSProbes(ctx, logger, tlsProbes, &tapObjs, connectionManager, configManager)
 	if err != nil {
-		panic(fmt.Errorf("failed to initialize TLS probes: %w", err))
+		return fmt.Errorf("initialize TLS probes: %w", err)
 	}
 	if tlsManager != nil {
 		// add tls probes as process observers
 		pm.Observe(tlsManager)
 
 		defer func() {
-			if err := tlsManager.Close(); err != nil {
-				logger.Error("unable to cleanup tls probes manager", zap.Error(err))
+			if err := runCleanup(shutdown.Context(), tlsManager.Close); err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("stop TLS probes: %w", err))
 			}
 		}()
 	}
 
+	// All config subscribers are now wired and have synchronously applied the
+	// current generation, so reloads can be consumed without stale replay.
+	go watchConfigReloads(configCtx, sigCh, logger, configManager)
+
 	// Start managers
 	// Start the proc manager
 	if err := pm.Start(); err != nil {
-		panic(fmt.Errorf("failed to start process manager: %w", err))
+		return fmt.Errorf("start process manager: %w", err)
 	}
 
 	// cleanup the process manager
 	defer func() {
-		if err := pm.Stop(); err != nil {
-			logger.Error("unable to cleanup process manager")
+		if err := runCleanup(shutdown.Context(), pm.Stop); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop process manager: %w", err))
 		}
 	}()
 
 	// start the socket manager
 	if err := socketManager.Start(); err != nil {
-		panic(fmt.Errorf("failed to start socket listener: %w", err))
+		return fmt.Errorf("start socket listener: %w", err)
 	}
 	defer func() {
-		if err := socketManager.Stop(); err != nil {
-			logger.Error("unable to cleanup socket listener")
+		if err := runCleanup(shutdown.Context(), socketManager.Stop); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("stop socket listener: %w", err))
 		}
 	}()
 
-	// Initialize status server with product metrics endpoint
-	s := status.NewBaseStatusServer(httpdListen, logger, func() bool {
-		return true
-	})
-	if err := s.Start(); err != nil {
-		logger.Fatal("failed to start status server", zap.Error(err))
-	}
-	defer func() {
-		if err := s.Stop(); err != nil {
-			logger.Error("unable to cleanup status server")
-		}
-	}()
-	if devtoolsManager != nil {
-		// register http routes
-		if err := devtoolsManager.RegisterRoutes(s.Mux(), "/devtools"); err != nil {
-			logger.Error("failed to register devtools routes", zap.Error(err))
-		} else {
-			// set up `/` -> `/devtools` redirect
-			s.Mux().HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				http.Redirect(w, r, "/devtools/", http.StatusTemporaryRedirect)
-			})
+	registerDevtoolsRoutes(logger, statusServer, devtoolsManager)
 
-			devtoolsURL := "http://" + httpdListen + "/devtools"
-
-			// Print pretty box if running in a terminal
-			if term.IsTerminal(int(os.Stdout.Fd())) {
-				PrintDevToolsBox(devtoolsURL)
-			}
-
-			logger.Info("devtools running", zap.String("url", devtoolsURL))
-		}
-	}
-
+	ready.Store(true)
 	logger.Info("eBPF program loaded and listening")
 
-	// trap int/term signals
-	<-ctx.Done()
+	if err := waitForTapShutdown(ctx, statusServer); err != nil {
+		retErr = fmt.Errorf("status server failed: %w", err)
+		cancelRoot()
+	}
+	ready.Store(false)
 	logger.Info("shutting down")
+	return retErr
+}
+
+func watchConfigReloads(ctx context.Context, sigCh <-chan os.Signal, logger *zap.Logger, manager *config.ConfigManager) {
+	for {
+		select {
+		case <-sigCh:
+			logger.Info("SIGHUP received, reloading configuration")
+			if err := manager.Reload(); err != nil {
+				logger.Error("failed to reload config on SIGHUP", zap.Error(err))
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func registerDevtoolsRoutes(logger *zap.Logger, server *status.BaseStatusServer, manager *devtools.Manager) {
+	if manager == nil {
+		return
+	}
+	if err := manager.RegisterRoutes(server.Mux(), "/devtools"); err != nil {
+		logger.Error("failed to register devtools routes", zap.Error(err))
+		return
+	}
+	server.Mux().HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/devtools/", http.StatusTemporaryRedirect)
+	})
+
+	devtoolsURL := "http://" + httpdListen + "/devtools"
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		PrintDevToolsBox(devtoolsURL)
+	}
+	logger.Info("devtools running", zap.String("url", devtoolsURL))
+}
+
+func waitForTapShutdown(ctx context.Context, server status.StatusServer) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-server.Errors():
+		return err
+	}
+}
+
+func stopPulseHeartbeat(ctx context.Context, stop func(context.Context) error) error {
+	if err := stop(ctx); err != nil {
+		return fmt.Errorf("stop pulse heartbeat: %w", err)
+	}
+	return nil
+}
+
+func shutdownServices(ctx context.Context, manager *services.FactoryManager) error {
+	if err := manager.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown services: %w", err)
+	}
+	return nil
+}
+
+func shutdownConnections(ctx context.Context, manager *connection.Manager) error {
+	if err := manager.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutdown connections: %w", err)
+	}
+	return nil
 }
 
 // parseDeploymentTags parses the deployment tags string into a tags.List
@@ -627,27 +714,33 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 // registration token: it starts the deploy heartbeat, fetches registration,
 // and returns a remote config provider fed by live Ably updates, plus a
 // cleanup func to stop the heartbeat and close the Ably connection.
-func newRegistrationProvider(logger *zap.Logger) (config.ConfigProvider, func()) {
-	var cleanups []func()
-	cleanup := func() {
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
-		}
-	}
+func newRegistrationProvider(ctx context.Context, logger *zap.Logger) (config.ConfigProvider, cleanupFunc, error) {
+	var cleanups []cleanupFunc
+	cleanup := func(ctx context.Context) error { return runCleanups(ctx, cleanups) }
 
 	// start the deploy heartbeat (every 24h)
 	hb, err := heartbeat.New(logger, registrationEndpoint, registrationToken, time.Hour*24, heartbeat.Deploy)
 	if err != nil {
-		logger.Fatal("creating heartbeat", zap.Error(err))
+		return nil, cleanup, fmt.Errorf("create deploy heartbeat: %w", err)
 	}
-	hb.Start()
-	cleanups = append(cleanups, hb.Stop)
+	if err := hb.Start(); err != nil {
+		return nil, cleanup, fmt.Errorf("start deploy heartbeat: %w", err)
+	}
+	cleanups = append(cleanups, func(ctx context.Context) error {
+		if err := hb.StopContext(ctx); err != nil {
+			return fmt.Errorf("stop deploy heartbeat: %w", err)
+		}
+		return nil
+	})
 
 	// use the control-plane client to fetch registration
 	qpointClient := httpclient.New(registrationToken)
 	registration, err := register.FetchRegistration(qpointClient, registrationEndpoint)
 	if err != nil {
-		logger.Fatal("failed to fetch registration", zap.Error(err))
+		return nil, func(context.Context) error { return nil }, errors.Join(
+			fmt.Errorf("fetch registration: %w", err),
+			cleanup(ctx),
+		)
 	}
 
 	remoteProvider := remote.NewRemoteConfigProvider(logger, registrationEndpoint, qpointClient)
@@ -655,9 +748,17 @@ func newRegistrationProvider(logger *zap.Logger) (config.ConfigProvider, func())
 	// setup the Ably updater for live config pushes
 	ablyUpdater := remote.NewAblyUpdater(logger, registration.AblyToken)
 	if err := ablyUpdater.Init(); err != nil {
-		logger.Fatal("failed to initialize Ably updater", zap.Error(err))
+		return nil, func(context.Context) error { return nil }, errors.Join(
+			fmt.Errorf("initialize Ably updater: %w", err),
+			cleanup(ctx),
+		)
 	}
-	cleanups = append(cleanups, func() { _ = ablyUpdater.Close() })
+	cleanups = append(cleanups, func(context.Context) error {
+		if err := ablyUpdater.Close(); err != nil {
+			return fmt.Errorf("close Ably updater: %w", err)
+		}
+		return nil
+	})
 
 	if err := remoteProvider.RegisterWatcher(
 		ablyUpdater,
@@ -666,19 +767,22 @@ func newRegistrationProvider(logger *zap.Logger) (config.ConfigProvider, func())
 		time.Second*5,
 		100,
 	); err != nil {
-		logger.Fatal("failed to register Ably watcher", zap.Error(err))
+		return nil, func(context.Context) error { return nil }, errors.Join(
+			fmt.Errorf("register Ably watcher: %w", err),
+			cleanup(ctx),
+		)
 	}
 
-	return remoteProvider, cleanup
+	return remoteProvider, cleanup, nil
 }
 
 // startPulseHeartbeat starts a 5-minute pulse heartbeat if the active config
 // has a pulse eventstore, using its credentials. Returns a no-op cleanup when
 // no pulse eventstore is configured.
-func startPulseHeartbeat(logger *zap.Logger, configManager *config.ConfigManager) func() {
+func startPulseHeartbeat(logger *zap.Logger, configManager *config.ConfigManager) (func(context.Context) error, error) {
 	cfg := configManager.GetConfig()
 	if !cfg.Services.HasAnyEventStores() {
-		return func() {}
+		return func(context.Context) error { return nil }, nil
 	}
 	for _, es := range cfg.Services.EventStores {
 		if es.Type != config.EventStoreType_PULSE {
@@ -690,34 +794,49 @@ func startPulseHeartbeat(logger *zap.Logger, configManager *config.ConfigManager
 		}
 		hb, err := heartbeat.New(logger, endpoint, es.Token.String(), time.Minute*5, heartbeat.Pulse)
 		if err != nil {
-			logger.Fatal("creating pulse heartbeat", zap.Error(err))
+			return nil, fmt.Errorf("create pulse heartbeat: %w", err)
 		}
-		hb.Start()
-		return hb.Stop
+		if err := hb.Start(); err != nil {
+			return nil, fmt.Errorf("start pulse heartbeat: %w", err)
+		}
+		return hb.StopContext, nil
 	}
-	return func() {}
+	return func(context.Context) error { return nil }, nil
+}
+
+func initOptionalEgressController(ctx context.Context, logger *zap.Logger, pm *process.Manager, connectionManager *connection.Manager, tapObjs *tap.TapObjects) (cleanupFunc, error) {
+	if !enableEgressController {
+		return func(context.Context) error { return nil }, nil
+	}
+	return initEgressController(ctx, logger, pm, connectionManager, tapObjs)
+}
+
+func stopEgressController(ctx context.Context, cleanup cleanupFunc) error {
+	err := runCleanup(ctx, func() error {
+		return cleanup(ctx)
+	})
+	if err != nil {
+		return fmt.Errorf("stop egress controller: %w", err)
+	}
+	return nil
 }
 
 // initEgressController wires up the MITM egress controller (cert store, CA
 // injection, and traffic router) and returns a cleanup func to stop it.
-func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.Manager, connectionManager *connection.Manager, tapObjs *tap.TapObjects) func() {
-	var cleanups []func()
-	cleanup := func() {
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
-		}
-	}
+func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.Manager, connectionManager *connection.Manager, tapObjs *tap.TapObjects) (cleanupFunc, error) {
+	var cleanups []cleanupFunc
+	cleanup := func(ctx context.Context) error { return runCleanups(ctx, cleanups) }
 
 	// initialize a cert store
 	certStore := egress.NewCertStore(sanCertMaxSize, logger)
 	if err := certStore.Init(); err != nil {
-		panic(fmt.Errorf("failed to initialize certificate store: %w", err))
+		return nil, fmt.Errorf("initialize certificate store: %w", err)
 	}
 
 	// get the root cert bytes
 	rootCert, err := certStore.GetRootCertBytes()
 	if err != nil {
-		panic(fmt.Errorf("failed to get root certificate: %w", err))
+		return nil, fmt.Errorf("get root certificate: %w", err)
 	}
 
 	logger.Info("starting certificate injector")
@@ -727,26 +846,32 @@ func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.M
 	if strategy == ca.InjectStrategyEbpf {
 		if err := cap.CanBpfProbeWriteUser(); err != nil {
 			if errors.Is(err, cap.ErrBpfProbeWriteUser) {
-				logger.Fatal("bpf_probe_write_user is not allowed, cannot use ebpf strategy for cert injection", zap.Error(err))
+				return nil, fmt.Errorf("bpf_probe_write_user is not allowed for ebpf certificate injection: %w", err)
 			}
-			logger.Fatal("failed to check if bpf_probe_write_user is allowed", zap.Error(err))
+			return nil, fmt.Errorf("check bpf_probe_write_user capability: %w", err)
 		}
 
 		if err := tap.LoadCertsObjects(&certsObjs, nil); err != nil {
-			panic(fmt.Errorf("failed to load BPF programs and maps: %w", err))
+			return nil, fmt.Errorf("load certificate BPF programs and maps: %w", err)
 		}
-		cleanups = append(cleanups, func() { certsObjs.Close() })
+		cleanups = append(cleanups, func(context.Context) error {
+			if err := certsObjs.Close(); err != nil {
+				return fmt.Errorf("close certificate BPF objects: %w", err)
+			}
+			return nil
+		})
 	}
 
 	// init a ca manager
 	caManager := ca.NewCaManager(rootCert, strategy, logger, &certsObjs, tapObjs, pm)
 	if err := caManager.Start(ctx); err != nil {
-		panic(fmt.Errorf("failed to start ca manager: %w", err))
+		return nil, errors.Join(fmt.Errorf("start ca manager: %w", err), cleanup(ctx))
 	}
-	cleanups = append(cleanups, func() {
+	cleanups = append(cleanups, func(context.Context) error {
 		if err := caManager.Stop(); err != nil {
-			logger.Error("failed to stop ca manager", zap.Error(err))
+			return fmt.Errorf("stop ca manager: %w", err)
 		}
+		return nil
 	})
 
 	// add the ca manager as a process observer
@@ -762,7 +887,7 @@ func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.M
 	// init a router
 	router, err := egresEbpf.NewRouter(logger, tapObjs)
 	if err != nil && !errors.Is(err, cap.ErrCgroupsV2NotEnabled) {
-		logger.Error("failed to create egress router", zap.Error(err))
+		return nil, errors.Join(fmt.Errorf("create egress router: %w", err), cleanup(ctx))
 	}
 
 	if router != nil {
@@ -770,19 +895,20 @@ func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.M
 		tlsOk := egress.TLSOkStrategyFromString(tlsOkStrategy)
 		m := egress.NewEgressManager(certStore, logger, router, tlsOk, egress.WithConnEventer(connectionManager))
 		if err := m.Start(); err != nil {
-			logger.Fatal("failed to start egress manager", zap.Error(err))
+			return nil, errors.Join(fmt.Errorf("start egress manager: %w", err), cleanup(ctx))
 		}
-		cleanups = append(cleanups, func() {
+		cleanups = append(cleanups, func(context.Context) error {
 			if err := m.Stop(); err != nil {
-				logger.Error("failed to stop egress manager", zap.Error(err))
+				return fmt.Errorf("stop egress manager: %w", err)
 			}
+			return nil
 		})
 
 		// add egress manager as a ca observer
 		caManager.Observe(m)
 	}
 
-	return cleanup
+	return cleanup, nil
 }
 
 func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string, objs *tap.TapObjects, connEvents *connection.Manager, configManager *config.ConfigManager) (*tls.TlsManager, error) {
@@ -818,7 +944,10 @@ func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string,
 			))
 
 			// add the ssl engine manager as a config subscriber
-			configManager.SubscribeSetter(sslEngineManager)
+			if err := configManager.SubscribeSetter(sslEngineManager); err != nil {
+				_ = sslEngineManager.Stop()
+				return nil, fmt.Errorf("applying initial Java SSL configuration: %w", err)
+			}
 		case "nodetls":
 			probes = append(probes, nodetls.NewProbe(logger, objs.TapMaps.NodeTlsSymaddrsMap, newEbpfNodeTlsProbesCreator(objs)))
 		case "gotls":

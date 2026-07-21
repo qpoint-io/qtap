@@ -2,6 +2,8 @@ package config
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
@@ -26,9 +28,15 @@ type ConfigProvider interface {
 type ConfigManager struct {
 	config      *Config
 	provider    ConfigProvider
-	subscribers []func(*Config)
+	subscribers []configSubscriber
 	mu          sync.RWMutex
+	applyMu     sync.Mutex
 	logger      *zap.Logger
+}
+
+type configSubscriber struct {
+	apply    func(*Config) error
+	fallible bool
 }
 
 // NewConfigManager creates a config manager with a specific provider
@@ -40,7 +48,7 @@ func NewConfigManager(logger *zap.Logger, provider ConfigProvider) *ConfigManage
 
 	// Register for config updates from provider
 	provider.OnConfigChange(func(cfg *Config) (wait func(), err error) {
-		return cm.updateConfig(cfg), nil
+		return cm.updateConfig(cfg)
 	})
 
 	return cm
@@ -48,24 +56,45 @@ func NewConfigManager(logger *zap.Logger, provider ConfigProvider) *ConfigManage
 
 // Subscribe to config changes
 func (cm *ConfigManager) Subscribe(callback func(*Config)) {
+	_ = cm.subscribe(func(cfg *Config) error {
+		callback(cfg)
+		return nil
+	}, false)
+}
+
+func (cm *ConfigManager) subscribe(callback func(*Config) error, fallible bool) error {
+	cm.applyMu.Lock()
+	defer cm.applyMu.Unlock()
+
 	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	cm.subscribers = append(cm.subscribers, callback)
+	cm.subscribers = append(cm.subscribers, configSubscriber{apply: callback, fallible: fallible})
+	cfg := cm.config
+	cm.mu.Unlock()
 
 	// Immediately call with current config if available
-	if cm.config != nil {
-		go callback(cm.config)
+	if cfg != nil {
+		return callback(cfg)
 	}
+	return nil
 }
 
 type ConfigSetter interface {
 	SetConfig(cfg *Config)
 }
 
-func (cm *ConfigManager) SubscribeSetter(setter ConfigSetter) {
-	cm.Subscribe(func(cfg *Config) {
+type ConfigApplier interface {
+	ApplyConfig(cfg *Config) error
+}
+
+func (cm *ConfigManager) SubscribeSetter(setter ConfigSetter) error {
+	if applier, ok := setter.(ConfigApplier); ok {
+		return cm.subscribe(applier.ApplyConfig, true)
+	}
+
+	return cm.subscribe(func(cfg *Config) error {
 		setter.SetConfig(cfg)
-	})
+		return nil
+	}, false)
 }
 
 // GetConfig returns the current configuration
@@ -75,24 +104,46 @@ func (cm *ConfigManager) GetConfig() *Config {
 	return cm.config
 }
 
-// updateConfig updates the config and notifies subscribers
-func (cm *ConfigManager) updateConfig(cfg *Config) func() {
+// updateConfig applies a validated generation before publishing it.
+func (cm *ConfigManager) updateConfig(cfg *Config) (func(), error) {
+	cm.applyMu.Lock()
+	defer cm.applyMu.Unlock()
+
+	if cfg == nil {
+		return nil, errors.New("invalid config: config is nil")
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	cm.mu.RLock()
+	subscribers := make([]configSubscriber, len(cm.subscribers))
+	copy(subscribers, cm.subscribers)
+	cm.mu.RUnlock()
+
+	for _, sub := range subscribers {
+		if !sub.fallible {
+			continue
+		}
+		if err := sub.apply(cfg); err != nil {
+			return nil, fmt.Errorf("applying config subscriber: %w", err)
+		}
+	}
+	for _, sub := range subscribers {
+		if sub.fallible {
+			continue
+		}
+		if err := sub.apply(cfg); err != nil {
+			return nil, fmt.Errorf("applying config subscriber: %w", err)
+		}
+	}
+
 	cm.mu.Lock()
 	cm.config = cfg
-	subscribers := make([]func(*Config), len(cm.subscribers))
-	copy(subscribers, cm.subscribers)
 	cm.mu.Unlock()
 
-	cm.logger.Info("configuration updated, notifying subscribers")
-
-	// Notify subscribers
-	var wg sync.WaitGroup
-	for _, sub := range subscribers {
-		wg.Go(func() {
-			sub(cfg)
-		})
-	}
-	return wg.Wait
+	cm.logger.Info("configuration updated, notified subscribers")
+	return func() {}, nil
 }
 
 // Reload forces a configuration reload

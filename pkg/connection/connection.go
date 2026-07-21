@@ -34,6 +34,7 @@ var tracer = telemetry.Tracer()
 
 type services interface {
 	finalizeConnection(conn *Connection)
+	completeConnection(conn *Connection)
 	createStreamer(conn *Connection) StreamProcessor
 }
 
@@ -48,6 +49,8 @@ type Connection struct {
 	// lifecycle management
 	cancel    context.CancelFunc
 	startOnce sync.Once
+	closeOnce sync.Once
+	closed    chan struct{}
 
 	// dependencies
 	services           services
@@ -167,6 +170,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 			ctx: ctx,
 		},
 		cancel:      cancel,
+		closed:      make(chan struct{}),
 		logger:      logger,
 		id:          id,
 		cookie:      openEvent.Cookie,
@@ -352,49 +356,91 @@ func (c *Connection) watch() {
 		if !hasMore {
 			break
 		}
+		if _, shutdown := event.(shutdownEvent); shutdown {
+			c.finalizeFromWatcher()
+			return
+		}
 		c.processEvent(event)
+		if c.CloseEvent != nil && !c.held {
+			c.finalizeFromWatcher()
+			return
+		}
 	}
 }
 
-func (c *Connection) Close() {
-	defer c.cancel()
+type shutdownEvent struct{}
 
-	// report metrics
-	connCloseTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
-	connActiveTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Dec()
-	connDuration.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port))).Observe(float64(c.report.closeTime.Sub(c.report.openTime).Milliseconds()))
-	connBytesSentTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.WrBytes))
-	connBytesRecvTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
+func (c *Connection) requestShutdown() {
+	if err := c.eventQueue.Push(shutdownEvent{}); err != nil && !c.eventQueue.IsClosed() {
+		c.logger.Debug("failed to queue connection shutdown", zap.Error(err))
+	}
+}
 
-	span := trace.SpanFromContext(c.ctx)
-	span.SetAttributes(attribute.String("direction", c.Direction()))
-	defer span.End()
-
-	c.logger.Debug("closing connection")
-
-	// removes itself from the pool of connections
+func (c *Connection) finalizeFromWatcher() {
+	// Removing the connection is an admission barrier: once it returns, no
+	// HandleEvent call can still be pushing work to this queue.
 	c.services.finalizeConnection(c)
+	for {
+		event := c.eventQueue.Pop()
+		if event == nil {
+			break
+		}
+		if _, shutdown := event.(shutdownEvent); !shutdown {
+			c.processEvent(event)
+		}
+	}
+	c.finishClose()
+}
 
-	// process any remaining events in the queue (this is blocking)
+func (c *Connection) Close() {
+	c.services.finalizeConnection(c)
 	if err := c.eventQueue.Drain(3 * time.Second); err != nil {
 		c.logger.Warn("failed to drain event queue", zap.Error(err))
 	}
+	c.finishClose()
+}
 
-	// close the event queue
-	if err := c.eventQueue.Close(); err != nil {
-		c.logger.Error("error closing pid queue", zap.Error(err))
-	}
+func (c *Connection) finishClose() {
+	c.closeOnce.Do(func() {
+		defer c.services.completeConnection(c)
+		defer close(c.closed)
+		defer c.cancel()
 
-	// close the stream processor
-	if c.streamProcessor != nil {
-		c.streamProcessor.Close()
-	}
+		// report metrics
+		connCloseTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Inc()
+		connActiveTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Dec()
+		closeTime := c.report.closeTime
+		if closeTime.IsZero() {
+			closeTime = time.Now()
+		}
+		connDuration.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port))).Observe(float64(closeTime.Sub(c.report.openTime).Milliseconds()))
+		if c.CloseEvent != nil {
+			connBytesSentTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.WrBytes))
+			connBytesRecvTotal.WithLabelValues(qnet.IPString(c.OpenEvent.Remote.IP), strconv.Itoa(int(c.OpenEvent.Remote.Port)), c.Direction()).Add(float64(c.CloseEvent.RdBytes))
+		}
 
-	// close all connection services
-	// this will also close the reporter service, sending a final report to the event store
-	if err := c.svcRegistry.Close(); err != nil {
-		c.logger.Error("error closing service registry", zap.Error(err))
-	}
+		span := trace.SpanFromContext(c.ctx)
+		span.SetAttributes(attribute.String("direction", c.Direction()))
+		defer span.End()
+
+		c.logger.Debug("closing connection")
+
+		// close the event queue
+		if err := c.eventQueue.Close(); err != nil {
+			c.logger.Error("error closing pid queue", zap.Error(err))
+		}
+
+		// close the stream processor
+		if c.streamProcessor != nil {
+			c.streamProcessor.Close()
+		}
+
+		// close all connection services
+		// this will also close the reporter service, sending a final report to the event store
+		if err := c.svcRegistry.Close(); err != nil {
+			c.logger.Error("error closing service registry", zap.Error(err))
+		}
+	})
 }
 
 func (c *Connection) SetDomain(input string) {

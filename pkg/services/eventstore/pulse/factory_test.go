@@ -79,7 +79,7 @@ func TestIsRetryableError(t *testing.T) {
 		{
 			name:      "permission denied code",
 			err:       connect.NewError(connect.CodePermissionDenied, errors.New("permission denied")),
-			retryable: true,
+			retryable: false,
 		},
 		{
 			name:      "unauthenticated code",
@@ -417,7 +417,6 @@ func TestFlushBatchWithRetry_AllRetryableErrorCodes(t *testing.T) {
 		connect.CodeUnavailable,
 		connect.CodeDeadlineExceeded,
 		connect.CodeResourceExhausted,
-		connect.CodePermissionDenied,
 		connect.CodeAborted,
 	}
 

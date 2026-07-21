@@ -20,33 +20,69 @@ type FactoryRegistry struct {
 	r *Registry[ServiceKey, Factory]
 
 	keysByType map[ServiceType][]ServiceKey
-	mu         sync.Mutex
+	mu         sync.RWMutex
 }
 
 func NewFactoryRegistry(factories ...Factory) *FactoryRegistry {
-	fr := NewRegistrySize[ServiceKey, Factory](len(factories))
-	for _, factory := range factories {
-		fr.Register(ServiceKey{Type: factory.ServiceType()}, factory)
-	}
-	return &FactoryRegistry{
-		r:          fr,
+	fr := &FactoryRegistry{
+		r:          NewRegistrySize[ServiceKey, Factory](len(factories)),
 		keysByType: make(map[ServiceType][]ServiceKey),
 	}
+	for _, factory := range factories {
+		fr.Register(factory, "")
+	}
+	return fr
 }
 
 // Register registers a default service factory by type and optional ID.
 // If the ID is empty, the factory is registered as the default for the type.
 func (fr *FactoryRegistry) Register(value Factory, id string) {
 	key := ServiceKey{Type: value.ServiceType(), ID: id}
-	fr.r.Register(key, value)
 	fr.mu.Lock()
 	defer fr.mu.Unlock()
+	fr.r.Register(key, value)
+	for _, existing := range fr.keysByType[value.ServiceType()] {
+		if existing == key {
+			return
+		}
+	}
 	fr.keysByType[value.ServiceType()] = append(fr.keysByType[value.ServiceType()], key)
+}
+
+// Delete removes a factory registration.
+func (fr *FactoryRegistry) Delete(key ServiceKey) {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	fr.r.Delete(key)
+	keys := fr.keysByType[key.Type]
+	for i, existing := range keys {
+		if existing == key {
+			fr.keysByType[key.Type] = append(keys[:i], keys[i+1:]...)
+			break
+		}
+	}
+}
+
+// Replace atomically replaces the complete factory topology.
+func (fr *FactoryRegistry) Replace(factories map[ServiceKey]Factory) {
+	next := NewRegistrySize[ServiceKey, Factory](len(factories))
+	nextKeysByType := make(map[ServiceType][]ServiceKey)
+	for key, factory := range factories {
+		next.Register(key, factory)
+		nextKeysByType[key.Type] = append(nextKeysByType[key.Type], key)
+	}
+
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	fr.r = next
+	fr.keysByType = nextKeysByType
 }
 
 // Load retrieves a service factory by type and optional ID.
 // If the ID is empty, the default factory for the type is returned.
 func (fr *FactoryRegistry) Load(key ServiceKey) (Factory, bool) {
+	fr.mu.RLock()
+	defer fr.mu.RUnlock()
 	return fr.r.Load(key)
 }
 
@@ -61,9 +97,9 @@ func (fr *FactoryRegistry) Get(key ServiceKey) Factory {
 }
 
 func (fr *FactoryRegistry) AvailableFactoriesForType(typ ServiceType) []ServiceKey {
-	fr.mu.Lock()
-	defer fr.mu.Unlock()
-	return fr.keysByType[typ]
+	fr.mu.RLock()
+	defer fr.mu.RUnlock()
+	return append([]ServiceKey(nil), fr.keysByType[typ]...)
 }
 
 // ServiceRegistry is a connection-scoped registry that handles creating services from factories.
@@ -184,6 +220,10 @@ func (sr *Registry[K, T]) Get(key K) T {
 	}
 
 	return value
+}
+
+func (sr *Registry[K, T]) Delete(key K) {
+	sr.m.Delete(key)
 }
 
 func (sr *Registry[K, T]) Close() error {

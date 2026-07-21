@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -19,28 +20,32 @@ var reloadConfigCmd = &cobra.Command{
 	Long: `Reload the current configuration without restarting the application.
 Example usage:
   qtap reload-config`,
-	Run: func(cmd *cobra.Command, args []string) {
-		logger := initLogger()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger, err := initLogger()
+		if err != nil {
+			return err
+		}
 		defer syncLogger(logger)
 
-		runReloadCmd(logger)
+		return runReloadCmd(logger)
 	},
 }
 
-func runReloadCmd(logger *zap.Logger) {
+func runReloadCmd(logger *zap.Logger) error {
 	pid, err := findPIDByBinaryName(binaryName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			logger.Fatal("could not find a running qtap process")
+			return errors.New("could not find a running qtap process")
 		}
-		logger.Fatal("error finding running qtap process", zap.Error(err))
+		return fmt.Errorf("find running qtap process: %w", err)
 	}
 
 	logger.Info("sending SIGHUP signal to process", zap.Int("pid", pid))
 	err = syscall.Kill(pid, syscall.SIGHUP)
 	if err != nil {
-		logger.Fatal("error sending signal", zap.Error(err))
+		return fmt.Errorf("send SIGHUP to process %d: %w", pid, err)
 	}
+	return nil
 }
 
 func findPIDByBinaryName(name string) (int, error) {

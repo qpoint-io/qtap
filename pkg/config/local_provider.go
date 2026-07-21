@@ -139,10 +139,10 @@ func (p *LocalConfigProvider) loadAndNotify() error {
 		if err != nil {
 			return fmt.Errorf("config callback failed: %w", err)
 		}
-		go func() {
+		if wait != nil {
 			wait()
-			p.logger.Info("config load completed")
-		}()
+		}
+		p.logger.Info("config load completed")
 	}
 
 	return nil

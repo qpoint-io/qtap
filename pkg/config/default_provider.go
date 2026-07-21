@@ -39,12 +39,20 @@ func (p *DefaultConfigProvider) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal default config: %w", err)
 	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid default config: %w", err)
+	}
 
 	p.cfg = cfg
 
 	if p.callback != nil {
-		_, err := p.callback(p.cfg)
-		return err
+		wait, err := p.callback(p.cfg)
+		if err != nil {
+			return err
+		}
+		if wait != nil {
+			wait()
+		}
 	}
 
 	return nil
@@ -60,6 +68,12 @@ func (p *DefaultConfigProvider) OnConfigChange(callback func(*Config) (func(), e
 
 // Reload forces a configuration reload
 func (p *DefaultConfigProvider) Reload() error {
-	_, err := p.callback(p.cfg)
-	return err
+	wait, err := p.callback(p.cfg)
+	if err != nil {
+		return err
+	}
+	if wait != nil {
+		wait()
+	}
+	return nil
 }

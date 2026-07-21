@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -56,6 +57,14 @@ var (
 			return runTapCmd(logger)
 		},
 	}
+	buildInfoCmd = &cobra.Command{
+		Use:   "build-info",
+		Short: "Print machine-readable build metadata",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(buildinfo.Metadata())
+		},
+	}
 )
 
 func Execute() error {
@@ -76,6 +85,7 @@ func init() {
 
 	// Add commands
 	rootCmd.AddCommand(reloadConfigCmd)
+	rootCmd.AddCommand(buildInfoCmd)
 }
 
 // getEnvBoolOr returns environment variable as bool or default if not set

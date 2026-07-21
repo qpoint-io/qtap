@@ -5,8 +5,10 @@ ARG GO_VERSION=1.26.5
 ARG NODE_MAJOR=24
 ARG GIT_VERSION=dev
 ARG GIT_COMMIT=unknown
-ARG GIT_BRANCH=unknown
+ARG GIT_REF=unknown
 ARG BUILD_TIME=unknown
+ARG SOURCE_URL=https://github.com/qpoint-io/qtap
+ARG LICENSE=AGPL-3.0-only
 
 # ==================================
 # BASE IMAGE
@@ -125,14 +127,15 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
 
 ARG GIT_VERSION
 ARG GIT_COMMIT
-ARG GIT_BRANCH
+ARG GIT_REF
 ARG BUILD_TIME
 
 RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=cache,target=/root/.cache/go-build \
-    GIT_VERSION="${GIT_VERSION}" make \
+    make \
+      VERSION="${GIT_VERSION}" \
       GIT_COMMIT="${GIT_COMMIT}" \
-      GIT_BRANCH="${GIT_BRANCH}" \
+      GIT_REF="${GIT_REF}" \
       BUILD_TIME="${BUILD_TIME}" \
       build-binary && \
     mkdir -p /app/dist && \
@@ -168,15 +171,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 ARG GIT_VERSION
 ARG GIT_COMMIT
+ARG GIT_REF
 ARG BUILD_TIME
+ARG SOURCE_URL
+ARG LICENSE
 
 LABEL org.opencontainers.image.title="qtap" \
     org.opencontainers.image.description="An eBPF agent that captures pre-encrypted network traffic, providing rich context about egress connections and their originating processes." \
-    org.opencontainers.image.source="https://github.com/qpoint-io/qtap" \
-    org.opencontainers.image.url="https://github.com/qpoint-io/qtap" \
-    org.opencontainers.image.licenses="AGPL-3.0-only" \
+    org.opencontainers.image.source="${SOURCE_URL}" \
+    org.opencontainers.image.url="${SOURCE_URL}" \
+    org.opencontainers.image.licenses="${LICENSE}" \
     org.opencontainers.image.version="${GIT_VERSION}" \
     org.opencontainers.image.revision="${GIT_COMMIT}" \
+    org.opencontainers.image.ref.name="${GIT_REF}" \
     org.opencontainers.image.created="${BUILD_TIME}"
 
 WORKDIR /app

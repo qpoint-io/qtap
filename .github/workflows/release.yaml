@@ -1,0 +1,422 @@
+name: Release Linux AMD64
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      snapshot_version:
+        description: Version embedded in the dry-run snapshot
+        required: true
+        default: v0.0.0-snapshot
+
+permissions:
+  contents: read
+
+env:
+  BPF2GO_CC: clang-14
+  BPF2GO_STRIP: llvm-strip-14
+  GONOSUMDB: ""
+  GOPRIVATE: ""
+
+jobs:
+  metadata:
+    name: Derive immutable metadata
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      commit: ${{ steps.metadata.outputs.commit }}
+      ref: ${{ steps.metadata.outputs.ref }}
+      build_time: ${{ steps.metadata.outputs.build_time }}
+      source: ${{ steps.metadata.outputs.source }}
+      license: ${{ steps.metadata.outputs.license }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Derive and validate metadata
+        id: metadata
+        env:
+          SNAPSHOT_VERSION: ${{ inputs.snapshot_version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version=${GITHUB_REF#refs/tags/}
+            [[ "$GITHUB_REF" =~ ^refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          else
+            version=$SNAPSHOT_VERSION
+            [[ "$version" =~ ^v?[0-9A-Za-z][0-9A-Za-z._-]*$ ]]
+          fi
+          commit=$(git rev-parse HEAD)
+          [[ "$commit" == "$GITHUB_SHA" ]]
+          timestamp=$(git show -s --format=%ct "$commit")
+          build_time=$(date -u -d "@$timestamp" '+%Y-%m-%dT%H:%M:%SZ')
+          {
+            printf 'version=%s\n' "$version"
+            printf 'commit=%s\n' "$commit"
+            printf 'ref=%s\n' "$GITHUB_REF"
+            printf 'build_time=%s\n' "$build_time"
+            printf 'source=%s\n' 'https://github.com/qpoint-io/qtap'
+            printf 'license=%s\n' 'AGPL-3.0-only'
+          } >>"$GITHUB_OUTPUT"
+
+  quality:
+    name: Linux AMD64 quality gate
+    needs: metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install project dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            build-essential \
+            pkg-config \
+            clang \
+            clang-format \
+            llvm \
+            libelf-dev \
+            linux-headers-generic \
+            linux-libc-dev \
+            openjdk-17-jdk-headless
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: 14
+          platform: any
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run quality gate
+        run: make ci
+
+      - name: Test release tooling
+        run: make release-test
+
+  e2e:
+    name: Linux AMD64 privileged e2e gate
+    needs: metadata
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install project dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            build-essential \
+            pkg-config \
+            clang \
+            clang-format \
+            llvm \
+            libelf-dev \
+            linux-headers-generic \
+            linux-libc-dev \
+            openjdk-17-jdk-headless
+
+      - name: Set up Clang
+        uses: egor-tensin/setup-clang@v1
+        with:
+          version: 14
+          platform: any
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run privileged e2e gate
+        run: sudo env PATH="$PATH" GOWORK=off JUNIT_REPORT=true make e2e
+
+      - name: Test summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: /tmp/e2e-tests-results.xml
+
+  snapshot:
+    name: Verify dry-run snapshot
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - metadata
+      - quality
+      - e2e
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install project dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            build-essential \
+            pkg-config \
+            clang \
+            clang-format \
+            llvm \
+            libelf-dev \
+            linux-headers-generic \
+            linux-libc-dev \
+            openjdk-17-jdk-headless \
+            file \
+            jq
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build and verify snapshot
+        run: |
+          bash scripts/release/build-snapshot.sh \
+            --version '${{ needs.metadata.outputs.version }}' \
+            --commit '${{ needs.metadata.outputs.commit }}' \
+            --ref '${{ needs.metadata.outputs.ref }}' \
+            --build-time '${{ needs.metadata.outputs.build_time }}' \
+            --output-dir dist
+
+  release:
+    name: Publish Linux AMD64 release
+    if: github.event_name == 'push'
+    needs:
+      - metadata
+      - quality
+      - e2e
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      IMAGE: us-docker.pkg.dev/qpoint-edge/public/qtap
+      R2_ENDPOINT: https://3f6a56fa0a454b33b68660af35d4af08.r2.cloudflarestorage.com
+      VERSION: ${{ needs.metadata.outputs.version }}
+      COMMIT: ${{ needs.metadata.outputs.commit }}
+      FULL_REF: ${{ needs.metadata.outputs.ref }}
+      BUILD_TIME: ${{ needs.metadata.outputs.build_time }}
+      SOURCE_URL: ${{ needs.metadata.outputs.source }}
+      LICENSE_ID: ${{ needs.metadata.outputs.license }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install release dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends file jq
+          command -v aws
+          command -v gh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.GAR_JSON_KEY }}
+
+      - name: Require an unused immutable version tag
+        run: |
+          set -euo pipefail
+          error=$(mktemp)
+          trap 'rm -f "$error"' EXIT
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" >/dev/null 2>"$error"; then
+            printf 'Immutable image tag already exists: %s:%s\n' "$IMAGE" "$VERSION" >&2
+            exit 1
+          elif ! grep -Fqx "ERROR: $IMAGE:$VERSION: not found" "$error" && \
+            ! grep -Eqi 'manifest unknown([: ].*)?$' "$error"; then
+            cat "$error" >&2
+            exit 1
+          fi
+
+      - name: Recheck the remote tag revision
+        run: |
+          set -euo pipefail
+          remote=$(git ls-remote origin "refs/tags/$VERSION" "refs/tags/$VERSION^{}")
+          remote_commit=$(awk '$2 ~ /\^\{\}$/ { print $1 }' <<<"$remote")
+          if [[ -z "$remote_commit" ]]; then
+            remote_commit=$(awk 'NR == 1 { print $1 }' <<<"$remote")
+          fi
+          [[ "$remote_commit" == "$COMMIT" ]] || {
+            printf 'Remote tag %s moved from %s to %s\n' "$VERSION" "$COMMIT" "$remote_commit" >&2
+            exit 1
+          }
+
+      - name: Push exact version image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: prod
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          build-args: |
+            GIT_VERSION=${{ env.VERSION }}
+            GIT_COMMIT=${{ env.COMMIT }}
+            GIT_REF=${{ env.FULL_REF }}
+            BUILD_TIME=${{ env.BUILD_TIME }}
+            SOURCE_URL=${{ env.SOURCE_URL }}
+            LICENSE=${{ env.LICENSE_ID }}
+
+      - name: Verify the remote digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools inspect "$IMAGE@$DIGEST" | grep -F 'linux/amd64' >/dev/null
+          bash scripts/release/verify-image.sh \
+            --image "$IMAGE@$DIGEST" \
+            --version "$VERSION" \
+            --commit "$COMMIT" \
+            --ref "$FULL_REF" \
+            --build-time "$BUILD_TIME"
+
+      - name: Package the binary from the verified digest
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cid=$(docker create --platform linux/amd64 "$IMAGE@$DIGEST")
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/usr/local/bin/qtap" dist/qtap
+          docker rm "$cid" >/dev/null
+          trap - EXIT
+          chmod 0755 dist/qtap
+          archive=$(bash scripts/release/package-archive.sh --binary dist/qtap --output-dir dist)
+          printf '%s@%s\n' "$IMAGE" "$DIGEST" >"dist/qtap-${VERSION}-linux-amd64.image-digest.txt"
+          (
+            cd dist
+            sha256sum \
+              "${archive##*/}" \
+              "qtap-${VERSION}-linux-amd64.image-digest.txt" >SHA256SUMS
+          )
+          bash scripts/release/verify-archive.sh \
+            --archive "$archive" \
+            --checksums dist/SHA256SUMS \
+            --version "$VERSION" \
+            --commit "$COMMIT" \
+            --ref "$FULL_REF" \
+            --build-time "$BUILD_TIME"
+
+      - name: Publish immutable GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            printf 'GitHub Release already exists: %s\n' "$VERSION" >&2
+            exit 1
+          fi
+          gh release create "$VERSION" \
+            --verify-tag \
+            --generate-notes \
+            --title "$VERSION" \
+            "dist/qtap-${VERSION}-linux-amd64.tgz" \
+            dist/SHA256SUMS \
+            "dist/qtap-${VERSION}-linux-amd64.image-digest.txt"
+
+      - name: Publish immutable R2 assets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          sources=(
+            "qtap-${VERSION}-linux-amd64.tgz"
+            "qtap-${VERSION}-linux-amd64.image-digest.txt"
+            SHA256SUMS
+          )
+          keys=(
+            "qpoint/qtap-${VERSION}-linux-amd64.tgz"
+            "qpoint/qtap-${VERSION}-linux-amd64.image-digest.txt"
+            "qpoint/qtap-${VERSION}-linux-amd64.SHA256SUMS"
+          )
+          for index in "${!sources[@]}"; do
+            name=${sources[$index]}
+            key=${keys[$index]}
+            error=$(mktemp)
+            if aws s3api head-object --endpoint-url "$R2_ENDPOINT" --bucket downloads --key "$key" >/dev/null 2>"$error"; then
+              printf 'Immutable R2 object already exists: %s\n' "$key" >&2
+              exit 1
+            elif ! grep -Eq '404|Not Found|NoSuchKey' "$error"; then
+              cat "$error" >&2
+              exit 1
+            fi
+            rm -f "$error"
+            aws s3 cp --endpoint-url "$R2_ENDPOINT" "dist/$name" "s3://downloads/$key"
+          done
+
+      - name: Move and inspect compatibility image tags
+        id: compatibility
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          major=${BASH_REMATCH[1]}
+          minor=${BASH_REMATCH[2]}
+          moving_tags=()
+
+          highest_minor=$(git tag --list "v${major}.${minor}.*" | grep -E "^v${major}\.${minor}\.(0|[1-9][0-9]*)$" | sort -V | tail -n 1)
+          if [[ "$VERSION" == "$highest_minor" ]]; then
+            moving_tags+=("v${major}.${minor}")
+          fi
+          highest_major=$(git tag --list "v${major}.*" | grep -E "^v${major}\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$" | sort -V | tail -n 1)
+          if [[ "$VERSION" == "$highest_major" ]]; then
+            moving_tags+=("v${major}")
+          fi
+
+          for tag in "${moving_tags[@]}"; do
+            docker buildx imagetools create --prefer-index=false --tag "$IMAGE:$tag" "$IMAGE@$DIGEST"
+          done
+          for tag in "$VERSION" "${moving_tags[@]}"; do
+            docker buildx imagetools inspect "$IMAGE:$tag" | tee "inspect-${tag}.txt"
+            grep -Eq "^Digest:[[:space:]]+$DIGEST$" "inspect-${tag}.txt"
+          done
+
+          highest_release=$(git tag --list 'v*' | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -n 1)
+          if [[ "$VERSION" == "$highest_release" ]]; then
+            printf 'move_latest=true\n' >>"$GITHUB_OUTPUT"
+          else
+            printf 'move_latest=false\n' >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Move the compatibility R2 archive
+        if: steps.compatibility.outputs.move_latest == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 cp \
+            --endpoint-url "$R2_ENDPOINT" \
+            "dist/qtap-${VERSION}-linux-amd64.tgz" \
+            s3://downloads/qpoint/qtap-latest-linux-amd64.tgz

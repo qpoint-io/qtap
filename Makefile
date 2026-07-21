@@ -30,11 +30,13 @@ DESCRIPTION ?= "🧬 Qtap: An eBPF agent that captures pre-encrypted network tra
 MAINTAINER ?= "Qpoint Team \<hello@qpoint.io\>"
 LOG_LEVEL ?= info
 
-VERSION=$${GIT_VERSION:-$$(git describe --tags --always --dirty)}
+VERSION ?= $(if $(strip $(GIT_VERSION)),$(GIT_VERSION),$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev"))
 GIT_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
-GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-BUILD_TIME ?= $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+GIT_REF ?= $(shell git symbolic-ref -q HEAD 2>/dev/null || (tag=$$(git describe --tags --exact-match 2>/dev/null) && printf 'refs/tags/%s' "$$tag") || echo "unknown")
+BUILD_TIME ?= $(shell timestamp=$$(git show -s --format=%ct HEAD 2>/dev/null) && date -u -d "@$$timestamp" '+%Y-%m-%dT%H:%M:%SZ' || echo "unknown")
 BUILD_TIME := $(BUILD_TIME)
+SOURCE_URL := https://github.com/qpoint-io/qtap
+LICENSE_ID := AGPL-3.0-only
 
 # Go Configuration
 GO ?= go
@@ -75,7 +77,7 @@ ALL_TAGS = $(BUILD_TAGS) $(EXTRA_TAGS)
 LD_FLAGS += -s -w
 LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.version=$(VERSION)'
 LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.commit=$(GIT_COMMIT)'
-LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.branch=$(GIT_BRANCH)'
+LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.ref=$(GIT_REF)'
 LD_FLAGS += -X '$(shell GOWORK=off go list -m)/pkg/buildinfo.buildTime=$(BUILD_TIME)'
 
 # Performance & Debug Flags
@@ -344,7 +346,7 @@ deps-verify: ## Verify dependencies
 version: ## Display version information
 	@echo "$(CYAN)Version:$(RST)    $(VERSION)"
 	@echo "$(CYAN)Commit:$(RST)     $(GIT_COMMIT)"
-	@echo "$(CYAN)Branch:$(RST)     $(GIT_BRANCH)"
+	@echo "$(CYAN)Ref:$(RST)        $(GIT_REF)"
 	@echo "$(CYAN)Built:$(RST)      $(BUILD_TIME)"
 	@echo "$(CYAN)Go version:$(RST) $(shell $(GO) version)"
 
@@ -358,7 +360,7 @@ $(BIN_DIR) $(DIST_DIR) $(DOCS_DIR):
 # 📦 Docker
 # =============================================================================
 DOCKER_IMAGE ?= us-docker.pkg.dev/qpoint-edge/public/qtap
-DOCKER_TAG   ?= latest
+DOCKER_TAG   ?= $(VERSION)
 DOCKER_PLATFORM ?= linux/amd64
 
 .PHONY: docker-build
@@ -369,8 +371,10 @@ docker-build: ## Build the production Docker image
 		--target=prod \
 		--build-arg GIT_VERSION="$(VERSION)" \
 		--build-arg GIT_COMMIT="$(GIT_COMMIT)" \
-		--build-arg GIT_BRANCH="$(GIT_BRANCH)" \
+		--build-arg GIT_REF="$(GIT_REF)" \
 		--build-arg BUILD_TIME="$(BUILD_TIME)" \
+		--build-arg SOURCE_URL="$(SOURCE_URL)" \
+		--build-arg LICENSE="$(LICENSE_ID)" \
 		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
 		.
 	@echo $(SUCCESS) Docker image built! $(RESET)
@@ -383,7 +387,13 @@ docker-smoke: docker-build ## Validate production image metadata and startup
 	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(VERSION)"
 	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(GIT_COMMIT)"
 	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.created"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(BUILD_TIME)"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.ref.name"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(GIT_REF)"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.source"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(SOURCE_URL)"
+	@test "$$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.licenses"}}' $(DOCKER_IMAGE):$(DOCKER_TAG))" = "$(LICENSE_ID)"
 	@docker run --rm $(DOCKER_IMAGE):$(DOCKER_TAG) --version | grep -F "$(VERSION)" >/dev/null
+	@docker run --rm $(DOCKER_IMAGE):$(DOCKER_TAG) build-info | grep -F '"ref":"$(GIT_REF)"' >/dev/null
+	@docker run --rm $(DOCKER_IMAGE):$(DOCKER_TAG) build-info | grep -F '"source":"$(SOURCE_URL)"' >/dev/null
+	@docker run --rm $(DOCKER_IMAGE):$(DOCKER_TAG) build-info | grep -F '"license":"$(LICENSE_ID)"' >/dev/null
 	@set -eu; \
 		cid=$$(docker run -d \
 			--privileged \
@@ -406,6 +416,31 @@ docker-smoke: docker-build ## Validate production image metadata and startup
 .PHONY: docker-push
 docker-push: ## Push the production Docker image
 	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+.PHONY: release-snapshot
+release-snapshot: ## Build and verify a Linux AMD64 snapshot archive
+	bash scripts/release/build-snapshot.sh \
+		--version "$(VERSION)" \
+		--commit "$(GIT_COMMIT)" \
+		--ref "$(GIT_REF)" \
+		--build-time "$(BUILD_TIME)" \
+		--output-dir "$(DIST_DIR)"
+
+.PHONY: release-verify
+release-verify: ## Verify the Linux AMD64 snapshot archive in DIST_DIR
+	bash scripts/release/verify-archive.sh \
+		--archive "$(DIST_DIR)/qtap-$(VERSION)-linux-amd64.tgz" \
+		--checksums "$(DIST_DIR)/SHA256SUMS" \
+		--version "$(VERSION)" \
+		--commit "$(GIT_COMMIT)" \
+		--ref "$(GIT_REF)" \
+		--build-time "$(BUILD_TIME)"
+
+.PHONY: release-test
+release-test: ## Test release metadata and workflow invariants
+	$(GO) test ./pkg/buildinfo ./pkg/cmd ./internal/buildcontract
+	bash -n scripts/release/*.sh
+	bash scripts/release/test-config.sh
 
 # =============================================================================
 # 💡 Help

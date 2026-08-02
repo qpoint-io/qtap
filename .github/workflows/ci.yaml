@@ -50,5 +50,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Build JVM assets
+        run: make build-jvm
+
       - name: Run CI
         run: make ci

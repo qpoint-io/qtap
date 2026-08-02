@@ -1,0 +1,40 @@
+name: GoTLS Offset Generation
+
+on:
+  schedule:
+    - cron: "0 17 * * 2" # every Tuesday at 5pm UTC (12:00pm EST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  gotls-offsets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "~1.26.3"
+          check-latest: true
+          cache-dependency-path: "**/go.sum"
+
+      - name: Install Offset Generator
+        run: |
+          go install github.com/grafana/go-offsets-tracker/cmd/go-offsets-tracker@v0.1.7
+
+      - name: Generate Offsets
+        run: |
+          go-offsets-tracker -i pkg/ebpf/tls/gotls/gobin/offsets/inputs.json pkg/ebpf/tls/gotls/gobin/offsets.json
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: Update generated offsets
+          branch: auto/generated-offsets
+          delete-branch: true
+          title: "[auto] Update generated gotls offsets"
+          body: "This is an automated PR to update the generated Go field offsets."

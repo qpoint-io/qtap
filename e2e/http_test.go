@@ -275,9 +275,8 @@ func TestLanguages(t *testing.T) {
 	runner.Run(t, e2ectx)
 }
 
-// This test verifies that we capture the connection for languages that do not
-// support TLS introspection within the Qtap opensource project.
-func TestLanguageNonIntrospective(t *testing.T) {
+// This test verifies TLS introspection for language-specific probes.
+func TestLanguageTLSProbes(t *testing.T) {
 	configMut := func(c *config.Config) {
 		c.Tap.IgnoreLoopback = false
 
@@ -301,7 +300,7 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		}
 	}
 
-	suite, err := e2e.NewTestSuite("HTTP NonIntrospective").
+	suite, err := e2e.NewTestSuite("HTTP Language TLS Probes").
 		WithConfig(configMut).
 		WithOS("alpine").
 		WithLanguage(e2e.NodeJS, "18.20.0", "22.16.0", "24.5.0").
@@ -313,9 +312,34 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		WithTLSOnly().
 		WithReadinessHandshake("/tmp/readiness-signal", 15*time.Second).
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
-			events := ctx.TestContext.Events(1)
+			var events *e2e.Events
+			require.Eventually(t, func() bool {
+				events = ctx.TestContext.Events(0)
+				if len(events.Connections) != 1 || len(events.Requests) != 1 || len(events.Artifacts) != 1 {
+					return false
+				}
+
+				switch ctx.TestCase.Request.Proto {
+				case e2e.HTTPProtocolHTTP1_1:
+					return events.Connections[0].L7Protocol == eventstore.L7Protocol_HTTP1
+				case e2e.HTTPProtocolHTTP2_0:
+					return events.Connections[0].L7Protocol == eventstore.L7Protocol_HTTP2
+				default:
+					return false
+				}
+			}, e2e.AwaitEventsTimeout, 100*time.Millisecond)
+
 			require.Len(t, events.Connections, 1)
-			require.Len(t, events.Requests, 0)
+
+			switch ctx.TestCase.Request.Proto {
+			case e2e.HTTPProtocolHTTP1_1:
+				require.Equal(t, eventstore.L7Protocol_HTTP1, events.Connections[0].L7Protocol)
+			case e2e.HTTPProtocolHTTP2_0:
+				require.Equal(t, eventstore.L7Protocol_HTTP2, events.Connections[0].L7Protocol)
+			}
+
+			require.Len(t, events.Requests, 1)
+			require.Len(t, events.Artifacts, 1)
 
 			return nil
 		}).

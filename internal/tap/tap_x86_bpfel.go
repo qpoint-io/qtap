@@ -69,6 +69,11 @@ type TapFdRequest struct {
 	_     [3]byte
 }
 
+type TapGoLocation struct {
+	Location uint32
+	Offset   int32
+}
+
 type TapGoRegabiRegs struct{ Regs [9]uint64 }
 
 type TapGoTlsConnArgs struct {
@@ -271,9 +276,10 @@ func LoadTapObjects(obj interface{}, opts *ebpf.CollectionOptions) error {
 type TapSpecs struct {
 	TapProgramSpecs
 	TapMapSpecs
+	TapVariableSpecs
 }
 
-// TapSpecs contains programs before they are loaded into the kernel.
+// TapProgramSpecs contains programs before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type TapProgramSpecs struct {
@@ -426,12 +432,30 @@ type TapMapSpecs struct {
 	UprobeFdRequests                  *ebpf.MapSpec `ebpf:"uprobe_fd_requests"`
 }
 
+// TapVariableSpecs contains global variables before they are loaded into the kernel.
+//
+// It can be passed ebpf.CollectionSpec.Assign.
+type TapVariableSpecs struct {
+	HTTP2PREFACE    *ebpf.VariableSpec `ebpf:"HTTP2_PREFACE"`
+	INVALID_FD      *ebpf.VariableSpec `ebpf:"INVALID_FD"`
+	Qpid            *ebpf.VariableSpec `ebpf:"qpid"`
+	ReadB_loc       *ebpf.VariableSpec `ebpf:"read_b_loc"`
+	ReadC_loc       *ebpf.VariableSpec `ebpf:"read_c_loc"`
+	ReadRetval0Loc  *ebpf.VariableSpec `ebpf:"read_retval0_loc"`
+	ReadRetval1Loc  *ebpf.VariableSpec `ebpf:"read_retval1_loc"`
+	WriteB_loc      *ebpf.VariableSpec `ebpf:"write_b_loc"`
+	WriteC_loc      *ebpf.VariableSpec `ebpf:"write_c_loc"`
+	WriteRetval0Loc *ebpf.VariableSpec `ebpf:"write_retval0_loc"`
+	WriteRetval1Loc *ebpf.VariableSpec `ebpf:"write_retval1_loc"`
+}
+
 // TapObjects contains all objects after they have been loaded into the kernel.
 //
 // It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TapObjects struct {
 	TapPrograms
 	TapMaps
+	TapVariables
 }
 
 func (o *TapObjects) Close() error {
@@ -550,6 +574,23 @@ func (m *TapMaps) Close() error {
 		m.TraceToggleMap,
 		m.UprobeFdRequests,
 	)
+}
+
+// TapVariables contains all global variables after they have been loaded into the kernel.
+//
+// It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
+type TapVariables struct {
+	HTTP2PREFACE    *ebpf.Variable `ebpf:"HTTP2_PREFACE"`
+	INVALID_FD      *ebpf.Variable `ebpf:"INVALID_FD"`
+	Qpid            *ebpf.Variable `ebpf:"qpid"`
+	ReadB_loc       *ebpf.Variable `ebpf:"read_b_loc"`
+	ReadC_loc       *ebpf.Variable `ebpf:"read_c_loc"`
+	ReadRetval0Loc  *ebpf.Variable `ebpf:"read_retval0_loc"`
+	ReadRetval1Loc  *ebpf.Variable `ebpf:"read_retval1_loc"`
+	WriteB_loc      *ebpf.Variable `ebpf:"write_b_loc"`
+	WriteC_loc      *ebpf.Variable `ebpf:"write_c_loc"`
+	WriteRetval0Loc *ebpf.Variable `ebpf:"write_retval0_loc"`
+	WriteRetval1Loc *ebpf.Variable `ebpf:"write_retval1_loc"`
 }
 
 // TapPrograms contains all programs after they have been loaded into the kernel.

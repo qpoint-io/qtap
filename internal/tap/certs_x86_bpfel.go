@@ -52,9 +52,10 @@ func LoadCertsObjects(obj interface{}, opts *ebpf.CollectionOptions) error {
 type CertsSpecs struct {
 	CertsProgramSpecs
 	CertsMapSpecs
+	CertsVariableSpecs
 }
 
-// CertsSpecs contains programs before they are loaded into the kernel.
+// CertsProgramSpecs contains programs before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type CertsProgramSpecs struct {
@@ -70,12 +71,19 @@ type CertsMapSpecs struct {
 	PidCertMap *ebpf.MapSpec `ebpf:"pid_cert_map"`
 }
 
+// CertsVariableSpecs contains global variables before they are loaded into the kernel.
+//
+// It can be passed ebpf.CollectionSpec.Assign.
+type CertsVariableSpecs struct {
+}
+
 // CertsObjects contains all objects after they have been loaded into the kernel.
 //
 // It can be passed to LoadCertsObjects or ebpf.CollectionSpec.LoadAndAssign.
 type CertsObjects struct {
 	CertsPrograms
 	CertsMaps
+	CertsVariables
 }
 
 func (o *CertsObjects) Close() error {
@@ -98,6 +106,12 @@ func (m *CertsMaps) Close() error {
 		m.CertEvents,
 		m.PidCertMap,
 	)
+}
+
+// CertsVariables contains all global variables after they have been loaded into the kernel.
+//
+// It can be passed to LoadCertsObjects or ebpf.CollectionSpec.LoadAndAssign.
+type CertsVariables struct {
 }
 
 // CertsPrograms contains all programs after they have been loaded into the kernel.

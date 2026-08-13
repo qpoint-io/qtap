@@ -33,6 +33,7 @@ type loader struct {
 	dir       string
 	mu        sync.Mutex
 	installed bool
+	owned     bool
 	ctx       context.Context
 }
 
@@ -54,9 +55,21 @@ func (l *loader) Install(ctx context.Context) error {
 	ctx, span := tracer.WithRemoteCancel(ctx, l.ctx, "javassl.installLoader")
 	defer span.End()
 
-	// ensure the host run directory exists
-	if err := os.MkdirAll(l.dir, 0755); err != nil {
-		return fmt.Errorf("creating host qtap directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(l.dir), 0755); err != nil {
+		return fmt.Errorf("creating javassl loader parent: %w", err)
+	}
+	if err := os.Mkdir(l.dir, 0700); err != nil {
+		return fmt.Errorf("creating javassl loader directory %q: %w", l.dir, err)
+	}
+	l.owned = true
+	defer func() {
+		if !l.installed && l.owned {
+			_ = os.RemoveAll(l.dir)
+			l.owned = false
+		}
+	}()
+	if err := ValidateExecutionBasePath(l.dir); err != nil {
+		return err
 	}
 
 	// extract the custom JRE
@@ -88,12 +101,13 @@ func (l *loader) Uninstall(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.installed {
+	if l.owned {
 		if err := os.RemoveAll(l.dir); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		l.installed = false
+		l.owned = false
 	}
+	l.installed = false
 
 	return nil
 }

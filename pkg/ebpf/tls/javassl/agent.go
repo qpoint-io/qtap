@@ -70,13 +70,20 @@ func (p *Probe) installAgent(ctx context.Context, hostDir, localDir string, pid 
 
 	*/
 
-	// ensure the run directory exists for this pid
-	if err := os.MkdirAll(hostDir, 0755); err != nil {
-		return closer, fmt.Errorf("creating agent directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(hostDir), 0755); err != nil {
+		return closer, fmt.Errorf("creating agent parent directory: %w", err)
+	}
+	// A PID-scoped directory proves cleanup ownership and avoids deleting
+	// pre-existing operator data.
+	if err := os.Mkdir(hostDir, 0755); err != nil {
+		return closer, fmt.Errorf("creating agent directory %s: %w", localDir, err)
 	}
 	closer = append(closer, tls.CloserFunc(func() error {
 		return os.RemoveAll(hostDir)
 	}))
+	if err := ValidateExecutionBasePath(hostDir); err != nil {
+		return closer, fmt.Errorf("validating agent directory %s: %w", localDir, err)
+	}
 
 	// write the jvmi extension to the rundir
 	jvmiPath := filepath.Join(hostDir, "libqtap.so")

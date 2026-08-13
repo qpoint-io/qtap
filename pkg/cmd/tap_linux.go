@@ -62,6 +62,8 @@ var (
 	containerdSocketEndpoint string
 	criRuntimeSocketEndpoint string
 	enableDevTools           bool
+	javasslLoaderBasePath    string
+	javasslAgentBasePath     string
 )
 
 var (
@@ -112,6 +114,12 @@ func init() {
 	rootCmd.Flags().StringVar(&tlsProbes, "tls-probes",
 		getEnvOr("TLS_PROBES", "nodetls,openssl,gotls,javassl"),
 		"Comma-separated list of TLS probes to use")
+	rootCmd.Flags().StringVar(&javasslLoaderBasePath, "javassl-loader-base-path",
+		getEnvOr("JAVASSL_LOADER_BASE_PATH", javassl.DefaultExecutionBasePath),
+		"Writable executable directory in Qtap's namespace for the Java attachment runtime")
+	rootCmd.Flags().StringVar(&javasslAgentBasePath, "javassl-agent-base-path",
+		getEnvOr("JAVASSL_AGENT_BASE_PATH", javassl.DefaultExecutionBasePath),
+		"Writable executable directory in target Java process namespaces for probe assets")
 
 	rootCmd.Flags().StringVar(&httpBufferSize, "http-buffer-size",
 		getEnvOr("HTTP_BUFFER_SIZE", "2mb"),
@@ -579,11 +587,13 @@ func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string,
 				return nil, fmt.Errorf("starting javassl engine bridge: %w", err)
 			}
 
-			probes = append(probes, javassl.NewProbe(
+			probes = append(probes, javassl.NewProbeWithExecutionPaths(
 				ctx,
 				logger,
 				sslEngineManager,
 				newEbpfJavaSslProbesCreator(objs),
+				javasslLoaderBasePath,
+				javasslAgentBasePath,
 			))
 
 			// add the ssl engine manager as a config subscriber

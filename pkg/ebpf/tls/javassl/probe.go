@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,8 +20,9 @@ import (
 )
 
 const (
-	Name             = "javassl"
-	AgentInstallPath = "/var/lib/qtap/javassl"
+	Name                     = "javassl"
+	DefaultExecutionBasePath = "/var/lib/qtap"
+	AgentInstallPath         = DefaultExecutionBasePath + "/javassl"
 )
 
 var (
@@ -48,6 +51,8 @@ type Probe struct {
 	loader           *loader
 	sslEngineManager *SslEngineManager
 	libqtapSymbols   *libQtapSymbols
+	agentBasePath    string
+	instanceID       string
 	ctx              context.Context
 	cancel           context.CancelFunc
 }
@@ -65,15 +70,26 @@ func (r *ScanResult) ProbeDetected() bool {
 }
 
 func NewProbe(ctx context.Context, logger *zap.Logger, sslEngineManager *SslEngineManager, probeFn func() []*common.Uprobe) *Probe {
+	return NewProbeWithExecutionPaths(ctx, logger, sslEngineManager, probeFn, DefaultExecutionBasePath, DefaultExecutionBasePath)
+}
+
+func NewProbeWithExecutionBasePath(ctx context.Context, logger *zap.Logger, sslEngineManager *SslEngineManager, probeFn func() []*common.Uprobe, executionBasePath string) *Probe {
+	return NewProbeWithExecutionPaths(ctx, logger, sslEngineManager, probeFn, executionBasePath, executionBasePath)
+}
+
+func NewProbeWithExecutionPaths(ctx context.Context, logger *zap.Logger, sslEngineManager *SslEngineManager, probeFn func() []*common.Uprobe, loaderBasePath, agentBasePath string) *Probe {
 	ctx, cancel := context.WithCancel(ctx)
+	instanceID := fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano())
 	return &Probe{
 		ctx:              ctx,
 		cancel:           cancel,
 		logger:           logger,
 		sslEngineManager: sslEngineManager,
 		probeFn:          probeFn,
-		loader:           newLoader(ctx, AgentInstallPath),
+		loader:           newLoader(ctx, filepath.Join(loaderBasePath, "javassl", instanceID)),
 		libqtapSymbols:   &libQtapSymbols{},
+		agentBasePath:    agentBasePath,
+		instanceID:       instanceID,
 	}
 }
 
@@ -121,10 +137,11 @@ func (p *Probe) Attach(ctx context.Context, target *tls.ExeLinkAttachable, resul
 	var closer tls.MultiCloser
 
 	// install the process-specific javassl agent
-	runDir := fmt.Sprintf("/run/qtap/%d", target.PID)
+	runDir := filepath.Join(p.agentBasePath, strconv.Itoa(target.PID)+"-"+p.instanceID)
+	targetRoot := filepath.Join("/proc", strconv.Itoa(target.PID), "root")
 	agentCloser, err := p.installAgent(
 		ctx,
-		filepath.Join(target.Root, runDir),
+		filepath.Join(targetRoot, runDir),
 		runDir,
 		target.PID,
 	)

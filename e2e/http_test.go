@@ -275,9 +275,8 @@ func TestLanguages(t *testing.T) {
 	runner.Run(t, e2ectx)
 }
 
-// This test verifies that we capture the connection for languages that do not
-// support TLS introspection within the Qtap opensource project.
-func TestLanguageNonIntrospective(t *testing.T) {
+// This test verifies the TLS probes merged from Qpoint decode language traffic.
+func TestLanguageTLSProbes(t *testing.T) {
 	configMut := func(c *config.Config) {
 		c.Tap.IgnoreLoopback = false
 
@@ -301,7 +300,7 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		}
 	}
 
-	suite, err := e2e.NewTestSuite("HTTP NonIntrospective").
+	suite, err := e2e.NewTestSuite("HTTP TLS Probes").
 		WithConfig(configMut).
 		WithOS("alpine").
 		WithLanguage(e2e.NodeJS, "18.20.0", "22.16.0", "24.5.0").
@@ -315,7 +314,15 @@ func TestLanguageNonIntrospective(t *testing.T) {
 		WithValidation(func(t *testing.T, ctx e2e.ValidationContext) error {
 			events := ctx.TestContext.Events(1)
 			require.Len(t, events.Connections, 1)
-			require.Len(t, events.Requests, 0)
+			require.Len(t, events.Requests, 1)
+
+			expectedProbe := map[e2e.Language]string{
+				e2e.NodeJS: "nodetls",
+				e2e.Go:     "gotls",
+				e2e.Java:   "javassl",
+			}[ctx.TestCase.Language]
+			require.True(t, events.Connections[0].TLSIntrospected)
+			require.Contains(t, events.Connections[0].TLSProbeTypesDetected, expectedProbe)
 
 			return nil
 		}).

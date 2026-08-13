@@ -220,11 +220,29 @@ func (m *GRPCRequest) toEnvVars() map[string]string {
 	return envVars
 }
 
+func (m *GRPCRequest) lifecycleTimeout() time.Duration {
+	timeout := m.ReadinessTimeout + m.Timeout + containerLifecycleGracePeriod
+	if timeout <= 0 {
+		return containerLifecycleGracePeriod
+	}
+	return timeout
+}
+
+func (m *GRPCRequest) readinessTimeout() time.Duration {
+	if m.ReadinessTimeout > 0 {
+		return m.ReadinessTimeout
+	}
+	return containerLifecycleGracePeriod
+}
+
 // Run starts a gRPC babel container and returns a Container with result channel.
 func (m *GRPCRequest) Run(ctx context.Context, l *zap.Logger) *Container {
-	result := ContainerResult{}
+	if l == nil {
+		l = zap.NewNop()
+	}
+	result := newContainerResult()
 	c := &Container{
-		resultCh:   make(chan ContainerResult),
+		resultCh:   make(chan ContainerResult, 1),
 		processPID: make(chan int, 1),
 	}
 
@@ -248,38 +266,60 @@ func (m *GRPCRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 	}
 
 	l.Info("starting gRPC container", zap.String("image", m.ImageURL), zap.Any("env", envVars))
-	cntnr, err := testcontainers.GenericContainer(ctx, req)
-	if err != nil {
+	creationCtx, creationCancel := context.WithTimeout(ctx, m.lifecycleTimeout())
+	cntnr, err := genericContainer(creationCtx, req)
+	creationCancel()
+	if err != nil || cntnr == nil {
+		if err == nil {
+			err = errors.New("container provider returned a nil container")
+		}
 		l.Error("start container error", zap.Error(err))
 		result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
 		result.ExitCode = -1
-		return nil
+		if cntnr != nil {
+			terminateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			_ = cntnr.Terminate(terminateCtx)
+			cancel()
+		}
+		c.resultCh <- result
+		return c
 	}
 
 	c.Container = cntnr
 	go func() {
-		startCtx, cancel := context.WithTimeout(ctx, m.ReadinessTimeout+m.Timeout+30*time.Second)
+		workerCtx, cancel := context.WithTimeout(ctx, m.lifecycleTimeout())
 		defer cancel()
+		defer func() {
+			if result.Error == nil && workerCtx.Err() != nil {
+				result.Error = fmt.Errorf("container lifecycle: %w", workerCtx.Err())
+				result.ExitCode = -1
+			}
+			c.resultCh <- result
+		}()
 
-		err := cntnr.Start(startCtx)
+		err := cntnr.Start(workerCtx)
 		if err != nil {
 			l.Error("start container error", zap.Error(err))
 			result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
 			result.ExitCode = -1
-			c.resultCh <- result
 			return
 		}
 
 		if m.ReadinessFile != "" {
+			readinessCtx, readinessCancel := context.WithTimeout(workerCtx, m.readinessTimeout())
+			defer readinessCancel()
 			var pid int
 			for {
-				if startCtx.Err() != nil {
-					l.Warn("readiness handshake timed out", zap.Error(startCtx.Err()))
-					break
+				if readinessCtx.Err() != nil {
+					l.Warn("readiness handshake timed out", zap.Error(readinessCtx.Err()))
+					result.Error = fmt.Errorf("readiness handshake: %w", readinessCtx.Err())
+					result.ExitCode = -1
+					return
 				}
-				pidFile, err := cntnr.CopyFileFromContainer(startCtx, m.ReadinessFile+".pid")
+				pidFile, err := cntnr.CopyFileFromContainer(readinessCtx, m.ReadinessFile+".pid")
 				if err == nil {
 					pidTxt, err := io.ReadAll(pidFile)
+					_ = pidFile.Close()
 					if err == nil {
 						pid, err = strconv.Atoi(string(pidTxt))
 						if err == nil {
@@ -291,24 +331,43 @@ func (m *GRPCRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 					}
 				}
 				l.Debug("waiting for pid file", zap.Error(err))
-				time.Sleep(1 * time.Second)
+				select {
+				case <-time.After(100 * time.Millisecond):
+				case <-readinessCtx.Done():
+				}
 			}
 			l.Debug("got pid", zap.Int("pid", pid))
-			c.processPID <- pid
+			select {
+			case c.processPID <- pid:
+			case <-workerCtx.Done():
+				result.Error = fmt.Errorf("publishing readiness process: %w", workerCtx.Err())
+				result.ExitCode = -1
+				return
+			}
 		}
 
 		// Poll for container exit
 		for {
-			state, err := cntnr.State(startCtx)
+			if workerCtx.Err() != nil {
+				return
+			}
+			state, err := cntnr.State(workerCtx)
 			if err != nil {
 				l.Error("get container state error", zap.Error(err))
 				result.Error = fmt.Errorf("getting container state: %w", err)
 				result.ExitCode = -1
-				c.resultCh <- result
+				return
+			}
+			if state == nil {
+				result.Error = errors.New("getting container state: container provider returned nil state")
+				result.ExitCode = -1
 				return
 			}
 			if state.Running {
-				time.Sleep(10 * time.Millisecond)
+				select {
+				case <-time.After(10 * time.Millisecond):
+				case <-workerCtx.Done():
+				}
 				continue
 			}
 
@@ -317,7 +376,6 @@ func (m *GRPCRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 			if state.Error != "" {
 				result.Error = fmt.Errorf("container error: %s", state.Error)
 			}
-			c.resultCh <- result
 			return
 		}
 	}()

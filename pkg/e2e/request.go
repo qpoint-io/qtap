@@ -16,6 +16,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var genericContainer = testcontainers.GenericContainer
+
 // WithMethod sets the HTTP method (GET, POST, PUT, DELETE, etc.)
 func (m *HTTPRequestBuilder) WithMethod(method HTTPMethod) *HTTPRequestBuilder {
 	m.req.Method = method
@@ -307,6 +309,27 @@ type HTTPRequestBuilder struct {
 	req *HTTPRequest
 }
 
+const containerLifecycleGracePeriod = 30 * time.Second
+
+func (m *HTTPRequest) lifecycleTimeout() time.Duration {
+	requests := max(m.Requests, 1)
+	concurrency := max(m.ConcurrentRequests, 1)
+	batches := (requests + concurrency - 1) / concurrency
+	requestBudget := time.Duration(batches)*m.Timeout + time.Duration(requests-1)*m.DelayBetweenRequests
+	timeout := m.StartupDelay + m.ReadinessTimeout + requestBudget + containerLifecycleGracePeriod
+	if timeout <= 0 {
+		return containerLifecycleGracePeriod
+	}
+	return timeout
+}
+
+func (m *HTTPRequest) readinessTimeout() time.Duration {
+	if m.ReadinessTimeout > 0 {
+		return m.ReadinessTimeout
+	}
+	return containerLifecycleGracePeriod
+}
+
 func (m *HTTPRequestBuilder) Build() (*HTTPRequest, error) {
 	if m.req.URL == "" {
 		return nil, errors.New("URL is required")
@@ -384,9 +407,12 @@ func BuildHTTPRequest() *HTTPRequestBuilder {
 }
 
 func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
-	result := ContainerResult{}
+	if l == nil {
+		l = zap.NewNop()
+	}
+	result := newContainerResult()
 	c := &Container{
-		resultCh:   make(chan ContainerResult),
+		resultCh:   make(chan ContainerResult, 1),
 		processPID: make(chan int, 1),
 	}
 
@@ -422,39 +448,62 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 
 	// Start the container
 	l.Info("🕹️ starting container", zap.String("image", m.ImageURL), zap.Any("env", envVars))
-	cntnr, err := testcontainers.GenericContainer(ctx, req)
-	if err != nil {
+	creationCtx, creationCancel := context.WithTimeout(ctx, m.lifecycleTimeout())
+	cntnr, err := genericContainer(creationCtx, req)
+	creationCancel()
+	if err != nil || cntnr == nil {
+		if err == nil {
+			err = errors.New("container provider returned a nil container")
+		}
 		l.Error("start container error", zap.Error(err))
 		result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
 		result.ExitCode = -1
-		return nil
+		if cntnr != nil {
+			terminateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			_ = cntnr.Terminate(terminateCtx)
+			cancel()
+		}
+		c.resultCh <- result
+		return c
 	}
 
 	c.Container = cntnr
 	go func() {
-		ctx, cancel := context.WithTimeout(ctx, m.ReadinessTimeout)
+		workerCtx, cancel := context.WithTimeout(ctx, m.lifecycleTimeout())
 		defer cancel()
+		defer func() {
+			if result.Error == nil && workerCtx.Err() != nil {
+				result.Error = fmt.Errorf("container lifecycle: %w", workerCtx.Err())
+				result.ExitCode = -1
+			}
+			c.resultCh <- result
+		}()
+
 		// Start the container
-		err := cntnr.Start(ctx)
+		err := cntnr.Start(workerCtx)
 		if err != nil {
 			l.Error("start container error", zap.Error(err))
 			result.Error = fmt.Errorf("starting container %s: %w", m.ImageURL, err)
 			result.ExitCode = -1
-			c.resultCh <- result
 			return
 		}
 
 		if m.ReadinessFile != "" {
+			readinessCtx, readinessCancel := context.WithTimeout(workerCtx, m.readinessTimeout())
+			defer readinessCancel()
 			var pid int
 			for {
-				if ctx.Err() != nil {
-					l.Warn("readiness handshake timed out", zap.Error(ctx.Err()))
+				if readinessCtx.Err() != nil {
+					l.Warn("readiness handshake timed out", zap.Error(readinessCtx.Err()))
+					result.Error = fmt.Errorf("readiness handshake: %w", readinessCtx.Err())
+					result.ExitCode = -1
 					return
 				}
 
-				pidFile, err := cntnr.CopyFileFromContainer(ctx, m.ReadinessFile+".pid")
+				pidFile, err := cntnr.CopyFileFromContainer(readinessCtx, m.ReadinessFile+".pid")
 				if err == nil {
 					pidTxt, err := io.ReadAll(pidFile)
+					_ = pidFile.Close()
 					if err == nil {
 						pid, err = strconv.Atoi(string(pidTxt))
 						if err == nil {
@@ -466,26 +515,45 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 					}
 				}
 				l.Debug("waiting for pid file", zap.Error(err))
-				time.Sleep(1 * time.Second)
+				select {
+				case <-time.After(100 * time.Millisecond):
+				case <-readinessCtx.Done():
+				}
 			}
 			l.Debug("got pid", zap.Int("pid", pid))
-			c.processPID <- pid
+			select {
+			case c.processPID <- pid:
+			case <-workerCtx.Done():
+				result.Error = fmt.Errorf("publishing readiness process: %w", workerCtx.Err())
+				result.ExitCode = -1
+				return
+			}
 		}
 
 		var state *container.State
 		for {
+			if workerCtx.Err() != nil {
+				return
+			}
 			var err error
-			state, err = cntnr.State(ctx)
+			state, err = cntnr.State(workerCtx)
 			if err != nil {
 				l.Error("get container state error", zap.Error(err))
 				result.Error = fmt.Errorf("getting container state: %w", err)
 				result.ExitCode = -1
-				c.resultCh <- result
+				return
+			}
+			if state == nil {
+				result.Error = errors.New("getting container state: container provider returned nil state")
+				result.ExitCode = -1
 				return
 			}
 
 			if state.Running {
-				time.Sleep(10 * time.Millisecond)
+				select {
+				case <-time.After(10 * time.Millisecond):
+				case <-workerCtx.Done():
+				}
 				continue
 			}
 			break
@@ -496,8 +564,6 @@ func (m *HTTPRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 		if state.Error != "" {
 			result.Error = fmt.Errorf("container error: %s", state.Error)
 		}
-
-		c.resultCh <- result
 	}()
 
 	return c

@@ -2,8 +2,8 @@ package e2e
 
 import (
 	"context"
-	"io"
 	"strings"
+	"sync"
 
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -37,63 +37,70 @@ func (c *Container) WaitForExit(ctx context.Context) (*ContainerResult, error) {
 
 // ContainerResult captures the output from a container run
 type ContainerResult struct {
-	stdout   *strings.Builder
-	stderr   *strings.Builder
-	combined *strings.Builder
+	logData *containerResultLogData
 
 	ExitCode int
 	Error    error
 }
 
+type containerResultLogData struct {
+	mu       sync.RWMutex
+	stdout   strings.Builder
+	stderr   strings.Builder
+	combined strings.Builder
+}
+
+func newContainerResult() ContainerResult {
+	return ContainerResult{logData: &containerResultLogData{}}
+}
+
+var containerResultLogDataMu sync.Mutex
+
+func (c *ContainerResult) logs() *containerResultLogData {
+	containerResultLogDataMu.Lock()
+	defer containerResultLogDataMu.Unlock()
+	if c.logData == nil {
+		c.logData = &containerResultLogData{}
+	}
+	return c.logData
+}
+
 // Combined is both the stdout and stderr in order of arrival from the container.
 func (c *ContainerResult) Combined() string {
-	if c.combined == nil {
-		return ""
-	}
-
-	return c.combined.String()
+	logs := c.logs()
+	logs.mu.RLock()
+	defer logs.mu.RUnlock()
+	return logs.combined.String()
 }
 
 func (c *ContainerResult) Stdout() string {
-	if c.stdout == nil {
-		return ""
-	}
-
-	return c.stdout.String()
+	logs := c.logs()
+	logs.mu.RLock()
+	defer logs.mu.RUnlock()
+	return logs.stdout.String()
 }
 
 func (c *ContainerResult) Stderr() string {
-	if c.stderr == nil {
-		return ""
-	}
-
-	return c.stderr.String()
+	logs := c.logs()
+	logs.mu.RLock()
+	defer logs.mu.RUnlock()
+	return logs.stderr.String()
 }
 
 // Accept is required to satisfy the testcontainers Log aggregator interface
 func (c *ContainerResult) Accept(log testcontainers.Log) {
-	var w io.Writer
+	logs := c.logs()
+	logs.mu.Lock()
+	defer logs.mu.Unlock()
+
+	_, _ = logs.combined.Write(log.Content)
+	_ = logs.combined.WriteByte('\n')
 	switch log.LogType {
 	case "STDOUT":
-		if c.stdout == nil {
-			c.stdout = &strings.Builder{}
-		}
-		w = c.stdout
+		_, _ = logs.stdout.Write(log.Content)
+		_ = logs.stdout.WriteByte('\n')
 	case "STDERR":
-		if c.stderr == nil {
-			c.stderr = &strings.Builder{}
-		}
-		w = c.stderr
-	default:
-		w = io.Discard
+		_, _ = logs.stderr.Write(log.Content)
+		_ = logs.stderr.WriteByte('\n')
 	}
-
-	if c.combined == nil {
-		c.combined = &strings.Builder{}
-	}
-
-	_, _ = c.combined.Write(log.Content)
-	_, _ = c.combined.Write([]byte("\n"))
-	_, _ = w.Write(log.Content)
-	_, _ = w.Write([]byte("\n"))
 }

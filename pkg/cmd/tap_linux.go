@@ -81,6 +81,8 @@ var (
 	enableEgressController   bool
 	registrationToken        string
 	registrationEndpoint     string
+	javasslLoaderBasePath    string
+	javasslAgentBasePath     string
 )
 
 var (

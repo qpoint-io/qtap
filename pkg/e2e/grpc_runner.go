@@ -1,8 +1,10 @@
 package e2e
 
 import (
+	"context"
 	"net"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -21,10 +23,12 @@ func (r *GRPCTestSuiteRunner) Run(t *testing.T, ctx *Context) {
 }
 
 func (r *GRPCTestSuiteRunner) run(t *testing.T, ctx *Context) {
+	r.Logger = ctx.L
+	if r.Logger == nil {
+		r.Logger = zap.NewNop()
+	}
 	r.Logger.Info("Running gRPC test suite", zap.String("suite", r.Suite.name))
 	r.Logger.Debug("Total test cases", zap.Int("count", len(r.Suite.testCases)), zap.Int("skipped", len(r.Suite.skipped)))
-
-	r.Logger = ctx.L
 
 	// Group tests by TLS to reuse gRPC servers
 	testsByTLS := r.groupTestsByTLS()
@@ -76,6 +80,12 @@ func (r *GRPCTestSuiteRunner) groupTestsByTLS() map[bool][]GRPCTestCase {
 
 func (r *GRPCTestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc GRPCTestCase) {
 	ctx := t.Context()
+	if r.Logger == nil {
+		r.Logger = zap.NewNop()
+	}
+	if tc.Request == nil {
+		t.Fatal("gRPC test has no request")
+	}
 
 	// Verify server address is set
 	host, port, err := net.SplitHostPort(tc.Request.Server)
@@ -89,35 +99,77 @@ func (r *GRPCTestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc 
 		t.Fatal("failed to start gRPC container")
 		return
 	}
+	if container.Container != nil {
+		defer func() {
+			terminateCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			if err := container.Terminate(terminateCtx); err != nil {
+				r.Logger.Warn("failed to terminate gRPC container", zap.Error(err))
+			}
+		}()
+	}
 
 	// Readiness handshake: wait for process PID, attach probes, then signal ready
 	if tc.Request.ReadinessFile != "" {
+		if container.Container == nil {
+			result, err := container.WaitForExit(ctx)
+			if err != nil {
+				t.Fatalf("waiting for gRPC container startup result: %v", err)
+			}
+			t.Fatalf("gRPC container startup failed: exit code %d: %v", result.ExitCode, result.Error)
+		}
 		containerID := container.GetContainerID()
 		if len(containerID) > 12 {
 			containerID = containerID[:12]
 		}
 
 		r.Logger.Debug("waiting for process information", zap.String("container_id", containerID))
+		readinessCtx, cancel := context.WithTimeout(ctx, tc.Request.readinessTimeout())
+		defer cancel()
 		var pid int
 		select {
 		case pid = <-container.processPID:
-		case <-ctx.Done():
-			t.Errorf("%v", ctx.Err())
+		case result := <-container.resultCh:
+			t.Errorf("gRPC container exited before publishing process information: exit code %d: %v", result.ExitCode, result.Error)
+			return
+		case <-readinessCtx.Done():
+			t.Errorf("waiting for gRPC process information: %v", readinessCtx.Err())
 			return
 		}
 
 		r.Logger.Debug("waiting for TLS attachment on process and container", zap.Int("pid", pid), zap.String("container_id", containerID))
-		if err := tctx.WaitForProcess(NewProcessKey(containerID, pid), tc.Request.ReadinessTimeout); err != nil {
-			r.Logger.Warn("failed to wait for process", zap.Error(err))
-		} else {
-			r.Logger.Debug("creating readiness signal in container")
-			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
-				r.Logger.Warn("failed to create file in container", zap.Error(err))
+		attachResult := make(chan error, 1)
+		go func() {
+			attachResult <- tctx.WaitForProcess(NewProcessKey(containerID, pid), tc.Request.readinessTimeout())
+		}()
+		select {
+		case err := <-attachResult:
+			if err != nil {
+				t.Errorf("waiting for gRPC TLS attachment: %v", err)
+				return
 			}
+		case result := <-container.resultCh:
+			t.Errorf("gRPC container exited before TLS attachment: exit code %d: %v", result.ExitCode, result.Error)
+			return
+		case <-readinessCtx.Done():
+			t.Errorf("waiting for gRPC TLS attachment: %v", readinessCtx.Err())
+			return
+		}
+
+		r.Logger.Debug("creating readiness signal in container")
+		if err := container.Container.CopyToContainer(readinessCtx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
+			t.Errorf("creating gRPC readiness signal in container: %v", err)
+			return
 		}
 	}
 
-	containerResult := <-container.resultCh
+	resultCtx, cancel := context.WithTimeout(ctx, tc.Request.lifecycleTimeout())
+	defer cancel()
+	containerResult, err := container.WaitForExit(resultCtx)
+	if err != nil {
+		t.Errorf("waiting for gRPC container result: %v", err)
+		return
+	}
 
 	r.Logger.Debug("gRPC container result",
 		zap.Int("exit_code", containerResult.ExitCode),
@@ -131,7 +183,7 @@ func (r *GRPCTestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc 
 	validationCtx := ValidationContext{
 		TestContext:  tctx,
 		GRPCTestCase: &tc,
-		Container:    &containerResult,
+		Container:    containerResult,
 	}
 
 	for _, validation := range tc.Validations {

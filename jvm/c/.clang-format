@@ -23,7 +23,6 @@ CommentPragmas: '^go:.*'
 SortIncludes: false
 BraceWrapping:
   AfterControlStatement: true
-
 # Macro formatting
 AlignConsecutiveMacros: true
 AlwaysBreakAfterReturnType: None
@@ -32,4 +31,3 @@ BreakBeforeTernaryOperators: true
 BreakStringLiterals: false
 
 ...
-

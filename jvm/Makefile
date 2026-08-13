@@ -104,12 +104,12 @@ $(QTAP_JAR): $(QTAP_SRC) $(QTAP_MANIFEST) $(BUILD_DIR)/$(ASM_JAR) $(BUILD_DIR)/$
 
 	# Compile the Java source
 	$(JAVAC) --release 8 -d $(QTAP_BUILD_DIR) -cp $(BUILD_DIR)/$(ASM_JAR):$(BUILD_DIR)/$(ASM_COMMONS_JAR):$(BUILD_DIR)/$(ASM_UTIL_JAR) $(QTAP_SRC)
-	
+
 	# Extract the ASM JARs
 	(cd $(QTAP_BUILD_DIR) && $(JAR) xf ../../$(ASM_JAR))
 	(cd $(QTAP_BUILD_DIR) && $(JAR) xf ../../$(ASM_COMMONS_JAR))
 	(cd $(QTAP_BUILD_DIR) && $(JAR) xf ../../$(ASM_UTIL_JAR))
-	
+
 	# Create the final JAR
 	$(JAR) cmf $(QTAP_MANIFEST) $@ -C $(QTAP_BUILD_DIR) .
 
@@ -188,4 +188,4 @@ check-format: install-gjf ## Check Java code formatting
 
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf *.jar 
+	rm -rf *.jar

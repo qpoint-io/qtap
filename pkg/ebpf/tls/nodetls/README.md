@@ -37,8 +37,8 @@ file /path/to/node
 
 **Expected output:**
 ```
-/path/to/node: ELF 64-bit LSB executable, x86-64, version 1 (GNU/Linux), 
-dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, 
+/path/to/node: ELF 64-bit LSB executable, x86-64, version 1 (GNU/Linux),
+dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2,
 for GNU/Linux 3.2.0, with debug_info, not stripped
 ```
 
@@ -180,14 +180,14 @@ objdump -t /path/to/node | grep "_ZThn.*TLSWrap"
 
 **How to identify:** StreamListener methods typically have names like:
 - `OnStreamAlloc`
-- `OnStreamRead` 
+- `OnStreamRead`
 - `OnStreamAfterWrite`
 
 **Result:** `tls_wrap_stream_listener_offset = 128` (for Node.js v22.16.0)
 
 **Version differences:**
 - Node.js v18.x-v22.0.x: 120 bytes
-- Node.js v22.8.x-v22.16.x: 128 bytes  
+- Node.js v22.8.x-v22.16.x: 128 bytes
 - Node.js v23.x+: 144 bytes
 
 ### 3.2: Extract thunk offsets systematically
@@ -268,7 +268,7 @@ This loads from offset `0x8` relative to the object pointer in `%rdi`. This is a
 # Look for StreamBase inheritance thunks
 objdump -t /path/to/node | grep "_ZThn.*StreamBase"
 
-# Look for StreamResource inheritance thunks  
+# Look for StreamResource inheritance thunks
 objdump -t /path/to/node | grep "_ZThn.*StreamResource"
 ```
 
@@ -319,7 +319,7 @@ Most offsets will be shown in hexadecimal. Convert them to decimal for your eBPF
 
 **Common conversions:**
 - 0x08 = 8
-- 0x30 = 48  
+- 0x30 = 48
 - 0x58 = 88
 - 0x78 = 120
 - 0x80 = 128
@@ -355,7 +355,7 @@ The `tls_wrap_stream_listener_offset` depends on your Node.js version:
 - Thunk analysis will show: 56 and 120
 - Use: `tls_wrap_stream_listener_offset = 120`
 
-**Period 2: Node.js v22.8.0 - v22.16.0**  
+**Period 2: Node.js v22.8.0 - v22.16.0**
 - Thunk analysis will show: 64 and 128
 - Use: `tls_wrap_stream_listener_offset = 128`
 
@@ -378,7 +378,7 @@ file ~/.nvm/versions/node/v22.16.0/bin/node
 gdb -batch -ex "p &((struct uv_stream_s*)0)->io_watcher" ~/.nvm/versions/node/v22.16.0/bin/node
 # Output: $1 = (uv__io_t *) 0x88  → 136 decimal
 
-gdb -batch -ex "p &((struct uv__io_s*)0)->fd" ~/.nvm/versions/node/v22.16.0/bin/node  
+gdb -batch -ex "p &((struct uv__io_s*)0)->fd" ~/.nvm/versions/node/v22.16.0/bin/node
 # Output: $1 = (int *) 0x30  → 48 decimal
 
 # 3. Get TLS wrap thunk offsets
@@ -471,7 +471,7 @@ objdump -t /path/to/node | grep "StreamListener" | grep -E "(OnStream|Read|Write
 
 **Known good values by version:**
 - v18.x-v22.0.x: tls_wrap=120, others stable
-- v22.8.x-v22.16.x: tls_wrap=128, others stable  
+- v22.8.x-v22.16.x: tls_wrap=128, others stable
 - v23.x+: tls_wrap=144, others stable
 
 All other offsets should be: 8, 0, 88, 152, 136, 48
@@ -484,7 +484,7 @@ All other offsets should be: 8, 0, 88, 152, 136, 48
 TLSWrap Object
 ├── [other fields]
 ├── StreamListener* (at offset tls_wrap_stream_listener_offset)
-│   ├── [other fields]  
+│   ├── [other fields]
 │   └── stream_* (at offset stream_listener_stream_offset)
 │       │
 │       └─→ StreamBase/StreamResource (offset 0)
@@ -497,7 +497,7 @@ TLSWrap Object
 │                       ├── [other fields]
 │                       └── io_watcher (at offset uv_stream_s_io_watcher_offset)
 │                           │
-│                           └─→ uv__io_s  
+│                           └─→ uv__io_s
 │                               ├── [other fields]
 │                               └── fd (at offset uv_io_s_fd_offset)
 ```
@@ -511,7 +511,7 @@ Your eBPF program will follow this path:
 4. Subtract `stream_base_stream_resource_offset` (usually 0)
 5. Subtract `libuv_stream_wrap_stream_base_offset` → get LibuvStreamWrap base
 6. Add `libuv_stream_wrap_stream_offset` → get uv_stream_s pointer
-7. Add `uv_stream_s_io_watcher_offset` → get uv__io_s pointer  
+7. Add `uv_stream_s_io_watcher_offset` → get uv__io_s pointer
 8. Add `uv_io_s_fd_offset` → get file descriptor
 
 ## Summary

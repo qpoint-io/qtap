@@ -19,7 +19,7 @@ import (
 
 const (
 	Name             = "javassl"
-	AgentInstallPath = "/run/qtap/javassl"
+	AgentInstallPath = "/var/lib/qtap/javassl"
 )
 
 var (

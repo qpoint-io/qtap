@@ -7,7 +7,7 @@ The Qscan plugin detects sensitive entities (PII) in HTTP requests and responses
 ### Basic Settings
 
 - `cache_ttl`: How long to keep URLs in the cache (default: 24h)
-- `cache_size`: Maximum number of URLs to track (default: 4096)  
+- `cache_size`: Maximum number of URLs to track (default: 4096)
 - `sample_baseline`: Always sample first N requests per URL (default: 100)
 - `sample_rate`: Sample rate after baseline (default: 0.1 or 10%)
 
@@ -60,7 +60,7 @@ When using `record_document: true`, the saved JSON document has this structure:
 {
   "timestamp": "2023-01-01T12:00:00Z",
   "request_id": "req-123",
-  "endpoint_id": "endpoint-456", 
+  "endpoint_id": "endpoint-456",
   "request_method": "POST",
   "request_path": "/api/payment",
   "entities": [

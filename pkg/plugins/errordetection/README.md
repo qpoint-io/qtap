@@ -1,6 +1,6 @@
 # QPoint Error Detection Plugin
 
-The error detection plugin detects issues and errors and reports based on a configurable ruleset and will upload artifacts to Qpoint's Warehouse and Pulse for tracking and observability. 
+The error detection plugin detects issues and errors and reports based on a configurable ruleset and will upload artifacts to Qpoint's Warehouse and Pulse for tracking and observability.
 
 ### Configuration options:
 

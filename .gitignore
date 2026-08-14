@@ -49,3 +49,6 @@ CLAUDE.md
 CRUSH.md
 .crush/
 .claude/
+# jvm build artifacts
+jvm/dist/
+pkg/ebpf/tls/javassl/dist/

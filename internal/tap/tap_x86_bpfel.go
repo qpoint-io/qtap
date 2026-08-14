@@ -20,6 +20,11 @@ type TapAddrPortKey struct {
 	_    [2]byte
 }
 
+type TapCertKey struct {
+	Pid      uint32
+	FilePath [256]int8
+}
+
 type TapCloseArgs struct{ Fd int32 }
 
 type TapConnInfo struct {
@@ -64,10 +69,62 @@ type TapFdRequest struct {
 	_     [3]byte
 }
 
+type TapGoRegabiRegs struct{ Regs [9]uint64 }
+
+type TapGoTlsConnArgs struct {
+	ConnPtr      uint64
+	PlaintextPtr uint64
+}
+
+type TapGoTlsSymaddr struct {
+	InternalSyscallConn int64
+	TlsConn             int64
+	NetTcpConn          int64
+	FdSysfdOffset       int32
+	TlsConnOffset       int32
+	SyscallConnOffset   int32
+	GoidOffset          int32
+}
+
+type TapJavaSslArgs struct {
+	Fd  int32
+	_   [4]byte
+	Buf uint64
+	Len int32
+	_   [4]byte
+}
+
+type TapJavaSslEngineEvent struct {
+	Data struct {
+		Type uint64
+		Attr struct {
+			TimestampNs uint64
+			Pid         uint32
+			_           [4]byte
+			SessionId   uint64
+			Direction   uint32
+			DataType    uint32
+			MsgSize     uint32
+			_           [4]byte
+		}
+		Msg [30720]int8
+	}
+}
+
 type TapMgmtAddrs struct {
 	Ipv4 uint32
 	Ipv6 [4]uint32
 	Port uint32
+}
+
+type TapNodeTlsSymaddr struct {
+	TlsWrapStreamListenerOffset     int32
+	StreamListenerStreamOffset      int32
+	StreamBaseStreamResourceOffset  int32
+	LibuvStreamWrapStreamBaseOffset int32
+	LibuvStreamWrapStreamOffset     int32
+	UvStreamS_ioWatcherOffset       int32
+	UvIoS_fdOffset                  int32
 }
 
 type TapPidFdKey struct {
@@ -83,6 +140,15 @@ type TapProcessMeta struct {
 	ContainerId    [13]int8
 	Pad            [3]int8
 	_              [2]byte
+}
+
+type TapRdrSocket struct {
+	SrcAddr [4]uint32
+	SrcPort uint16
+	_       [2]byte
+	DstAddr [4]uint32
+	DstPort uint16
+	_       [2]byte
 }
 
 type TapSOCKET_SETTINGS uint32
@@ -164,6 +230,12 @@ type TapSocketTlsServerHelloEvent struct {
 	Data [30720]uint8
 }
 
+type TapTgidGoidT struct {
+	Tgid uint32
+	_    [4]byte
+	Goid int64
+}
+
 // LoadTap returns the embedded CollectionSpec for Tap.
 func LoadTap() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_TapBytes)
@@ -205,101 +277,153 @@ type TapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type TapProgramSpecs struct {
-	CleanupPidFdFileEntries      *ebpf.ProgramSpec `ebpf:"cleanup_pid_fd_file_entries"`
-	OpensslProbeEntrySSL_read    *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read"`
-	OpensslProbeEntrySSL_readEx  *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read_ex"`
-	OpensslProbeEntrySSL_setFd   *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_set_fd"`
-	OpensslProbeEntrySSL_write   *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write"`
-	OpensslProbeEntrySSL_writeEx *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write_ex"`
-	OpensslProbeRetSSL_read      *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_read"`
-	OpensslProbeRetSSL_readEx    *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_read_ex"`
-	OpensslProbeRetSSL_write     *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_write"`
-	OpensslProbeRetSSL_writeEx   *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_write_ex"`
-	OpensslProbeEntrySSL_free    *ebpf.ProgramSpec `ebpf:"openssl_probe_entry_SSL_free"`
-	OpensslProbeRetSSL_new       *ebpf.ProgramSpec `ebpf:"openssl_probe_ret_SSL_new"`
-	SyscallProbeEntryAccept      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_accept"`
-	SyscallProbeEntryAccept4     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_accept4"`
-	SyscallProbeEntryClose       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_close"`
-	SyscallProbeEntryConnect     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_connect"`
-	SyscallProbeEntryExecve      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execve"`
-	SyscallProbeEntryExecveat    *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execveat"`
-	SyscallProbeEntryExitGroup   *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_exit_group"`
-	SyscallProbeEntryRead        *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_read"`
-	SyscallProbeEntryReadv       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_readv"`
-	SyscallProbeEntryRecvfrom    *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvfrom"`
-	SyscallProbeEntryRecvmsg     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvmsg"`
-	SyscallProbeEntrySendmsg     *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendmsg"`
-	SyscallProbeEntrySendto      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendto"`
-	SyscallProbeEntrySocket      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_socket"`
-	SyscallProbeEntryWrite       *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_write"`
-	SyscallProbeEntryWritev      *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_writev"`
-	SyscallProbeRetAccept        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_accept"`
-	SyscallProbeRetAccept4       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_accept4"`
-	SyscallProbeRetClose         *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_close"`
-	SyscallProbeRetConnect       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_connect"`
-	SyscallProbeRetExecve        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execve"`
-	SyscallProbeRetExecveat      *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execveat"`
-	SyscallProbeRetRead          *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read"`
-	SyscallProbeRetReadInit      *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read_init"`
-	SyscallProbeRetReadv         *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv"`
-	SyscallProbeRetReadvInit     *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv_init"`
-	SyscallProbeRetRecvfrom      *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom"`
-	SyscallProbeRetRecvfromInit  *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom_init"`
-	SyscallProbeRetRecvmsg       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg"`
-	SyscallProbeRetRecvmsgInit   *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg_init"`
-	SyscallProbeRetSendmsg       *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg"`
-	SyscallProbeRetSendmsgInit   *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg_init"`
-	SyscallProbeRetSendto        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto"`
-	SyscallProbeRetSendtoInit    *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto_init"`
-	SyscallProbeRetSocket        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_socket"`
-	SyscallProbeRetWrite         *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_write"`
-	SyscallProbeRetWriteInit     *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_write_init"`
-	SyscallProbeRetWritev        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev"`
-	SyscallProbeRetWritevInit    *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev_init"`
-	TraceTcpClose                *ebpf.ProgramSpec `ebpf:"trace_tcp_close"`
-	TraceTcpRecvmsgFexit         *ebpf.ProgramSpec `ebpf:"trace_tcp_recvmsg_fexit"`
-	TraceTcpV4ConnectFexit       *ebpf.ProgramSpec `ebpf:"trace_tcp_v4_connect_fexit"`
-	TraceTcpV6ConnectFexit       *ebpf.ProgramSpec `ebpf:"trace_tcp_v6_connect_fexit"`
-	TracepointSchedProcessExit   *ebpf.ProgramSpec `ebpf:"tracepoint__sched__process_exit"`
-	TrackFdInstallEntry          *ebpf.ProgramSpec `ebpf:"track_fd_install_entry"`
-	TrackSockAllocFileEntry      *ebpf.ProgramSpec `ebpf:"track_sock_alloc_file_entry"`
-	TrackSockAllocFileRet        *ebpf.ProgramSpec `ebpf:"track_sock_alloc_file_ret"`
+	CgConnect4                         *ebpf.ProgramSpec `ebpf:"cg_connect4"`
+	CgConnect6                         *ebpf.ProgramSpec `ebpf:"cg_connect6"`
+	CgSockOps                          *ebpf.ProgramSpec `ebpf:"cg_sock_ops"`
+	CgSockOpt                          *ebpf.ProgramSpec `ebpf:"cg_sock_opt"`
+	CleanupPidFdFileEntries            *ebpf.ProgramSpec `ebpf:"cleanup_pid_fd_file_entries"`
+	GotlsProbeEntryTlsConnRead         *ebpf.ProgramSpec `ebpf:"gotls__probe_entry_tls_conn_read"`
+	GotlsProbeEntryTlsConnWrite        *ebpf.ProgramSpec `ebpf:"gotls__probe_entry_tls_conn_write"`
+	GotlsProbeRetTlsConnRead           *ebpf.ProgramSpec `ebpf:"gotls__probe_ret_tls_conn_read"`
+	GotlsProbeRetTlsConnWrite          *ebpf.ProgramSpec `ebpf:"gotls__probe_ret_tls_conn_write"`
+	JavaSslEngineSysEnterClose         *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_close"`
+	JavaSslEngineSysEnterRead          *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_read"`
+	JavaSslEngineSysEnterReadv         *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_readv"`
+	JavaSslEngineSysEnterRecvfrom      *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_recvfrom"`
+	JavaSslEngineSysEnterSendto        *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_sendto"`
+	JavaSslEngineSysEnterWrite         *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_write"`
+	JavaSslEngineSysEnterWritev        *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_enter_writev"`
+	JavaSslEngineSysExitRead           *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_read"`
+	JavaSslEngineSysExitReadv          *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_readv"`
+	JavaSslEngineSysExitRecvfrom       *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_recvfrom"`
+	JavaSslEngineSysExitSendto         *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_sendto"`
+	JavaSslEngineSysExitWrite          *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_write"`
+	JavaSslEngineSysExitWritev         *ebpf.ProgramSpec `ebpf:"java_ssl_engine_sys_exit_writev"`
+	JavaSslEngineUnwrapExit            *ebpf.ProgramSpec `ebpf:"java_ssl_engine_unwrap_exit"`
+	JavaSslEngineWrapExit              *ebpf.ProgramSpec `ebpf:"java_ssl_engine_wrap_exit"`
+	JavaSslReadEntry                   *ebpf.ProgramSpec `ebpf:"java_ssl_read_entry"`
+	JavaSslReadExit                    *ebpf.ProgramSpec `ebpf:"java_ssl_read_exit"`
+	JavaSslWriteEntry                  *ebpf.ProgramSpec `ebpf:"java_ssl_write_entry"`
+	JavaSslWriteExit                   *ebpf.ProgramSpec `ebpf:"java_ssl_write_exit"`
+	MonitorCertOpenEntry               *ebpf.ProgramSpec `ebpf:"monitor_cert_open_entry"`
+	NodetlsProbeEntrySSL_free          *ebpf.ProgramSpec `ebpf:"nodetls__probe_entry_SSL_free"`
+	NodetlsProbeEntrySSL_setCertCb     *ebpf.ProgramSpec `ebpf:"nodetls__probe_entry_SSL_set_cert_cb"`
+	NodetlsProbeEntryTLSWrapDestructor *ebpf.ProgramSpec `ebpf:"nodetls__probe_entry_TLSWrap_destructor"`
+	NodetlsProbeEntryTLSWrapMemfn      *ebpf.ProgramSpec `ebpf:"nodetls__probe_entry_TLSWrap_memfn"`
+	OpensslProbeEntrySSL_read          *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read"`
+	OpensslProbeEntrySSL_readEx        *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_read_ex"`
+	OpensslProbeEntrySSL_setFd         *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_set_fd"`
+	OpensslProbeEntrySSL_write         *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write"`
+	OpensslProbeEntrySSL_writeEx       *ebpf.ProgramSpec `ebpf:"openssl__probe_entry_SSL_write_ex"`
+	OpensslProbeRetSSL_read            *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_read"`
+	OpensslProbeRetSSL_readEx          *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_read_ex"`
+	OpensslProbeRetSSL_write           *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_write"`
+	OpensslProbeRetSSL_writeEx         *ebpf.ProgramSpec `ebpf:"openssl__probe_ret_SSL_write_ex"`
+	OpensslProbeEntrySSL_free          *ebpf.ProgramSpec `ebpf:"openssl_probe_entry_SSL_free"`
+	OpensslProbeRetSSL_new             *ebpf.ProgramSpec `ebpf:"openssl_probe_ret_SSL_new"`
+	SyscallProbeEntryAccept            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_accept"`
+	SyscallProbeEntryAccept4           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_accept4"`
+	SyscallProbeEntryClose             *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_close"`
+	SyscallProbeEntryConnect           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_connect"`
+	SyscallProbeEntryExecve            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execve"`
+	SyscallProbeEntryExecveat          *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execveat"`
+	SyscallProbeEntryExitGroup         *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_exit_group"`
+	SyscallProbeEntryRead              *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_read"`
+	SyscallProbeEntryReadv             *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_readv"`
+	SyscallProbeEntryRecvfrom          *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvfrom"`
+	SyscallProbeEntryRecvmsg           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_recvmsg"`
+	SyscallProbeEntrySendmsg           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendmsg"`
+	SyscallProbeEntrySendto            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_sendto"`
+	SyscallProbeEntrySocket            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_socket"`
+	SyscallProbeEntryWrite             *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_write"`
+	SyscallProbeEntryWritev            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_writev"`
+	SyscallProbeRetAccept              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_accept"`
+	SyscallProbeRetAccept4             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_accept4"`
+	SyscallProbeRetClose               *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_close"`
+	SyscallProbeRetConnect             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_connect"`
+	SyscallProbeRetExecve              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execve"`
+	SyscallProbeRetExecveat            *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execveat"`
+	SyscallProbeRetRead                *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read"`
+	SyscallProbeRetReadInit            *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read_init"`
+	SyscallProbeRetReadv               *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv"`
+	SyscallProbeRetReadvInit           *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv_init"`
+	SyscallProbeRetRecvfrom            *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom"`
+	SyscallProbeRetRecvfromInit        *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvfrom_init"`
+	SyscallProbeRetRecvmsg             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg"`
+	SyscallProbeRetRecvmsgInit         *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_recvmsg_init"`
+	SyscallProbeRetSendmsg             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg"`
+	SyscallProbeRetSendmsgInit         *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendmsg_init"`
+	SyscallProbeRetSendto              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto"`
+	SyscallProbeRetSendtoInit          *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_sendto_init"`
+	SyscallProbeRetSocket              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_socket"`
+	SyscallProbeRetWrite               *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_write"`
+	SyscallProbeRetWriteInit           *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_write_init"`
+	SyscallProbeRetWritev              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev"`
+	SyscallProbeRetWritevInit          *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_writev_init"`
+	TraceTcpClose                      *ebpf.ProgramSpec `ebpf:"trace_tcp_close"`
+	TraceTcpRecvmsgFexit               *ebpf.ProgramSpec `ebpf:"trace_tcp_recvmsg_fexit"`
+	TraceTcpV4ConnectFexit             *ebpf.ProgramSpec `ebpf:"trace_tcp_v4_connect_fexit"`
+	TraceTcpV6ConnectFexit             *ebpf.ProgramSpec `ebpf:"trace_tcp_v6_connect_fexit"`
+	TracepointSchedProcessExit         *ebpf.ProgramSpec `ebpf:"tracepoint__sched__process_exit"`
+	TrackFdInstallEntry                *ebpf.ProgramSpec `ebpf:"track_fd_install_entry"`
+	TrackSockAllocFileEntry            *ebpf.ProgramSpec `ebpf:"track_sock_alloc_file_entry"`
+	TrackSockAllocFileRet              *ebpf.ProgramSpec `ebpf:"track_sock_alloc_file_ret"`
 }
 
 // TapMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type TapMapSpecs struct {
-	ActiveAddrArgsMap             *ebpf.MapSpec `ebpf:"active_addr_args_map"`
-	ActiveCloseArgsMap            *ebpf.MapSpec `ebpf:"active_close_args_map"`
-	ActiveFdArgsMap               *ebpf.MapSpec `ebpf:"active_fd_args_map"`
-	ActiveFileToPidFdMap          *ebpf.MapSpec `ebpf:"active_file_to_pid_fd_map"`
-	ActiveFileToSockMap           *ebpf.MapSpec `ebpf:"active_file_to_sock_map"`
-	ActiveReadArgsMap             *ebpf.MapSpec `ebpf:"active_read_args_map"`
-	ActiveSockAllocFileArgs       *ebpf.MapSpec `ebpf:"active_sock_alloc_file_args"`
-	ActiveSocketArgsMap           *ebpf.MapSpec `ebpf:"active_socket_args_map"`
-	ActiveSocketTypes             *ebpf.MapSpec `ebpf:"active_socket_types"`
-	ActiveSslReadArgsMap          *ebpf.MapSpec `ebpf:"active_ssl_read_args_map"`
-	ActiveSslWriteArgsMap         *ebpf.MapSpec `ebpf:"active_ssl_write_args_map"`
-	ActiveTcpSourceAddrMap        *ebpf.MapSpec `ebpf:"active_tcp_source_addr_map"`
-	ActiveWriteArgsMap            *ebpf.MapSpec `ebpf:"active_write_args_map"`
-	AddrPortToPidMap              *ebpf.MapSpec `ebpf:"addr_port_to_pid_map"`
-	ConnInfoMap                   *ebpf.MapSpec `ebpf:"conn_info_map"`
-	ExitCodeMap                   *ebpf.MapSpec `ebpf:"exit_code_map"`
-	MgmtAddrs                     *ebpf.MapSpec `ebpf:"mgmt_addrs"`
-	PidFdToSockMap                *ebpf.MapSpec `ebpf:"pid_fd_to_sock_map"`
-	ProcEvents                    *ebpf.MapSpec `ebpf:"proc_events"`
-	ProcessMetaMap                *ebpf.MapSpec `ebpf:"process_meta_map"`
-	SocketDataEventBufferHeap     *ebpf.MapSpec `ebpf:"socket_data_event_buffer_heap"`
-	SocketEvents                  *ebpf.MapSpec `ebpf:"socket_events"`
-	SocketHostnameEventHeap       *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
-	SocketSettingsMap             *ebpf.MapSpec `ebpf:"socket_settings_map"`
-	SocketTlsClientHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_client_hello_event_heap"`
-	SocketTlsServerHelloEventHeap *ebpf.MapSpec `ebpf:"socket_tls_server_hello_event_heap"`
-	SslToFdMap                    *ebpf.MapSpec `ebpf:"ssl_to_fd_map"`
-	TraceEvents                   *ebpf.MapSpec `ebpf:"trace_events"`
-	TraceToggleMap                *ebpf.MapSpec `ebpf:"trace_toggle_map"`
-	UprobeFdRequests              *ebpf.MapSpec `ebpf:"uprobe_fd_requests"`
+	ActiveAddrArgsMap                 *ebpf.MapSpec `ebpf:"active_addr_args_map"`
+	ActiveCloseArgsMap                *ebpf.MapSpec `ebpf:"active_close_args_map"`
+	ActiveFdArgsMap                   *ebpf.MapSpec `ebpf:"active_fd_args_map"`
+	ActiveFileToPidFdMap              *ebpf.MapSpec `ebpf:"active_file_to_pid_fd_map"`
+	ActiveFileToSockMap               *ebpf.MapSpec `ebpf:"active_file_to_sock_map"`
+	ActiveReadArgsMap                 *ebpf.MapSpec `ebpf:"active_read_args_map"`
+	ActiveSockAllocFileArgs           *ebpf.MapSpec `ebpf:"active_sock_alloc_file_args"`
+	ActiveSocketArgsMap               *ebpf.MapSpec `ebpf:"active_socket_args_map"`
+	ActiveSocketTypes                 *ebpf.MapSpec `ebpf:"active_socket_types"`
+	ActiveSslReadArgsMap              *ebpf.MapSpec `ebpf:"active_ssl_read_args_map"`
+	ActiveSslWriteArgsMap             *ebpf.MapSpec `ebpf:"active_ssl_write_args_map"`
+	ActiveTcpSourceAddrMap            *ebpf.MapSpec `ebpf:"active_tcp_source_addr_map"`
+	ActiveTlsConnOpMap                *ebpf.MapSpec `ebpf:"active_tls_conn_op_map"`
+	ActiveWriteArgsMap                *ebpf.MapSpec `ebpf:"active_write_args_map"`
+	AddrPortToPidMap                  *ebpf.MapSpec `ebpf:"addr_port_to_pid_map"`
+	CertEvents                        *ebpf.MapSpec `ebpf:"cert_events"`
+	ConnInfoMap                       *ebpf.MapSpec `ebpf:"conn_info_map"`
+	ExitCodeMap                       *ebpf.MapSpec `ebpf:"exit_code_map"`
+	GoTlsSymaddrsMap                  *ebpf.MapSpec `ebpf:"go_tls_symaddrs_map"`
+	JavaActiveSslReadArgsMap          *ebpf.MapSpec `ebpf:"java_active_ssl_read_args_map"`
+	JavaActiveSslSyscallArgsMap       *ebpf.MapSpec `ebpf:"java_active_ssl_syscall_args_map"`
+	JavaActiveSslWriteArgsMap         *ebpf.MapSpec `ebpf:"java_active_ssl_write_args_map"`
+	JavaProcessPidMap                 *ebpf.MapSpec `ebpf:"java_process_pid_map"`
+	JavaSslEngineEventHeap            *ebpf.MapSpec `ebpf:"java_ssl_engine_event_heap"`
+	JavaSslEngineEvents               *ebpf.MapSpec `ebpf:"java_ssl_engine_events"`
+	JavaSslEngineSessionIgnoreMap     *ebpf.MapSpec `ebpf:"java_ssl_engine_session_ignore_map"`
+	JavaSslEngineSyscallCorrelatedMap *ebpf.MapSpec `ebpf:"java_ssl_engine_syscall_correlated_map"`
+	JavaSslEngineUprobeCorrelatedMap  *ebpf.MapSpec `ebpf:"java_ssl_engine_uprobe_correlated_map"`
+	MapPorts                          *ebpf.MapSpec `ebpf:"map_ports"`
+	MapSocks                          *ebpf.MapSpec `ebpf:"map_socks"`
+	MgmtAddrs                         *ebpf.MapSpec `ebpf:"mgmt_addrs"`
+	NodeSslToTlswrapMap               *ebpf.MapSpec `ebpf:"node_ssl_to_tlswrap_map"`
+	NodeTlsSymaddrsMap                *ebpf.MapSpec `ebpf:"node_tls_symaddrs_map"`
+	NodeTlswrapExistsMap              *ebpf.MapSpec `ebpf:"node_tlswrap_exists_map"`
+	NodeTlswrapToSslMap               *ebpf.MapSpec `ebpf:"node_tlswrap_to_ssl_map"`
+	PidCertMap                        *ebpf.MapSpec `ebpf:"pid_cert_map"`
+	PidFdToSockMap                    *ebpf.MapSpec `ebpf:"pid_fd_to_sock_map"`
+	ProcEvents                        *ebpf.MapSpec `ebpf:"proc_events"`
+	ProcessMetaMap                    *ebpf.MapSpec `ebpf:"process_meta_map"`
+	RegsHeap                          *ebpf.MapSpec `ebpf:"regs_heap"`
+	SocketDataEventBufferHeap         *ebpf.MapSpec `ebpf:"socket_data_event_buffer_heap"`
+	SocketEvents                      *ebpf.MapSpec `ebpf:"socket_events"`
+	SocketHostnameEventHeap           *ebpf.MapSpec `ebpf:"socket_hostname_event_heap"`
+	SocketSettingsMap                 *ebpf.MapSpec `ebpf:"socket_settings_map"`
+	SocketTlsClientHelloEventHeap     *ebpf.MapSpec `ebpf:"socket_tls_client_hello_event_heap"`
+	SocketTlsServerHelloEventHeap     *ebpf.MapSpec `ebpf:"socket_tls_server_hello_event_heap"`
+	SslToFdMap                        *ebpf.MapSpec `ebpf:"ssl_to_fd_map"`
+	TraceEvents                       *ebpf.MapSpec `ebpf:"trace_events"`
+	TraceToggleMap                    *ebpf.MapSpec `ebpf:"trace_toggle_map"`
+	UprobeFdRequests                  *ebpf.MapSpec `ebpf:"uprobe_fd_requests"`
 }
 
 // TapObjects contains all objects after they have been loaded into the kernel.
@@ -321,36 +445,56 @@ func (o *TapObjects) Close() error {
 //
 // It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TapMaps struct {
-	ActiveAddrArgsMap             *ebpf.Map `ebpf:"active_addr_args_map"`
-	ActiveCloseArgsMap            *ebpf.Map `ebpf:"active_close_args_map"`
-	ActiveFdArgsMap               *ebpf.Map `ebpf:"active_fd_args_map"`
-	ActiveFileToPidFdMap          *ebpf.Map `ebpf:"active_file_to_pid_fd_map"`
-	ActiveFileToSockMap           *ebpf.Map `ebpf:"active_file_to_sock_map"`
-	ActiveReadArgsMap             *ebpf.Map `ebpf:"active_read_args_map"`
-	ActiveSockAllocFileArgs       *ebpf.Map `ebpf:"active_sock_alloc_file_args"`
-	ActiveSocketArgsMap           *ebpf.Map `ebpf:"active_socket_args_map"`
-	ActiveSocketTypes             *ebpf.Map `ebpf:"active_socket_types"`
-	ActiveSslReadArgsMap          *ebpf.Map `ebpf:"active_ssl_read_args_map"`
-	ActiveSslWriteArgsMap         *ebpf.Map `ebpf:"active_ssl_write_args_map"`
-	ActiveTcpSourceAddrMap        *ebpf.Map `ebpf:"active_tcp_source_addr_map"`
-	ActiveWriteArgsMap            *ebpf.Map `ebpf:"active_write_args_map"`
-	AddrPortToPidMap              *ebpf.Map `ebpf:"addr_port_to_pid_map"`
-	ConnInfoMap                   *ebpf.Map `ebpf:"conn_info_map"`
-	ExitCodeMap                   *ebpf.Map `ebpf:"exit_code_map"`
-	MgmtAddrs                     *ebpf.Map `ebpf:"mgmt_addrs"`
-	PidFdToSockMap                *ebpf.Map `ebpf:"pid_fd_to_sock_map"`
-	ProcEvents                    *ebpf.Map `ebpf:"proc_events"`
-	ProcessMetaMap                *ebpf.Map `ebpf:"process_meta_map"`
-	SocketDataEventBufferHeap     *ebpf.Map `ebpf:"socket_data_event_buffer_heap"`
-	SocketEvents                  *ebpf.Map `ebpf:"socket_events"`
-	SocketHostnameEventHeap       *ebpf.Map `ebpf:"socket_hostname_event_heap"`
-	SocketSettingsMap             *ebpf.Map `ebpf:"socket_settings_map"`
-	SocketTlsClientHelloEventHeap *ebpf.Map `ebpf:"socket_tls_client_hello_event_heap"`
-	SocketTlsServerHelloEventHeap *ebpf.Map `ebpf:"socket_tls_server_hello_event_heap"`
-	SslToFdMap                    *ebpf.Map `ebpf:"ssl_to_fd_map"`
-	TraceEvents                   *ebpf.Map `ebpf:"trace_events"`
-	TraceToggleMap                *ebpf.Map `ebpf:"trace_toggle_map"`
-	UprobeFdRequests              *ebpf.Map `ebpf:"uprobe_fd_requests"`
+	ActiveAddrArgsMap                 *ebpf.Map `ebpf:"active_addr_args_map"`
+	ActiveCloseArgsMap                *ebpf.Map `ebpf:"active_close_args_map"`
+	ActiveFdArgsMap                   *ebpf.Map `ebpf:"active_fd_args_map"`
+	ActiveFileToPidFdMap              *ebpf.Map `ebpf:"active_file_to_pid_fd_map"`
+	ActiveFileToSockMap               *ebpf.Map `ebpf:"active_file_to_sock_map"`
+	ActiveReadArgsMap                 *ebpf.Map `ebpf:"active_read_args_map"`
+	ActiveSockAllocFileArgs           *ebpf.Map `ebpf:"active_sock_alloc_file_args"`
+	ActiveSocketArgsMap               *ebpf.Map `ebpf:"active_socket_args_map"`
+	ActiveSocketTypes                 *ebpf.Map `ebpf:"active_socket_types"`
+	ActiveSslReadArgsMap              *ebpf.Map `ebpf:"active_ssl_read_args_map"`
+	ActiveSslWriteArgsMap             *ebpf.Map `ebpf:"active_ssl_write_args_map"`
+	ActiveTcpSourceAddrMap            *ebpf.Map `ebpf:"active_tcp_source_addr_map"`
+	ActiveTlsConnOpMap                *ebpf.Map `ebpf:"active_tls_conn_op_map"`
+	ActiveWriteArgsMap                *ebpf.Map `ebpf:"active_write_args_map"`
+	AddrPortToPidMap                  *ebpf.Map `ebpf:"addr_port_to_pid_map"`
+	CertEvents                        *ebpf.Map `ebpf:"cert_events"`
+	ConnInfoMap                       *ebpf.Map `ebpf:"conn_info_map"`
+	ExitCodeMap                       *ebpf.Map `ebpf:"exit_code_map"`
+	GoTlsSymaddrsMap                  *ebpf.Map `ebpf:"go_tls_symaddrs_map"`
+	JavaActiveSslReadArgsMap          *ebpf.Map `ebpf:"java_active_ssl_read_args_map"`
+	JavaActiveSslSyscallArgsMap       *ebpf.Map `ebpf:"java_active_ssl_syscall_args_map"`
+	JavaActiveSslWriteArgsMap         *ebpf.Map `ebpf:"java_active_ssl_write_args_map"`
+	JavaProcessPidMap                 *ebpf.Map `ebpf:"java_process_pid_map"`
+	JavaSslEngineEventHeap            *ebpf.Map `ebpf:"java_ssl_engine_event_heap"`
+	JavaSslEngineEvents               *ebpf.Map `ebpf:"java_ssl_engine_events"`
+	JavaSslEngineSessionIgnoreMap     *ebpf.Map `ebpf:"java_ssl_engine_session_ignore_map"`
+	JavaSslEngineSyscallCorrelatedMap *ebpf.Map `ebpf:"java_ssl_engine_syscall_correlated_map"`
+	JavaSslEngineUprobeCorrelatedMap  *ebpf.Map `ebpf:"java_ssl_engine_uprobe_correlated_map"`
+	MapPorts                          *ebpf.Map `ebpf:"map_ports"`
+	MapSocks                          *ebpf.Map `ebpf:"map_socks"`
+	MgmtAddrs                         *ebpf.Map `ebpf:"mgmt_addrs"`
+	NodeSslToTlswrapMap               *ebpf.Map `ebpf:"node_ssl_to_tlswrap_map"`
+	NodeTlsSymaddrsMap                *ebpf.Map `ebpf:"node_tls_symaddrs_map"`
+	NodeTlswrapExistsMap              *ebpf.Map `ebpf:"node_tlswrap_exists_map"`
+	NodeTlswrapToSslMap               *ebpf.Map `ebpf:"node_tlswrap_to_ssl_map"`
+	PidCertMap                        *ebpf.Map `ebpf:"pid_cert_map"`
+	PidFdToSockMap                    *ebpf.Map `ebpf:"pid_fd_to_sock_map"`
+	ProcEvents                        *ebpf.Map `ebpf:"proc_events"`
+	ProcessMetaMap                    *ebpf.Map `ebpf:"process_meta_map"`
+	RegsHeap                          *ebpf.Map `ebpf:"regs_heap"`
+	SocketDataEventBufferHeap         *ebpf.Map `ebpf:"socket_data_event_buffer_heap"`
+	SocketEvents                      *ebpf.Map `ebpf:"socket_events"`
+	SocketHostnameEventHeap           *ebpf.Map `ebpf:"socket_hostname_event_heap"`
+	SocketSettingsMap                 *ebpf.Map `ebpf:"socket_settings_map"`
+	SocketTlsClientHelloEventHeap     *ebpf.Map `ebpf:"socket_tls_client_hello_event_heap"`
+	SocketTlsServerHelloEventHeap     *ebpf.Map `ebpf:"socket_tls_server_hello_event_heap"`
+	SslToFdMap                        *ebpf.Map `ebpf:"ssl_to_fd_map"`
+	TraceEvents                       *ebpf.Map `ebpf:"trace_events"`
+	TraceToggleMap                    *ebpf.Map `ebpf:"trace_toggle_map"`
+	UprobeFdRequests                  *ebpf.Map `ebpf:"uprobe_fd_requests"`
 }
 
 func (m *TapMaps) Close() error {
@@ -367,14 +511,34 @@ func (m *TapMaps) Close() error {
 		m.ActiveSslReadArgsMap,
 		m.ActiveSslWriteArgsMap,
 		m.ActiveTcpSourceAddrMap,
+		m.ActiveTlsConnOpMap,
 		m.ActiveWriteArgsMap,
 		m.AddrPortToPidMap,
+		m.CertEvents,
 		m.ConnInfoMap,
 		m.ExitCodeMap,
+		m.GoTlsSymaddrsMap,
+		m.JavaActiveSslReadArgsMap,
+		m.JavaActiveSslSyscallArgsMap,
+		m.JavaActiveSslWriteArgsMap,
+		m.JavaProcessPidMap,
+		m.JavaSslEngineEventHeap,
+		m.JavaSslEngineEvents,
+		m.JavaSslEngineSessionIgnoreMap,
+		m.JavaSslEngineSyscallCorrelatedMap,
+		m.JavaSslEngineUprobeCorrelatedMap,
+		m.MapPorts,
+		m.MapSocks,
 		m.MgmtAddrs,
+		m.NodeSslToTlswrapMap,
+		m.NodeTlsSymaddrsMap,
+		m.NodeTlswrapExistsMap,
+		m.NodeTlswrapToSslMap,
+		m.PidCertMap,
 		m.PidFdToSockMap,
 		m.ProcEvents,
 		m.ProcessMetaMap,
+		m.RegsHeap,
 		m.SocketDataEventBufferHeap,
 		m.SocketEvents,
 		m.SocketHostnameEventHeap,
@@ -392,70 +556,134 @@ func (m *TapMaps) Close() error {
 //
 // It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TapPrograms struct {
-	CleanupPidFdFileEntries      *ebpf.Program `ebpf:"cleanup_pid_fd_file_entries"`
-	OpensslProbeEntrySSL_read    *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read"`
-	OpensslProbeEntrySSL_readEx  *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read_ex"`
-	OpensslProbeEntrySSL_setFd   *ebpf.Program `ebpf:"openssl__probe_entry_SSL_set_fd"`
-	OpensslProbeEntrySSL_write   *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write"`
-	OpensslProbeEntrySSL_writeEx *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write_ex"`
-	OpensslProbeRetSSL_read      *ebpf.Program `ebpf:"openssl__probe_ret_SSL_read"`
-	OpensslProbeRetSSL_readEx    *ebpf.Program `ebpf:"openssl__probe_ret_SSL_read_ex"`
-	OpensslProbeRetSSL_write     *ebpf.Program `ebpf:"openssl__probe_ret_SSL_write"`
-	OpensslProbeRetSSL_writeEx   *ebpf.Program `ebpf:"openssl__probe_ret_SSL_write_ex"`
-	OpensslProbeEntrySSL_free    *ebpf.Program `ebpf:"openssl_probe_entry_SSL_free"`
-	OpensslProbeRetSSL_new       *ebpf.Program `ebpf:"openssl_probe_ret_SSL_new"`
-	SyscallProbeEntryAccept      *ebpf.Program `ebpf:"syscall__probe_entry_accept"`
-	SyscallProbeEntryAccept4     *ebpf.Program `ebpf:"syscall__probe_entry_accept4"`
-	SyscallProbeEntryClose       *ebpf.Program `ebpf:"syscall__probe_entry_close"`
-	SyscallProbeEntryConnect     *ebpf.Program `ebpf:"syscall__probe_entry_connect"`
-	SyscallProbeEntryExecve      *ebpf.Program `ebpf:"syscall__probe_entry_execve"`
-	SyscallProbeEntryExecveat    *ebpf.Program `ebpf:"syscall__probe_entry_execveat"`
-	SyscallProbeEntryExitGroup   *ebpf.Program `ebpf:"syscall__probe_entry_exit_group"`
-	SyscallProbeEntryRead        *ebpf.Program `ebpf:"syscall__probe_entry_read"`
-	SyscallProbeEntryReadv       *ebpf.Program `ebpf:"syscall__probe_entry_readv"`
-	SyscallProbeEntryRecvfrom    *ebpf.Program `ebpf:"syscall__probe_entry_recvfrom"`
-	SyscallProbeEntryRecvmsg     *ebpf.Program `ebpf:"syscall__probe_entry_recvmsg"`
-	SyscallProbeEntrySendmsg     *ebpf.Program `ebpf:"syscall__probe_entry_sendmsg"`
-	SyscallProbeEntrySendto      *ebpf.Program `ebpf:"syscall__probe_entry_sendto"`
-	SyscallProbeEntrySocket      *ebpf.Program `ebpf:"syscall__probe_entry_socket"`
-	SyscallProbeEntryWrite       *ebpf.Program `ebpf:"syscall__probe_entry_write"`
-	SyscallProbeEntryWritev      *ebpf.Program `ebpf:"syscall__probe_entry_writev"`
-	SyscallProbeRetAccept        *ebpf.Program `ebpf:"syscall__probe_ret_accept"`
-	SyscallProbeRetAccept4       *ebpf.Program `ebpf:"syscall__probe_ret_accept4"`
-	SyscallProbeRetClose         *ebpf.Program `ebpf:"syscall__probe_ret_close"`
-	SyscallProbeRetConnect       *ebpf.Program `ebpf:"syscall__probe_ret_connect"`
-	SyscallProbeRetExecve        *ebpf.Program `ebpf:"syscall__probe_ret_execve"`
-	SyscallProbeRetExecveat      *ebpf.Program `ebpf:"syscall__probe_ret_execveat"`
-	SyscallProbeRetRead          *ebpf.Program `ebpf:"syscall__probe_ret_read"`
-	SyscallProbeRetReadInit      *ebpf.Program `ebpf:"syscall__probe_ret_read_init"`
-	SyscallProbeRetReadv         *ebpf.Program `ebpf:"syscall__probe_ret_readv"`
-	SyscallProbeRetReadvInit     *ebpf.Program `ebpf:"syscall__probe_ret_readv_init"`
-	SyscallProbeRetRecvfrom      *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom"`
-	SyscallProbeRetRecvfromInit  *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom_init"`
-	SyscallProbeRetRecvmsg       *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg"`
-	SyscallProbeRetRecvmsgInit   *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg_init"`
-	SyscallProbeRetSendmsg       *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg"`
-	SyscallProbeRetSendmsgInit   *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg_init"`
-	SyscallProbeRetSendto        *ebpf.Program `ebpf:"syscall__probe_ret_sendto"`
-	SyscallProbeRetSendtoInit    *ebpf.Program `ebpf:"syscall__probe_ret_sendto_init"`
-	SyscallProbeRetSocket        *ebpf.Program `ebpf:"syscall__probe_ret_socket"`
-	SyscallProbeRetWrite         *ebpf.Program `ebpf:"syscall__probe_ret_write"`
-	SyscallProbeRetWriteInit     *ebpf.Program `ebpf:"syscall__probe_ret_write_init"`
-	SyscallProbeRetWritev        *ebpf.Program `ebpf:"syscall__probe_ret_writev"`
-	SyscallProbeRetWritevInit    *ebpf.Program `ebpf:"syscall__probe_ret_writev_init"`
-	TraceTcpClose                *ebpf.Program `ebpf:"trace_tcp_close"`
-	TraceTcpRecvmsgFexit         *ebpf.Program `ebpf:"trace_tcp_recvmsg_fexit"`
-	TraceTcpV4ConnectFexit       *ebpf.Program `ebpf:"trace_tcp_v4_connect_fexit"`
-	TraceTcpV6ConnectFexit       *ebpf.Program `ebpf:"trace_tcp_v6_connect_fexit"`
-	TracepointSchedProcessExit   *ebpf.Program `ebpf:"tracepoint__sched__process_exit"`
-	TrackFdInstallEntry          *ebpf.Program `ebpf:"track_fd_install_entry"`
-	TrackSockAllocFileEntry      *ebpf.Program `ebpf:"track_sock_alloc_file_entry"`
-	TrackSockAllocFileRet        *ebpf.Program `ebpf:"track_sock_alloc_file_ret"`
+	CgConnect4                         *ebpf.Program `ebpf:"cg_connect4"`
+	CgConnect6                         *ebpf.Program `ebpf:"cg_connect6"`
+	CgSockOps                          *ebpf.Program `ebpf:"cg_sock_ops"`
+	CgSockOpt                          *ebpf.Program `ebpf:"cg_sock_opt"`
+	CleanupPidFdFileEntries            *ebpf.Program `ebpf:"cleanup_pid_fd_file_entries"`
+	GotlsProbeEntryTlsConnRead         *ebpf.Program `ebpf:"gotls__probe_entry_tls_conn_read"`
+	GotlsProbeEntryTlsConnWrite        *ebpf.Program `ebpf:"gotls__probe_entry_tls_conn_write"`
+	GotlsProbeRetTlsConnRead           *ebpf.Program `ebpf:"gotls__probe_ret_tls_conn_read"`
+	GotlsProbeRetTlsConnWrite          *ebpf.Program `ebpf:"gotls__probe_ret_tls_conn_write"`
+	JavaSslEngineSysEnterClose         *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_close"`
+	JavaSslEngineSysEnterRead          *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_read"`
+	JavaSslEngineSysEnterReadv         *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_readv"`
+	JavaSslEngineSysEnterRecvfrom      *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_recvfrom"`
+	JavaSslEngineSysEnterSendto        *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_sendto"`
+	JavaSslEngineSysEnterWrite         *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_write"`
+	JavaSslEngineSysEnterWritev        *ebpf.Program `ebpf:"java_ssl_engine_sys_enter_writev"`
+	JavaSslEngineSysExitRead           *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_read"`
+	JavaSslEngineSysExitReadv          *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_readv"`
+	JavaSslEngineSysExitRecvfrom       *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_recvfrom"`
+	JavaSslEngineSysExitSendto         *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_sendto"`
+	JavaSslEngineSysExitWrite          *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_write"`
+	JavaSslEngineSysExitWritev         *ebpf.Program `ebpf:"java_ssl_engine_sys_exit_writev"`
+	JavaSslEngineUnwrapExit            *ebpf.Program `ebpf:"java_ssl_engine_unwrap_exit"`
+	JavaSslEngineWrapExit              *ebpf.Program `ebpf:"java_ssl_engine_wrap_exit"`
+	JavaSslReadEntry                   *ebpf.Program `ebpf:"java_ssl_read_entry"`
+	JavaSslReadExit                    *ebpf.Program `ebpf:"java_ssl_read_exit"`
+	JavaSslWriteEntry                  *ebpf.Program `ebpf:"java_ssl_write_entry"`
+	JavaSslWriteExit                   *ebpf.Program `ebpf:"java_ssl_write_exit"`
+	MonitorCertOpenEntry               *ebpf.Program `ebpf:"monitor_cert_open_entry"`
+	NodetlsProbeEntrySSL_free          *ebpf.Program `ebpf:"nodetls__probe_entry_SSL_free"`
+	NodetlsProbeEntrySSL_setCertCb     *ebpf.Program `ebpf:"nodetls__probe_entry_SSL_set_cert_cb"`
+	NodetlsProbeEntryTLSWrapDestructor *ebpf.Program `ebpf:"nodetls__probe_entry_TLSWrap_destructor"`
+	NodetlsProbeEntryTLSWrapMemfn      *ebpf.Program `ebpf:"nodetls__probe_entry_TLSWrap_memfn"`
+	OpensslProbeEntrySSL_read          *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read"`
+	OpensslProbeEntrySSL_readEx        *ebpf.Program `ebpf:"openssl__probe_entry_SSL_read_ex"`
+	OpensslProbeEntrySSL_setFd         *ebpf.Program `ebpf:"openssl__probe_entry_SSL_set_fd"`
+	OpensslProbeEntrySSL_write         *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write"`
+	OpensslProbeEntrySSL_writeEx       *ebpf.Program `ebpf:"openssl__probe_entry_SSL_write_ex"`
+	OpensslProbeRetSSL_read            *ebpf.Program `ebpf:"openssl__probe_ret_SSL_read"`
+	OpensslProbeRetSSL_readEx          *ebpf.Program `ebpf:"openssl__probe_ret_SSL_read_ex"`
+	OpensslProbeRetSSL_write           *ebpf.Program `ebpf:"openssl__probe_ret_SSL_write"`
+	OpensslProbeRetSSL_writeEx         *ebpf.Program `ebpf:"openssl__probe_ret_SSL_write_ex"`
+	OpensslProbeEntrySSL_free          *ebpf.Program `ebpf:"openssl_probe_entry_SSL_free"`
+	OpensslProbeRetSSL_new             *ebpf.Program `ebpf:"openssl_probe_ret_SSL_new"`
+	SyscallProbeEntryAccept            *ebpf.Program `ebpf:"syscall__probe_entry_accept"`
+	SyscallProbeEntryAccept4           *ebpf.Program `ebpf:"syscall__probe_entry_accept4"`
+	SyscallProbeEntryClose             *ebpf.Program `ebpf:"syscall__probe_entry_close"`
+	SyscallProbeEntryConnect           *ebpf.Program `ebpf:"syscall__probe_entry_connect"`
+	SyscallProbeEntryExecve            *ebpf.Program `ebpf:"syscall__probe_entry_execve"`
+	SyscallProbeEntryExecveat          *ebpf.Program `ebpf:"syscall__probe_entry_execveat"`
+	SyscallProbeEntryExitGroup         *ebpf.Program `ebpf:"syscall__probe_entry_exit_group"`
+	SyscallProbeEntryRead              *ebpf.Program `ebpf:"syscall__probe_entry_read"`
+	SyscallProbeEntryReadv             *ebpf.Program `ebpf:"syscall__probe_entry_readv"`
+	SyscallProbeEntryRecvfrom          *ebpf.Program `ebpf:"syscall__probe_entry_recvfrom"`
+	SyscallProbeEntryRecvmsg           *ebpf.Program `ebpf:"syscall__probe_entry_recvmsg"`
+	SyscallProbeEntrySendmsg           *ebpf.Program `ebpf:"syscall__probe_entry_sendmsg"`
+	SyscallProbeEntrySendto            *ebpf.Program `ebpf:"syscall__probe_entry_sendto"`
+	SyscallProbeEntrySocket            *ebpf.Program `ebpf:"syscall__probe_entry_socket"`
+	SyscallProbeEntryWrite             *ebpf.Program `ebpf:"syscall__probe_entry_write"`
+	SyscallProbeEntryWritev            *ebpf.Program `ebpf:"syscall__probe_entry_writev"`
+	SyscallProbeRetAccept              *ebpf.Program `ebpf:"syscall__probe_ret_accept"`
+	SyscallProbeRetAccept4             *ebpf.Program `ebpf:"syscall__probe_ret_accept4"`
+	SyscallProbeRetClose               *ebpf.Program `ebpf:"syscall__probe_ret_close"`
+	SyscallProbeRetConnect             *ebpf.Program `ebpf:"syscall__probe_ret_connect"`
+	SyscallProbeRetExecve              *ebpf.Program `ebpf:"syscall__probe_ret_execve"`
+	SyscallProbeRetExecveat            *ebpf.Program `ebpf:"syscall__probe_ret_execveat"`
+	SyscallProbeRetRead                *ebpf.Program `ebpf:"syscall__probe_ret_read"`
+	SyscallProbeRetReadInit            *ebpf.Program `ebpf:"syscall__probe_ret_read_init"`
+	SyscallProbeRetReadv               *ebpf.Program `ebpf:"syscall__probe_ret_readv"`
+	SyscallProbeRetReadvInit           *ebpf.Program `ebpf:"syscall__probe_ret_readv_init"`
+	SyscallProbeRetRecvfrom            *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom"`
+	SyscallProbeRetRecvfromInit        *ebpf.Program `ebpf:"syscall__probe_ret_recvfrom_init"`
+	SyscallProbeRetRecvmsg             *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg"`
+	SyscallProbeRetRecvmsgInit         *ebpf.Program `ebpf:"syscall__probe_ret_recvmsg_init"`
+	SyscallProbeRetSendmsg             *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg"`
+	SyscallProbeRetSendmsgInit         *ebpf.Program `ebpf:"syscall__probe_ret_sendmsg_init"`
+	SyscallProbeRetSendto              *ebpf.Program `ebpf:"syscall__probe_ret_sendto"`
+	SyscallProbeRetSendtoInit          *ebpf.Program `ebpf:"syscall__probe_ret_sendto_init"`
+	SyscallProbeRetSocket              *ebpf.Program `ebpf:"syscall__probe_ret_socket"`
+	SyscallProbeRetWrite               *ebpf.Program `ebpf:"syscall__probe_ret_write"`
+	SyscallProbeRetWriteInit           *ebpf.Program `ebpf:"syscall__probe_ret_write_init"`
+	SyscallProbeRetWritev              *ebpf.Program `ebpf:"syscall__probe_ret_writev"`
+	SyscallProbeRetWritevInit          *ebpf.Program `ebpf:"syscall__probe_ret_writev_init"`
+	TraceTcpClose                      *ebpf.Program `ebpf:"trace_tcp_close"`
+	TraceTcpRecvmsgFexit               *ebpf.Program `ebpf:"trace_tcp_recvmsg_fexit"`
+	TraceTcpV4ConnectFexit             *ebpf.Program `ebpf:"trace_tcp_v4_connect_fexit"`
+	TraceTcpV6ConnectFexit             *ebpf.Program `ebpf:"trace_tcp_v6_connect_fexit"`
+	TracepointSchedProcessExit         *ebpf.Program `ebpf:"tracepoint__sched__process_exit"`
+	TrackFdInstallEntry                *ebpf.Program `ebpf:"track_fd_install_entry"`
+	TrackSockAllocFileEntry            *ebpf.Program `ebpf:"track_sock_alloc_file_entry"`
+	TrackSockAllocFileRet              *ebpf.Program `ebpf:"track_sock_alloc_file_ret"`
 }
 
 func (p *TapPrograms) Close() error {
 	return _TapClose(
+		p.CgConnect4,
+		p.CgConnect6,
+		p.CgSockOps,
+		p.CgSockOpt,
 		p.CleanupPidFdFileEntries,
+		p.GotlsProbeEntryTlsConnRead,
+		p.GotlsProbeEntryTlsConnWrite,
+		p.GotlsProbeRetTlsConnRead,
+		p.GotlsProbeRetTlsConnWrite,
+		p.JavaSslEngineSysEnterClose,
+		p.JavaSslEngineSysEnterRead,
+		p.JavaSslEngineSysEnterReadv,
+		p.JavaSslEngineSysEnterRecvfrom,
+		p.JavaSslEngineSysEnterSendto,
+		p.JavaSslEngineSysEnterWrite,
+		p.JavaSslEngineSysEnterWritev,
+		p.JavaSslEngineSysExitRead,
+		p.JavaSslEngineSysExitReadv,
+		p.JavaSslEngineSysExitRecvfrom,
+		p.JavaSslEngineSysExitSendto,
+		p.JavaSslEngineSysExitWrite,
+		p.JavaSslEngineSysExitWritev,
+		p.JavaSslEngineUnwrapExit,
+		p.JavaSslEngineWrapExit,
+		p.JavaSslReadEntry,
+		p.JavaSslReadExit,
+		p.JavaSslWriteEntry,
+		p.JavaSslWriteExit,
+		p.MonitorCertOpenEntry,
+		p.NodetlsProbeEntrySSL_free,
+		p.NodetlsProbeEntrySSL_setCertCb,
+		p.NodetlsProbeEntryTLSWrapDestructor,
+		p.NodetlsProbeEntryTLSWrapMemfn,
 		p.OpensslProbeEntrySSL_read,
 		p.OpensslProbeEntrySSL_readEx,
 		p.OpensslProbeEntrySSL_setFd,

@@ -1,0 +1,190 @@
+name: release
+
+# Manual-only port of qpoint's build/push pipeline.
+# Default run = build both arches through the prod target and upload the
+# binaries as workflow artifacts. Nothing is pushed to GAR/R2/Slack unless you
+# tick `push` — so a dispatch can never clobber an existing deployment by accident.
+on:
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Publish: push image to GAR + upload binary to R2 (leave off to build-only)"
+        type: boolean
+        default: false
+      version:
+        description: "Optional release tag (e.g. v1.2.3). Blank = tag by commit SHA only."
+        type: string
+        default: ""
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [arm64, amd64]
+    runs-on:
+      group: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so `git describe --tags` works
+
+      - name: Set build info
+        id: build_versions
+        run: |
+          GIT_VERSION=$(git describe --tags --always --dirty)
+          echo "GIT_VERSION=$GIT_VERSION" >> $GITHUB_OUTPUT
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "Git version: $GIT_VERSION"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Google Artifact Registry (GAR)
+        if: ${{ inputs.push }}
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.GAR_JSON_KEY }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: us-docker.pkg.dev/qpoint-edge/public/qtap
+          tags: |
+            type=sha
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+
+      - name: Build and conditionally push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          push: ${{ inputs.push }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/${{ matrix.platform }}
+          target: prod
+          build-args: |
+            GIT_VERSION=${{ steps.build_versions.outputs.GIT_VERSION }}
+          outputs: type=image,name=us-docker.pkg.dev/qpoint-edge/public/qtap,push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
+          cache-from: type=registry,ref=ghcr.io/qpoint-io/qtap:main-${{ matrix.platform }}-buildcache
+
+      - name: Extract qtap binary
+        run: |
+          IMAGE_REF="us-docker.pkg.dev/qpoint-edge/public/qtap@${{ steps.build.outputs.digest }}"
+          CONTAINER_ID=$(docker create $IMAGE_REF)
+          mkdir -p ./dist
+          docker cp $CONTAINER_ID:/usr/local/bin/qtap ./dist/qtap-${{ matrix.platform }}
+          docker rm $CONTAINER_ID
+          chmod +x ./dist/qtap-${{ matrix.platform }}
+          cd ./dist && tar -czf qtap-${{ matrix.platform }}.tgz qtap-${{ matrix.platform }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtap-${{ inputs.version != '' && inputs.version || steps.build_versions.outputs.sha_short }}-linux-${{ matrix.platform }}.tgz
+          path: ./dist/qtap-${{ matrix.platform }}.tgz
+          retention-days: 7
+
+      - name: Install AWS CLI v2.22.35
+        if: ${{ inputs.push }}
+        run: |
+          ARCH_SUFFIX="${{ matrix.platform == 'arm64' && 'aarch64' || 'x86_64' }}"
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-${ARCH_SUFFIX}-2.22.35.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli --update
+
+      - name: Upload to R2 (versioned)
+        if: ${{ inputs.push }}
+        run: |
+          aws s3 cp --endpoint-url https://3f6a56fa0a454b33b68660af35d4af08.r2.cloudflarestorage.com ./dist/qtap-${{ matrix.platform }}.tgz \
+            s3://downloads/${{ github.event.repository.name }}/qtap-${{ inputs.version != '' && inputs.version || steps.build_versions.outputs.sha_short }}-linux-${{ matrix.platform }}.tgz
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: "auto"
+
+      - name: Export digest
+        if: ${{ inputs.push }}
+        run: |
+          mkdir -p ./digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch ./digests/${digest#sha256:}
+
+      - name: Upload digest
+        if: ${{ inputs.push }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.platform }}
+          path: ./digests/
+          if-no-files-found: error
+          retention-days: 1
+
+  merge-images:
+    if: ${{ inputs.push }}
+    needs: build
+    runs-on:
+      group: amd64
+
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ./digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: us-docker.pkg.dev/qpoint-edge/public/qtap
+          tags: |
+            type=sha
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Google Artifact Registry (GAR)
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: _json_key
+          password: ${{ secrets.GAR_JSON_KEY }}
+
+      - name: Create manifest list and push
+        working-directory: ./digests
+        run: |
+          TAGS=$(jq -cr '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          DIGESTS=$(printf 'us-docker.pkg.dev/qpoint-edge/public/qtap@sha256:%s ' *)
+          readarray -t TAG_ARRAY <<< "$TAGS"
+          FIRST_TAG="${TAG_ARRAY[0]}"
+          docker buildx imagetools create -t "$FIRST_TAG" $DIGESTS
+          for i in $(seq 1 $((${#TAG_ARRAY[@]} - 1))); do
+            docker buildx imagetools create -t "${TAG_ARRAY[$i]}" "$FIRST_TAG"
+          done
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect us-docker.pkg.dev/qpoint-edge/public/qtap:${{ steps.meta.outputs.version }}
+
+      - name: Notify Slack
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_COLOR: "#4c34eb"
+          SLACKIFY_MARKDOWN: true
+          MSG_MINIMAL: actions url,Commit
+          ENABLE_ESCAPES: true
+          SLACK_MESSAGE: ${{ steps.meta.outputs.tags }}
+          SLACK_TITLE: "📦 New qtap Image"
+          SLACK_USERNAME: GitHub Actions
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

@@ -121,7 +121,7 @@ RESET := $(shell printf "$(RST)")
 # 🎯 Core Build System
 # =============================================================================
 .PHONY: build
-build: $(BIN_DIR) generate ## Build for the current platform
+build: $(BIN_DIR) generate build-jvm ## Build for the current platform
 	@echo $(INFO) Building $(BINARY_NAME)... $(RESET)
 	CGO_ENABLED=$(CGO_ENABLED) \
 	$(GO) build -tags '$(ALL_TAGS)' \
@@ -131,6 +131,14 @@ build: $(BIN_DIR) generate ## Build for the current platform
 		-o $(BIN_DIR)/$(notdir $(BINARY_NAME))  \
 		cmd/$(BINARY_NAME)/main.go
 	@echo $(SUCCESS) Build complete! $(RESET)
+
+.PHONY: build-jvm
+build-jvm: ## Build the Java SSL agent and stage it for embedding
+	@echo $(INFO) Building JVM agent... $(RESET)
+	$(MAKE) -C jvm
+	@mkdir -p pkg/ebpf/tls/javassl/dist
+	@cp jvm/dist/custom-jre.tar.gz jvm/dist/libqtap.so jvm/dist/qtap-loader.jar jvm/dist/qtap.jar jvm/dist/java-ssl.jar pkg/ebpf/tls/javassl/dist/
+	@echo $(SUCCESS) JVM agent built! $(RESET)
 
 .PHONY: build-devtools
 build-devtools:
@@ -315,6 +323,22 @@ version: ## Display version information
 # =============================================================================
 $(BIN_DIR) $(DIST_DIR) $(DOCS_DIR):
 	mkdir -p $@
+
+# =============================================================================
+# 📦 Docker
+# =============================================================================
+DOCKER_IMAGE ?= us-docker.pkg.dev/qpoint-edge/public/qtap
+DOCKER_TAG   ?= latest
+
+.PHONY: docker-build
+docker-build: ## Build the production Docker image
+	@echo $(WORKING) Building Docker image $(DOCKER_IMAGE):$(DOCKER_TAG)... $(RESET)
+	docker build --target=prod -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
+	@echo $(SUCCESS) Docker image built! $(RESET)
+
+.PHONY: docker-push
+docker-push: ## Push the production Docker image
+	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
 
 # =============================================================================
 # 💡 Help

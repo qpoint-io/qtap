@@ -1,0 +1,45 @@
+Once loaded, the integration works as follows:
+
+1 - Your app makes an https call to a third-party API
+2 - The client uses the SSL library to encrypt/decrypt the data
+3 - The QtapAgent adds ASM bytecode to the entry and exit of the SSL methods
+4 - The custom bytecode calls the JavaSsl methods with the original arguments and return values
+5 - The JavaSsl methods pass the args and return values to a native C function via JNI
+6 - The native C functions resolve the pointer to the actual data underneath the Java buffer
+7 - The native C function calls the bridge functions which are No-Op implementations
+8 - (optionally) eBPF uprobes are attached to the bridge functions to capture the data
+
+Notes:
+ - This implementation doesn't alter the args/return values of the hooked methods in any way
+ - Every layer has safeguards to prevent exceptions from being thrown, and to continue normal execution
+ - The custom bytecode hooks are added via the ASM library, and do not alter the original class files
+ - There is zero performance overhead added by the integration, it only shares the data with eBPF probes
+
+ ┌─────────────────┐         ┌───────────────────────────────────────────────────────────────────────┐
+ |      Qtap       |         │ JVM                                                                   │
+ └───────▲─────────┘         │  ┌─────────────────────────────────┐   ┌──────────────────────┐       │
+         │                   │  │     Native Agent (libqtap.so)   │   │    QtapAgent (jar)   │       │
+         │                   │  │                                 │   │                      │       │
+         │                   │  │ ┌────────────────────────────┐  │   │ ┌──────────────────┐ │       │
+         │                   │  │ │ eBPF Bridge Functions      │  │   │ │     JavaSsl      │ │       │
+ ┌───────┴─────────┐         │  │ │ ssl_read_entry()           │  │   │ │                  │ │       │
+ │  eBPF Probes    │◄────────┼──┼─│ ssl_read_exit()            │  │   │ │ Receives the     │ │       │
+ └─────────────────┘         │  │ │ ssl_write_entry()          │  │   │ │ entry args and   │ │       │
+                             │  │ │ ssl_write_exit()           │  │   │ │ return values    │ │       │
+                             │  │ └─────────────────▲──────────┘  │   │ │ then forwards to │ │       │
+                             │  │                   │             │   │ │ JNI native C     │ │       │
+                             │  │ ┌─────────────────┴──────────┐  │   │ │ functions        │ │       │
+                             │  │ │ JNI Functions (for Java)   │  │   │ │                  │ │       │
+                             │  │ │ io_qpoint_qtap_JavaSsl_*   │◄─┼───┼─│                  │ │       │
+                             │  │ └────────────────────────────┘  │   │ └─────────▲────────┘ │       │
+                             │  └─────────────────────────────────┘   └───────────│──────────┘       │
+                             │                                      (Enter/Exit hooks added via ASM) │
+                             │      ┌─────────────────────────────────────────────│──────┐           │
+                             │      │ YourApp.jar                                 │      │           │
+                             │      │   ┌─────────────────┐     ┌─────────────────┴────┐ │           │
+                             │      │   |  https client   |◄───►│ SSL Methods -        │◄┼───────────┼─────► third-party-api.com
+                             │      │   └─────────────────┘     │ (Read / Write)       │ │           │
+                             │      │                           └──────────────────────┘ │           │
+                             │      └────────────────────────────────────────────────────┘           │
+                             └───────────────────────────────────────────────────────────────────────┘
+ 

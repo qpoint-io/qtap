@@ -74,12 +74,16 @@ jobs:
           target: prod
           build-args: |
             GIT_VERSION=${{ steps.build_versions.outputs.GIT_VERSION }}
-          outputs: type=image,name=us-docker.pkg.dev/qpoint-edge/public/qtap,push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
+          outputs: ${{ inputs.push && 'type=image,name=us-docker.pkg.dev/qpoint-edge/public/qtap,push-by-digest=true,name-canonical=true,push=true' || format('type=docker,name=qtap-build:{0}', matrix.platform) }}
           cache-from: type=registry,ref=ghcr.io/qpoint-io/qtap:main-${{ matrix.platform }}-buildcache
 
       - name: Extract qtap binary
         run: |
-          IMAGE_REF="us-docker.pkg.dev/qpoint-edge/public/qtap@${{ steps.build.outputs.digest }}"
+          if [[ "${{ inputs.push }}" == "true" ]]; then
+            IMAGE_REF="us-docker.pkg.dev/qpoint-edge/public/qtap@${{ steps.build.outputs.digest }}"
+          else
+            IMAGE_REF="qtap-build:${{ matrix.platform }}"
+          fi
           CONTAINER_ID=$(docker create $IMAGE_REF)
           mkdir -p ./dist
           docker cp $CONTAINER_ID:/usr/local/bin/qtap ./dist/qtap-${{ matrix.platform }}

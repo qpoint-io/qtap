@@ -111,7 +111,7 @@ Converse with Qpoint devs and the contributors in [Github Discussions](https://g
 
 #### Tools:
 
-- go1.26.5+
+- go1.26.6+
 - make
 - clang14 (version 14 is required)
 - clang-tidy (optional/recommended)

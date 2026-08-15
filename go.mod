@@ -17,7 +17,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
 	github.com/go-playground/validator/v10 v10.23.0
-	github.com/gopacket/gopacket v1.3.1
+	github.com/gopacket/gopacket v1.6.1
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/kamaln7/resolvable v0.0.0-20250612203940-5b849c87b049

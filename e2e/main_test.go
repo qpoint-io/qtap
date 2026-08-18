@@ -118,10 +118,11 @@ func mainSetup() error {
 		return fmt.Errorf("loading BPF programs and maps: %w", err)
 	}
 	// write the current pid to the bpf program
-	err = spec.RewriteConstants(map[string]interface{}{
-		"qpid": uint32(os.Getpid()),
-	})
-	if err != nil {
+	qpid, ok := spec.Variables["qpid"]
+	if !ok {
+		return errors.New("finding qpid constant")
+	}
+	if err = qpid.Set(uint32(os.Getpid())); err != nil {
 		return fmt.Errorf("rewriting constants: %w", err)
 	}
 	tapObjs := tap.TapObjects{}

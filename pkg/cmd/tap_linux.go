@@ -290,10 +290,11 @@ func runTapCmd(logger *zap.Logger) {
 		logger.Fatal("failed to load BPF programs and maps", zap.Error(err))
 	}
 	// write the current pid to the bpf program
-	err = spec.RewriteConstants(map[string]any{
-		"qpid": uint32(os.Getpid()),
-	})
-	if err != nil {
+	qpid, ok := spec.Variables["qpid"]
+	if !ok {
+		logger.Fatal("failed to find qpid constant")
+	}
+	if err = qpid.Set(uint32(os.Getpid())); err != nil {
 		logger.Fatal("failed to rewrite constants", zap.Error(err))
 	}
 	tapObjs := tap.TapObjects{}

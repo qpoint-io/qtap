@@ -182,7 +182,7 @@ func (m *HTTPRequest) toEnvVars() map[string]string {
 		envVars["HTTP_BODY_FILE"] = m.BodyFile
 	}
 
-	var proto string = m.Proto.String()
+	var proto = m.Proto.String()
 	switch m.Proto {
 	case HTTPProtocolHTTP1_0:
 		proto = "1.0"

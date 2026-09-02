@@ -42,7 +42,7 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 	// Extract Axiom configuration from the service config
 	token := c.Token.String()
 	if token == "" {
-		return errors.New("Axiom API token is required")
+		return errors.New("axiom API token is required")
 	}
 
 	// Use URL as dataset name if provided, otherwise use a default

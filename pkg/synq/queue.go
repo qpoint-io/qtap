@@ -42,7 +42,7 @@ type Queue struct {
 	mu       sync.Mutex
 	closed   atomic.Bool
 	draining atomic.Bool
-	count    int64
+	count    atomic.Int64
 
 	notify chan Op // signals queue operations (Pushed/Popped)
 }
@@ -116,7 +116,7 @@ func (q *Queue) insertWithPriority(p Prioritized) {
 		}
 	}
 
-	atomic.AddInt64(&q.count, 1)
+	q.count.Add(1)
 }
 
 func (q *Queue) append(value any) {
@@ -128,7 +128,7 @@ func (q *Queue) append(value any) {
 		q.tail.next = newNode
 		q.tail = newNode
 	}
-	atomic.AddInt64(&q.count, 1)
+	q.count.Add(1)
 }
 
 func getPriority(value any) int {
@@ -148,7 +148,7 @@ func (q *Queue) pop() any {
 	if q.head == nil {
 		q.tail = nil
 	}
-	atomic.AddInt64(&q.count, -1)
+	q.count.Add(-1)
 
 	// Signal drain waiters that an item was popped
 	if q.draining.Load() {
@@ -195,7 +195,7 @@ func (q *Queue) Next() (any, bool) {
 			if q.head == nil {
 				q.tail = nil
 			}
-			atomic.AddInt64(&q.count, -1)
+			q.count.Add(-1)
 
 			// Signal drain waiters that an item was popped
 			if q.draining.Load() {
@@ -234,7 +234,7 @@ func (q *Queue) Close() error {
 	q.closed.Store(true)
 	q.head = nil
 	q.tail = nil
-	atomic.StoreInt64(&q.count, 0)
+	q.count.Store(0)
 	q.cancel() // Cancel the context
 
 	if remainingCount > 0 {
@@ -280,7 +280,7 @@ func (q *Queue) IsDraining() bool {
 }
 
 func (q *Queue) Len() int {
-	return int(atomic.LoadInt64(&q.count))
+	return int(q.count.Load())
 }
 
 func (q *Queue) IsEmpty() bool {

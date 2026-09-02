@@ -14,24 +14,20 @@ import (
 func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				OTelEndpoint: "localhost:4317",
-				Protocol:     "grpc",
-				ServiceName:  "test-qtap",
-				Environment:  "test",
-				Headers: map[string]config.ValueSource{
-					"api-key": {
-						Type:  "text",
-						Value: "test-key",
-					},
-				},
-				TLS: config.ObjectStoreOTelTLS{
-					Enabled:            false,
-					InsecureSkipVerify: false,
-				},
+		Type:         config.ObjectStoreType_OTEL,
+		OTelEndpoint: "localhost:4317",
+		Protocol:     "grpc",
+		ServiceName:  "test-qtap",
+		Environment:  "test",
+		Headers: map[string]config.ValueSource{
+			"api-key": {
+				Type:  "text",
+				Value: "test-key",
 			},
+		},
+		TLS: config.ObjectStoreOTelTLS{
+			Enabled:            false,
+			InsecureSkipVerify: false,
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -46,24 +42,20 @@ func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				OTelEndpoint: "localhost:4318",
-				Protocol:     "http",
-				ServiceName:  "test-qtap-http",
-				Environment:  "test",
-				Headers: map[string]config.ValueSource{
-					"authorization": {
-						Type:  "text",
-						Value: "Bearer test-token",
-					},
-				},
-				TLS: config.ObjectStoreOTelTLS{
-					Enabled:            false,
-					InsecureSkipVerify: false,
-				},
+		Type:         config.ObjectStoreType_OTEL,
+		OTelEndpoint: "localhost:4318",
+		Protocol:     "http",
+		ServiceName:  "test-qtap-http",
+		Environment:  "test",
+		Headers: map[string]config.ValueSource{
+			"authorization": {
+				Type:  "text",
+				Value: "Bearer test-token",
 			},
+		},
+		TLS: config.ObjectStoreOTelTLS{
+			Enabled:            false,
+			InsecureSkipVerify: false,
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -78,14 +70,10 @@ func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 func TestFactory_Init_ValidConfig_Stdout(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				Protocol:    "stdout",
-				ServiceName: "test-qtap-stdout",
-				Environment: "test",
-			},
-		},
+		Type:        config.ObjectStoreType_OTEL,
+		Protocol:    "stdout",
+		ServiceName: "test-qtap-stdout",
+		Environment: "test",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -98,10 +86,8 @@ func TestFactory_Init_ValidConfig_Stdout(t *testing.T) {
 func TestFactory_Init_DefaultValues_GRPC(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{},
-		},
+		Type:                  config.ObjectStoreType_OTEL,
+		ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{},
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -113,12 +99,8 @@ func TestFactory_Init_DefaultValues_GRPC(t *testing.T) {
 func TestFactory_Init_DefaultValues_HTTP(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				Protocol: "http",
-			},
-		},
+		Type:     config.ObjectStoreType_OTEL,
+		Protocol: "http",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -130,12 +112,8 @@ func TestFactory_Init_DefaultValues_HTTP(t *testing.T) {
 func TestFactory_Init_DefaultValues_Stdout(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				Protocol: "stdout",
-			},
-		},
+		Type:     config.ObjectStoreType_OTEL,
+		Protocol: "stdout",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -164,12 +142,8 @@ func TestFactory_Init_WrongObjectStoreType(t *testing.T) {
 func TestFactory_Init_UnsupportedProtocol(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				Protocol: "websocket",
-			},
-		},
+		Type:     config.ObjectStoreType_OTEL,
+		Protocol: "websocket",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.Error(t, err)
@@ -180,14 +154,10 @@ func TestFactory_Init_UnsupportedProtocol(t *testing.T) {
 func TestFactory_Create(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				OTelEndpoint: "localhost:4317",
-				ServiceName:  "test-qtap",
-				Environment:  "test",
-			},
-		},
+		Type:         config.ObjectStoreType_OTEL,
+		OTelEndpoint: "localhost:4317",
+		ServiceName:  "test-qtap",
+		Environment:  "test",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -231,10 +201,8 @@ func TestFactory_Close(t *testing.T) {
 
 	// Test close after initialization
 	cfg := config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{},
-		},
+		Type:                  config.ObjectStoreType_OTEL,
+		ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{},
 	}
 	err = f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -292,13 +260,9 @@ func TestFactory_ProtocolDefaults(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &Factory{}
 			cfg := config.ServiceObjectStore{
-				Type: config.ObjectStoreType_OTEL,
-				ObjectStoreConfig: config.ObjectStoreConfig{
-					ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-						Protocol:     tc.protocol,
-						OTelEndpoint: tc.endpoint,
-					},
-				},
+				Type:         config.ObjectStoreType_OTEL,
+				Protocol:     tc.protocol,
+				OTelEndpoint: tc.endpoint,
 			}
 			err := f.Init(t.Context(), cfg)
 			require.NoError(t, err)

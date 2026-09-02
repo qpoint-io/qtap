@@ -184,11 +184,12 @@ func (s *Stream) processRequests() {
 		}
 
 		// Extract query for COM_QUERY
-		if cmd == ComQuery {
+		switch cmd {
+		case ComQuery:
 			if qc, ok := data.(*QueryCommand); ok {
 				pending.Query = qc.Query
 			}
-		} else if cmd == ComStmtPrepare {
+		case ComStmtPrepare:
 			if qc, ok := data.(*QueryCommand); ok {
 				pending.Query = qc.Query
 			}

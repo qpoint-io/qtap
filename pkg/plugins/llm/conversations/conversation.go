@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -147,7 +148,7 @@ func (c *Tracker) TrackCompletion(comp Completion) *Completion {
 func (c *Tracker) deduplicate(comp Completion) Completion {
 	// search for the closest known parent.
 	// once identified, record its ID and only retain the message diff.
-	for offset := len(comp.Messages) - 1; offset >= 0; offset-- {
+	for offset := range slices.Backward(comp.Messages) {
 		possibleParent := &Completion{
 			Provider: comp.Provider,
 			Model:    comp.Model,

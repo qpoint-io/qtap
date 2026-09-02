@@ -1,6 +1,6 @@
 # Use build arguments to define the platform specifics
 # Go version from https://hub.docker.com/_/golang
-ARG GO_VERSION=1.26.6
+ARG GO_VERSION=1.27.1
 # Node.js LTS version
 ARG NODE_MAJOR=24
 

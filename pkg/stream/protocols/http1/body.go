@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,8 +100,8 @@ func setupContentEncodingReader(headers http.Header, baseReader io.Reader, onErr
 	bodyReader := baseReader
 
 	// Process from last to first (reverse order)
-	for i := len(encodings) - 1; i >= 0; i-- {
-		encoding := strings.TrimSpace(strings.ToLower(encodings[i]))
+	for _, encoding := range slices.Backward(encodings) {
+		encoding := strings.TrimSpace(strings.ToLower(encoding))
 
 		switch encoding {
 		case "gzip":

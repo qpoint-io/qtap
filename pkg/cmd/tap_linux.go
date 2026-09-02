@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -458,7 +459,7 @@ func runTapCmd(logger *zap.Logger) {
 
 	// init a socket settings manager to push config changes
 	// down into ebpf land
-	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.TapMaps.SocketSettingsMap)
+	socketSettingManager := socket.NewSocketSettingsManager(logger, tapObjs.SocketSettingsMap)
 
 	// Subscribe socket settings manager to config changes
 	configManager.SubscribeSetter(socketSettingManager)
@@ -594,20 +595,20 @@ func PrintDevToolsBox(url string) {
 
 func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
 	procManTps := []*common.Tracepoint{
-		common.NewTracepoint("syscalls", "sys_enter_execve", objs.TapPrograms.SyscallProbeEntryExecve),
-		common.NewTracepoint("syscalls", "sys_exit_execve", objs.TapPrograms.SyscallProbeRetExecve),
-		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.TapPrograms.SyscallProbeEntryExecveat),
-		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.TapPrograms.SyscallProbeRetExecveat),
-		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.TapPrograms.SyscallProbeEntryExitGroup),
-		common.NewTracepoint("sched", "sched_process_exit", objs.TapPrograms.TracepointSchedProcessExit),
+		common.NewTracepoint("syscalls", "sys_enter_execve", objs.SyscallProbeEntryExecve),
+		common.NewTracepoint("syscalls", "sys_exit_execve", objs.SyscallProbeRetExecve),
+		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.SyscallProbeEntryExecveat),
+		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.SyscallProbeRetExecveat),
+		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
+		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
 	}
 
-	procManRB, err := ringbuf.NewReader(objs.TapMaps.ProcEvents)
+	procManRB, err := ringbuf.NewReader(objs.ProcEvents)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create proc event reader: %w", err)
 	}
 
-	procMan := ebpfProcess.New(logger, objs.TapMaps.ProcessMetaMap, procManRB, procManTps)
+	procMan := ebpfProcess.New(logger, objs.ProcessMetaMap, procManRB, procManTps)
 
 	return procMan, nil
 }
@@ -619,8 +620,8 @@ func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.
 func newRegistrationProvider(logger *zap.Logger) (config.ConfigProvider, func()) {
 	var cleanups []func()
 	cleanup := func() {
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
+		for _, cleanup := range slices.Backward(cleanups) {
+			cleanup()
 		}
 	}
 
@@ -692,8 +693,8 @@ func startPulseHeartbeat(logger *zap.Logger, configManager *config.ConfigManager
 func initEgressController(ctx context.Context, logger *zap.Logger, pm *process.Manager, connectionManager *connection.Manager, tapObjs *tap.TapObjects) func() {
 	var cleanups []func()
 	cleanup := func() {
-		for i := len(cleanups) - 1; i >= 0; i-- {
-			cleanups[i]()
+		for _, cleanup := range slices.Backward(cleanups) {
+			cleanup()
 		}
 	}
 
@@ -807,9 +808,9 @@ func InitTLSProbes(ctx context.Context, logger *zap.Logger, tlsProbesStr string,
 			// add the ssl engine manager as a config subscriber
 			configManager.SubscribeSetter(sslEngineManager)
 		case "nodetls":
-			probes = append(probes, nodetls.NewProbe(logger, objs.TapMaps.NodeTlsSymaddrsMap, newEbpfNodeTlsProbesCreator(objs)))
+			probes = append(probes, nodetls.NewProbe(logger, objs.NodeTlsSymaddrsMap, newEbpfNodeTlsProbesCreator(objs)))
 		case "gotls":
-			probes = append(probes, gotls.NewProbe(logger, objs.TapMaps.GoTlsSymaddrsMap, newEbpfGoTlsProbesCreator(objs)))
+			probes = append(probes, gotls.NewProbe(logger, objs.GoTlsSymaddrsMap, newEbpfGoTlsProbesCreator(objs)))
 		case "openssl":
 			probe := openssl.NewProbe(logger, NewEbpfOpenSSLprobesCreator(objs))
 			probes = append(probes, probe)
@@ -835,58 +836,58 @@ func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *t
 	// set the tracepoints (⚠️ order is important!)
 	tps := []common.Probe{
 		// sni tracepoints
-		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.TapPrograms.SyscallProbeRetSendtoInit),
-		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.TapPrograms.SyscallProbeRetSendmsgInit),
-		common.NewTracepoint("syscalls", "sys_exit_write", objs.TapPrograms.SyscallProbeRetWriteInit),
-		common.NewTracepoint("syscalls", "sys_exit_writev", objs.TapPrograms.SyscallProbeRetWritevInit),
-		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.TapPrograms.SyscallProbeRetRecvfromInit),
-		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.TapPrograms.SyscallProbeRetRecvmsgInit),
-		common.NewTracepoint("syscalls", "sys_exit_read", objs.TapPrograms.SyscallProbeRetReadInit),
-		common.NewTracepoint("syscalls", "sys_exit_readv", objs.TapPrograms.SyscallProbeRetReadvInit),
+		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.SyscallProbeRetSendtoInit),
+		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.SyscallProbeRetSendmsgInit),
+		common.NewTracepoint("syscalls", "sys_exit_write", objs.SyscallProbeRetWriteInit),
+		common.NewTracepoint("syscalls", "sys_exit_writev", objs.SyscallProbeRetWritevInit),
+		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.SyscallProbeRetRecvfromInit),
+		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.SyscallProbeRetRecvmsgInit),
+		common.NewTracepoint("syscalls", "sys_exit_read", objs.SyscallProbeRetReadInit),
+		common.NewTracepoint("syscalls", "sys_exit_readv", objs.SyscallProbeRetReadvInit),
 
 		// syscall socket events
-		common.NewTracepoint("syscalls", "sys_enter_accept", objs.TapPrograms.SyscallProbeEntryAccept),
-		common.NewTracepoint("syscalls", "sys_exit_accept", objs.TapPrograms.SyscallProbeRetAccept),
-		common.NewTracepoint("syscalls", "sys_enter_accept4", objs.TapPrograms.SyscallProbeEntryAccept4),
-		common.NewTracepoint("syscalls", "sys_exit_accept4", objs.TapPrograms.SyscallProbeRetAccept4),
-		common.NewTracepoint("syscalls", "sys_enter_connect", objs.TapPrograms.SyscallProbeEntryConnect),
-		common.NewTracepoint("syscalls", "sys_exit_connect", objs.TapPrograms.SyscallProbeRetConnect),
-		common.NewTracepoint("syscalls", "sys_enter_close", objs.TapPrograms.SyscallProbeEntryClose),
-		common.NewTracepoint("syscalls", "sys_exit_close", objs.TapPrograms.SyscallProbeRetClose),
-		common.NewTracepoint("syscalls", "sys_enter_write", objs.TapPrograms.SyscallProbeEntryWrite),
-		common.NewTracepoint("syscalls", "sys_enter_writev", objs.TapPrograms.SyscallProbeEntryWritev),
-		common.NewTracepoint("syscalls", "sys_exit_write", objs.TapPrograms.SyscallProbeRetWrite),
-		common.NewTracepoint("syscalls", "sys_exit_writev", objs.TapPrograms.SyscallProbeRetWritev),
-		common.NewTracepoint("syscalls", "sys_enter_sendto", objs.TapPrograms.SyscallProbeEntrySendto),
-		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.TapPrograms.SyscallProbeRetSendto),
-		common.NewTracepoint("syscalls", "sys_enter_sendmsg", objs.TapPrograms.SyscallProbeEntrySendmsg),
-		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.TapPrograms.SyscallProbeRetSendmsg),
-		common.NewTracepoint("syscalls", "sys_enter_read", objs.TapPrograms.SyscallProbeEntryRead),
-		common.NewTracepoint("syscalls", "sys_enter_readv", objs.TapPrograms.SyscallProbeEntryReadv),
-		common.NewTracepoint("syscalls", "sys_exit_read", objs.TapPrograms.SyscallProbeRetRead),
-		common.NewTracepoint("syscalls", "sys_exit_readv", objs.TapPrograms.SyscallProbeRetReadv),
-		common.NewTracepoint("syscalls", "sys_enter_recvfrom", objs.TapPrograms.SyscallProbeEntryRecvfrom),
-		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.TapPrograms.SyscallProbeRetRecvfrom),
-		common.NewTracepoint("syscalls", "sys_enter_recvmsg", objs.TapPrograms.SyscallProbeEntryRecvmsg),
-		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.TapPrograms.SyscallProbeRetRecvmsg),
-		common.NewTracepoint("syscalls", "sys_enter_socket", objs.TapPrograms.SyscallProbeEntrySocket),
-		common.NewTracepoint("syscalls", "sys_exit_socket", objs.TapPrograms.SyscallProbeRetSocket),
+		common.NewTracepoint("syscalls", "sys_enter_accept", objs.SyscallProbeEntryAccept),
+		common.NewTracepoint("syscalls", "sys_exit_accept", objs.SyscallProbeRetAccept),
+		common.NewTracepoint("syscalls", "sys_enter_accept4", objs.SyscallProbeEntryAccept4),
+		common.NewTracepoint("syscalls", "sys_exit_accept4", objs.SyscallProbeRetAccept4),
+		common.NewTracepoint("syscalls", "sys_enter_connect", objs.SyscallProbeEntryConnect),
+		common.NewTracepoint("syscalls", "sys_exit_connect", objs.SyscallProbeRetConnect),
+		common.NewTracepoint("syscalls", "sys_enter_close", objs.SyscallProbeEntryClose),
+		common.NewTracepoint("syscalls", "sys_exit_close", objs.SyscallProbeRetClose),
+		common.NewTracepoint("syscalls", "sys_enter_write", objs.SyscallProbeEntryWrite),
+		common.NewTracepoint("syscalls", "sys_enter_writev", objs.SyscallProbeEntryWritev),
+		common.NewTracepoint("syscalls", "sys_exit_write", objs.SyscallProbeRetWrite),
+		common.NewTracepoint("syscalls", "sys_exit_writev", objs.SyscallProbeRetWritev),
+		common.NewTracepoint("syscalls", "sys_enter_sendto", objs.SyscallProbeEntrySendto),
+		common.NewTracepoint("syscalls", "sys_exit_sendto", objs.SyscallProbeRetSendto),
+		common.NewTracepoint("syscalls", "sys_enter_sendmsg", objs.SyscallProbeEntrySendmsg),
+		common.NewTracepoint("syscalls", "sys_exit_sendmsg", objs.SyscallProbeRetSendmsg),
+		common.NewTracepoint("syscalls", "sys_enter_read", objs.SyscallProbeEntryRead),
+		common.NewTracepoint("syscalls", "sys_enter_readv", objs.SyscallProbeEntryReadv),
+		common.NewTracepoint("syscalls", "sys_exit_read", objs.SyscallProbeRetRead),
+		common.NewTracepoint("syscalls", "sys_exit_readv", objs.SyscallProbeRetReadv),
+		common.NewTracepoint("syscalls", "sys_enter_recvfrom", objs.SyscallProbeEntryRecvfrom),
+		common.NewTracepoint("syscalls", "sys_exit_recvfrom", objs.SyscallProbeRetRecvfrom),
+		common.NewTracepoint("syscalls", "sys_enter_recvmsg", objs.SyscallProbeEntryRecvmsg),
+		common.NewTracepoint("syscalls", "sys_exit_recvmsg", objs.SyscallProbeRetRecvmsg),
+		common.NewTracepoint("syscalls", "sys_enter_socket", objs.SyscallProbeEntrySocket),
+		common.NewTracepoint("syscalls", "sys_exit_socket", objs.SyscallProbeRetSocket),
 
 		// pid/fd mapping kprobes
-		common.NewKprobe(objs.TapPrograms.TrackSockAllocFileEntry, "sock_alloc_file"),
-		common.NewKretprobe(objs.TapPrograms.TrackSockAllocFileRet, "sock_alloc_file"),
-		common.NewKprobe(objs.TapPrograms.TrackFdInstallEntry, "fd_install"),
-		common.NewKprobe(objs.TapPrograms.CleanupPidFdFileEntries, "__fput", "fput", "__pfx_fput", "__pfx___fput"),
-		common.NewKprobe(objs.TapPrograms.TraceTcpClose, "tcp_close"),
+		common.NewKprobe(objs.TrackSockAllocFileEntry, "sock_alloc_file"),
+		common.NewKretprobe(objs.TrackSockAllocFileRet, "sock_alloc_file"),
+		common.NewKprobe(objs.TrackFdInstallEntry, "fd_install"),
+		common.NewKprobe(objs.CleanupPidFdFileEntries, "__fput", "fput", "__pfx_fput", "__pfx___fput"),
+		common.NewKprobe(objs.TraceTcpClose, "tcp_close"),
 
 		// ftraces
-		common.NewFexit("tcp_v4_connect", objs.TapPrograms.TraceTcpV4ConnectFexit),
-		common.NewFexit("tcp_v6_connect", objs.TapPrograms.TraceTcpV6ConnectFexit),
-		common.NewFexit("tcp_recvmsg", objs.TapPrograms.TraceTcpRecvmsgFexit),
+		common.NewFexit("tcp_v4_connect", objs.TraceTcpV4ConnectFexit),
+		common.NewFexit("tcp_v6_connect", objs.TraceTcpV6ConnectFexit),
+		common.NewFexit("tcp_recvmsg", objs.TraceTcpRecvmsgFexit),
 	}
 
 	// open a ring buffer reader
-	rb, err := ringbuf.NewReader(objs.TapMaps.SocketEvents)
+	rb, err := ringbuf.NewReader(objs.SocketEvents)
 	if err != nil {
 		return nil, fmt.Errorf("creating socket event reader: %w", err)
 	}
@@ -900,23 +901,23 @@ func NewEbpfOpenSSLprobesCreator(objs *tap.TapObjects) func() []*common.Uprobe {
 	return func() []*common.Uprobe {
 		return []*common.Uprobe{
 			// ssl entry uprobes
-			common.NewUprobe("SSL_read", objs.TapPrograms.OpensslProbeEntrySSL_read),
-			common.NewUprobe("SSL_read_ex", objs.TapPrograms.OpensslProbeEntrySSL_readEx),
-			common.NewUprobe("SSL_write", objs.TapPrograms.OpensslProbeEntrySSL_write),
-			common.NewUprobe("SSL_write_ex", objs.TapPrograms.OpensslProbeEntrySSL_writeEx),
-			common.NewUprobe("SSL_free", objs.TapPrograms.OpensslProbeEntrySSL_free),
-			common.NewUprobe("SSL_set_fd", objs.TapPrograms.OpensslProbeEntrySSL_setFd),
+			common.NewUprobe("SSL_read", objs.OpensslProbeEntrySSL_read),
+			common.NewUprobe("SSL_read_ex", objs.OpensslProbeEntrySSL_readEx),
+			common.NewUprobe("SSL_write", objs.OpensslProbeEntrySSL_write),
+			common.NewUprobe("SSL_write_ex", objs.OpensslProbeEntrySSL_writeEx),
+			common.NewUprobe("SSL_free", objs.OpensslProbeEntrySSL_free),
+			common.NewUprobe("SSL_set_fd", objs.OpensslProbeEntrySSL_setFd),
 
 			// ssl return uprobes
-			common.NewUretprobe("SSL_read", objs.TapPrograms.OpensslProbeRetSSL_read),
-			common.NewUretprobe("SSL_read_ex", objs.TapPrograms.OpensslProbeRetSSL_readEx),
-			common.NewUretprobe("SSL_write", objs.TapPrograms.OpensslProbeRetSSL_write),
-			common.NewUretprobe("SSL_write_ex", objs.TapPrograms.OpensslProbeRetSSL_writeEx),
-			common.NewUretprobe("SSL_new", objs.TapPrograms.OpensslProbeRetSSL_new),
+			common.NewUretprobe("SSL_read", objs.OpensslProbeRetSSL_read),
+			common.NewUretprobe("SSL_read_ex", objs.OpensslProbeRetSSL_readEx),
+			common.NewUretprobe("SSL_write", objs.OpensslProbeRetSSL_write),
+			common.NewUretprobe("SSL_write_ex", objs.OpensslProbeRetSSL_writeEx),
+			common.NewUretprobe("SSL_new", objs.OpensslProbeRetSSL_new),
 
 			// node required openssl uprobes
-			common.NewUprobe("SSL_set_cert_cb", objs.TapPrograms.NodetlsProbeEntrySSL_setCertCb),
-			common.NewUprobe("SSL_free", objs.TapPrograms.NodetlsProbeEntrySSL_free),
+			common.NewUprobe("SSL_set_cert_cb", objs.NodetlsProbeEntrySSL_setCertCb),
+			common.NewUprobe("SSL_free", objs.NodetlsProbeEntrySSL_free),
 		}
 	}
 }

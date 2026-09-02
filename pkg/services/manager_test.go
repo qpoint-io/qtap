@@ -579,9 +579,7 @@ func testEventStoreConfig() config.EventStoreConfig {
 
 func testObjectStoreConfig() config.ObjectStoreConfig {
 	return config.ObjectStoreConfig{
-		ObjectStoreS3Config: config.ObjectStoreS3Config{
-			Endpoint: "https://example.com",
-			Bucket:   "test-bucket",
-		},
+		Endpoint: "https://example.com",
+		Bucket:   "test-bucket",
 	}
 }

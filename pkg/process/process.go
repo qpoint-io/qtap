@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,9 +176,8 @@ func (p *Process) Discover(ctx context.Context, mountPoint string, envMask *synq
 
 		// iterate over the namespaces from the bottom up
 		// (this is necessary because of nested hierarchies like DnD/KinD etc)
-		for i := len(namespaces) - 1; i >= 0; i-- {
+		for _, namespace := range slices.Backward(namespaces) {
 			// current namespace
-			namespace := namespaces[i]
 
 			// check for container ID
 			if p.ContainerID == "" {

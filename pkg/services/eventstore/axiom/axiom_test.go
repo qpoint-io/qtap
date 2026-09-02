@@ -28,20 +28,16 @@ func TestFactory_Init_InvalidConfig(t *testing.T) {
 func TestFactory_Init_MissingToken(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
-		Type: "axiom",
-		EventStoreConfig: config.EventStoreConfig{
-			Token: config.ValueSource{},
-			EventStoreAxiomConfig: config.EventStoreAxiomConfig{
-				Dataset: config.ValueSource{
-					Type:  config.ValueSourceType_TEXT,
-					Value: "test-dataset",
-				},
-			},
+		Type:  "axiom",
+		Token: config.ValueSource{},
+		Dataset: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "test-dataset",
 		},
 	}
 	err := f.Init(t.Context(), cfg)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Axiom API token is required")
+	require.Contains(t, err.Error(), "axiom API token is required")
 }
 
 func TestEventStore_Save_UnsupportedType(t *testing.T) {

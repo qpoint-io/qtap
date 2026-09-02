@@ -341,8 +341,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 					return
 				}
 
-				var tlsErr *TlsProbeError
-				if errors.As(err, &tlsErr) {
+				if tlsErr, ok := errors.AsType[*TlsProbeError](err); ok {
 					logger.Info("tls probe error", zap.String("probe_name", tlsErr.ProbeName), zap.Error(tlsErr.Err))
 				} else {
 					logger.Debug("notifying observer of process start/replace", zap.Error(err))
@@ -381,8 +380,7 @@ func (m *Manager) removeProc(ctx context.Context, p *Process) error {
 	for _, observer := range m.Observers {
 		go func() {
 			if err := observer.ProcessStopped(ctx, p); err != nil {
-				var tlsErr *TlsProbeError
-				if errors.As(err, &tlsErr) {
+				if tlsErr, ok := errors.AsType[*TlsProbeError](err); ok {
 					m.Logger.Debug("tls probe error", zap.String("probe_name", tlsErr.ProbeName), zap.Error(tlsErr.Err))
 					return
 				}

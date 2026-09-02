@@ -68,7 +68,7 @@ func (f *Factory) Init(logger *zap.Logger, config yaml.Node) {
 	f.logger = logger
 
 	// Default configuration
-	var cfg HttpCaptureConfig = HttpCaptureConfig{
+	var cfg = HttpCaptureConfig{
 		Level:  CaptureLevelNone,
 		Format: OutputFormatJSON,
 	}

@@ -45,7 +45,7 @@ GOARCH ?= $(shell $(GO) env GOARCH)
 CGO_ENABLED ?= 0
 
 # Tools & Linters
-GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/cmd/golangci-lint
+GOLANGCI_LINT ?= $(GO) tool github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 GOVULNCHECK ?= $(GO) tool golang.org/x/vuln/cmd/govulncheck
 GOTESTSUM ?= $(GO) tool gotest.tools/gotestsum
 MOCKGEN ?= $(GO) tool go.uber.org/mock/mockgen

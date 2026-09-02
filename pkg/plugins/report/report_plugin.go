@@ -59,11 +59,9 @@ func (f *Factory) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.Serv
 	}
 
 	return &grpcFilterInstance{
-		filterInstance: filterInstance{
-			logger:     f.logger,
-			ctx:        ctx,
-			eventstore: es,
-		},
+		logger:     f.logger,
+		ctx:        ctx,
+		eventstore: es,
 	}
 }
 

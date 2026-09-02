@@ -542,15 +542,12 @@ func (p *Forwarder) handleConnection(logger *zap.Logger, fc *conn) {
 		}
 	}
 
-	skipTee := true
-
 	// Determine whether to skip teeing (copying) the data for plugins
 	// We only want to tee the data if:
 	// 1. The connection is TLS terminatable (we can decrypt it) OR it's not TLS at all, AND
 	// 2. The protocol is either HTTP/1 or HTTP/2
-	if (isTLSTerminateable || !isTLS) && (l7Protocol == connection.Protocol_HTTP1 || l7Protocol == connection.Protocol_HTTP2) {
-		skipTee = false
-	}
+	canTee := (isTLSTerminateable || !isTLS) && (l7Protocol == connection.Protocol_HTTP1 || l7Protocol == connection.Protocol_HTTP2)
+	skipTee := !canTee
 
 	errChan := make(chan error, 2)
 	go p.proxy(logger, downstreamConn, upstreamConn, errChan, fc.getMeta().Cookie, connection.Ingress, skipTee)

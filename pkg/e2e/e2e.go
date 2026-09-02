@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -58,8 +59,7 @@ func (c *Context) RegisterNoErrCloser(closer func()) {
 }
 
 func (c *Context) Close() error {
-	for i := len(c.closers) - 1; i >= 0; i-- {
-		closer := c.closers[i]
+	for _, closer := range slices.Backward(c.closers) {
 		if err := closer(); err != nil {
 			return err
 		}
@@ -93,9 +93,9 @@ func NewID() string {
 
 func humanDuration(d time.Duration) string {
 	var s strings.Builder
-	s.WriteString(fmt.Sprintf("% 2ds", d/time.Second))
+	fmt.Fprintf(&s, "% 2ds", d/time.Second)
 	d %= time.Second
-	s.WriteString(fmt.Sprintf("% 3d.%03dms", d/time.Millisecond, d%time.Millisecond/time.Microsecond))
+	fmt.Fprintf(&s, "% 3d.%03dms", d/time.Millisecond, d%time.Millisecond/time.Microsecond)
 	return s.String()
 }
 
@@ -208,8 +208,7 @@ func (c *TestContext) Exec(name string, args ...string) ExecResult {
 	c.L.Debug("🕹️ executing command", zap.String("cmd", strings.Join(append([]string{name}, args...), " ")))
 	out, err := cmd.CombinedOutput()
 	var code int
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		code = exitErr.ExitCode()
 	}
 	return ExecResult{

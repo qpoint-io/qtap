@@ -231,20 +231,18 @@ func (m *GRPCRequest) Run(ctx context.Context, l *zap.Logger) *Container {
 	envVars := m.toEnvVars()
 
 	req := testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image: m.ImageURL,
-			Env:   envVars,
-			HostConfigModifier: func(hc *container.HostConfig) {
-				hc.NetworkMode = network.NetworkHost
-				// pid mode host is required for the readiness handshake
-				hc.PidMode = "host"
-			},
-			LogConsumerCfg: &testcontainers.LogConsumerConfig{
-				Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
-				Consumers: []testcontainers.LogConsumer{&result},
-			},
-			AutoRemove: true,
+		Image: m.ImageURL,
+		Env:   envVars,
+		HostConfigModifier: func(hc *container.HostConfig) {
+			hc.NetworkMode = network.NetworkHost
+			// pid mode host is required for the readiness handshake
+			hc.PidMode = "host"
 		},
+		LogConsumerCfg: &testcontainers.LogConsumerConfig{
+			Opts:      []testcontainers.LogProductionOption{testcontainers.WithLogProductionTimeout(10 * time.Second)},
+			Consumers: []testcontainers.LogConsumer{&result},
+		},
+		AutoRemove: true,
 	}
 
 	l.Info("starting gRPC container", zap.String("image", m.ImageURL), zap.Any("env", envVars))

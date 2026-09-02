@@ -146,14 +146,10 @@ func newTestObjectStore(t *testing.T, f *Factory, es eventstore.EventStore) *Obj
 
 func newTestConfig(protocol, endpoint string) any {
 	return config.ServiceObjectStore{
-		Type: config.ObjectStoreType_OTEL,
-		ObjectStoreConfig: config.ObjectStoreConfig{
-			ObjectStoreOTelConfig: config.ObjectStoreOTelConfig{
-				Protocol:     protocol,
-				OTelEndpoint: endpoint,
-				ServiceName:  "test-qtap",
-				Environment:  "test",
-			},
-		},
+		Type:         config.ObjectStoreType_OTEL,
+		Protocol:     protocol,
+		OTelEndpoint: endpoint,
+		ServiceName:  "test-qtap",
+		Environment:  "test",
 	}
 }

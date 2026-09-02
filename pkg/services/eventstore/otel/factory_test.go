@@ -12,24 +12,20 @@ import (
 func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
-		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Endpoint:    "localhost:4317",
-				Protocol:    "grpc",
-				ServiceName: "test-qtap",
-				Environment: "test",
-				Headers: map[string]config.ValueSource{
-					"api-key": {
-						Type:  "text",
-						Value: "test-key",
-					},
-				},
-				TLS: config.EventStoreOTelTLS{
-					Enabled:            false,
-					InsecureSkipVerify: false,
-				},
+		Type:        "otel",
+		Endpoint:    "localhost:4317",
+		Protocol:    "grpc",
+		ServiceName: "test-qtap",
+		Environment: "test",
+		Headers: map[string]config.ValueSource{
+			"api-key": {
+				Type:  "text",
+				Value: "test-key",
 			},
+		},
+		TLS: config.EventStoreOTelTLS{
+			Enabled:            false,
+			InsecureSkipVerify: false,
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -43,24 +39,20 @@ func TestFactory_Init_ValidConfig_GRPC(t *testing.T) {
 func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
-		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Endpoint:    "localhost:4318",
-				Protocol:    "http",
-				ServiceName: "test-qtap-http",
-				Environment: "test",
-				Headers: map[string]config.ValueSource{
-					"authorization": {
-						Type:  "text",
-						Value: "Bearer test-token",
-					},
-				},
-				TLS: config.EventStoreOTelTLS{
-					Enabled:            false,
-					InsecureSkipVerify: false,
-				},
+		Type:        "otel",
+		Endpoint:    "localhost:4318",
+		Protocol:    "http",
+		ServiceName: "test-qtap-http",
+		Environment: "test",
+		Headers: map[string]config.ValueSource{
+			"authorization": {
+				Type:  "text",
+				Value: "Bearer test-token",
 			},
+		},
+		TLS: config.EventStoreOTelTLS{
+			Enabled:            false,
+			InsecureSkipVerify: false,
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -74,11 +66,9 @@ func TestFactory_Init_ValidConfig_HTTP(t *testing.T) {
 func TestFactory_Init_DefaultValues_GRPC(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
-		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				// Using defaults - should default to gRPC
-			},
+		Type:                 "otel",
+		EventStoreOTelConfig: config.EventStoreOTelConfig{
+			// Using defaults - should default to gRPC
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -91,11 +81,9 @@ func TestFactory_Init_DefaultValues_HTTP(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Protocol: "http", // Explicitly set to HTTP
-				// Other fields use defaults
-			},
+		EventStoreOTelConfig: config.EventStoreOTelConfig{
+			Protocol: "http", // Explicitly set to HTTP
+			// Other fields use defaults
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -108,13 +96,11 @@ func TestFactory_Init_ValidConfig_Stdout(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Protocol:    "stdout",
-				ServiceName: "test-qtap-stdout",
-				Environment: "test",
-				// Note: endpoint, headers, and TLS are ignored for stdout
-			},
+		EventStoreOTelConfig: config.EventStoreOTelConfig{
+			Protocol:    "stdout",
+			ServiceName: "test-qtap-stdout",
+			Environment: "test",
+			// Note: endpoint, headers, and TLS are ignored for stdout
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -129,11 +115,9 @@ func TestFactory_Init_DefaultValues_Stdout(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Protocol: "stdout", // Explicitly set to stdout
-				// Other fields use defaults
-			},
+		EventStoreOTelConfig: config.EventStoreOTelConfig{
+			Protocol: "stdout", // Explicitly set to stdout
+			// Other fields use defaults
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -154,14 +138,10 @@ func TestFactory_Create(t *testing.T) {
 
 	// Initialize with valid config first
 	cfg := config.ServiceEventStore{
-		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Endpoint:    "localhost:4317",
-				ServiceName: "test-qtap",
-				Environment: "test",
-			},
-		},
+		Type:        "otel",
+		Endpoint:    "localhost:4317",
+		ServiceName: "test-qtap",
+		Environment: "test",
 	}
 	err := f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -196,10 +176,8 @@ func TestFactory_Close(t *testing.T) {
 
 	// Test close after initialization
 	cfg := config.ServiceEventStore{
-		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{},
-		},
+		Type:                 "otel",
+		EventStoreOTelConfig: config.EventStoreOTelConfig{},
 	}
 	err = f.Init(t.Context(), cfg)
 	require.NoError(t, err)
@@ -212,10 +190,8 @@ func TestFactory_Init_UnsupportedProtocol(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "otel",
-		EventStoreConfig: config.EventStoreConfig{
-			EventStoreOTelConfig: config.EventStoreOTelConfig{
-				Protocol: "websocket", // Unsupported protocol
-			},
+		EventStoreOTelConfig: config.EventStoreOTelConfig{
+			Protocol: "websocket", // Unsupported protocol
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -273,13 +249,9 @@ func TestFactory_ProtocolDefaults(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := &Factory{}
 			cfg := config.ServiceEventStore{
-				Type: "otel",
-				EventStoreConfig: config.EventStoreConfig{
-					EventStoreOTelConfig: config.EventStoreOTelConfig{
-						Protocol: tc.protocol,
-						Endpoint: tc.endpoint,
-					},
-				},
+				Type:     "otel",
+				Protocol: tc.protocol,
+				Endpoint: tc.endpoint,
 			}
 			err := f.Init(t.Context(), cfg)
 			require.NoError(t, err)

@@ -136,14 +136,12 @@ func (f *factory) NewGrpcInstance(ctx plugins.PluginContext, svcs *services.Serv
 	}
 
 	return &grpcFilterInstance{
-		filterInstance: filterInstance{
-			ctx:    ctx,
-			logger: f.logger,
-			writer: f.writer,
-			mode:   mode,
-			format: format,
-			rules:  f.config.Rules,
-		},
+		ctx:    ctx,
+		logger: f.logger,
+		writer: f.writer,
+		mode:   mode,
+		format: format,
+		rules:  f.config.Rules,
 	}
 }
 

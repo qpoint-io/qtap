@@ -195,9 +195,7 @@ syntax error: unexpected symbol`,
 						Type: EventStoreType_CONSOLE,
 					}},
 					ObjectStores: []ServiceObjectStore{{
-						ObjectStoreConfig: ObjectStoreConfig{
-							EventStore: EventStoreSelector{ID: "test"},
-						},
+						EventStore: EventStoreSelector{ID: "test"},
 					}},
 				},
 			},
@@ -208,9 +206,7 @@ syntax error: unexpected symbol`,
 			config: &Config{
 				Services: Services{
 					ObjectStores: []ServiceObjectStore{{
-						ObjectStoreConfig: ObjectStoreConfig{
-							EventStore: EventStoreSelector{ID: "test"},
-						},
+						EventStore: EventStoreSelector{ID: "test"},
 					}},
 				},
 			},
@@ -223,11 +219,9 @@ syntax error: unexpected symbol`,
 			config: &Config{
 				Services: Services{
 					ObjectStores: []ServiceObjectStore{{
-						ObjectStoreConfig: ObjectStoreConfig{
-							EventStore: EventStoreSelector{
-								Disabled: true,
-								ID:       "test",
-							},
+						EventStore: EventStoreSelector{
+							Disabled: true,
+							ID:       "test",
 						},
 					}},
 				},
@@ -246,8 +240,7 @@ syntax error: unexpected symbol`,
 				return
 			}
 
-			var verrs validator.ValidationErrors
-			if errors.As(err, &verrs) {
+			if verrs, ok := errors.AsType[validator.ValidationErrors](err); ok {
 				require.ElementsMatch(t, tc.errors, validatorErrors(verrs))
 				if tc.test != nil {
 					tc.test(t, tc.config, verrs)
@@ -390,7 +383,7 @@ tap:
 `
 
 	// Create a server that initially works, then fails
-	var serverResponds bool = true
+	var serverResponds = true
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if serverResponds {
 			w.Header().Set("Content-Type", "application/yaml")

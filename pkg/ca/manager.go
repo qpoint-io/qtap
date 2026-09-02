@@ -96,7 +96,7 @@ func (c *CaManager) Start(ctx context.Context) error {
 
 	if c.strategy == InjectStrategyEbpf && c.certObjs != nil {
 		// open a ring buffer reader
-		rdCertEvents, err := ringbuf.NewReader(c.certObjs.CertsMaps.CertEvents)
+		rdCertEvents, err := ringbuf.NewReader(c.certObjs.CertEvents)
 		if err != nil {
 			return fmt.Errorf("creating cert event reader: %w", err)
 		}
@@ -119,7 +119,7 @@ func (c *CaManager) Start(ctx context.Context) error {
 		}
 	} else {
 		// open a ring buffer reader
-		rdCertEvents, err := ringbuf.NewReader(c.tapObjs.TapMaps.CertEvents)
+		rdCertEvents, err := ringbuf.NewReader(c.tapObjs.CertEvents)
 		if err != nil {
 			return fmt.Errorf("creating cert event reader: %w", err)
 		}

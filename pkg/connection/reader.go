@@ -163,8 +163,7 @@ func (c *Connection) processDataEvent(event DataEvent) {
 	if c.streamProcessor != nil && !c.streamProcessor.Closed() && !c.skipStreamProcessing {
 		err := c.streamProcessor.Process(&event)
 		if err != nil {
-			var unrecoverableErr ErrStreamUnrecoverable
-			if errors.As(err, &unrecoverableErr) {
+			if _, ok := errors.AsType[ErrStreamUnrecoverable](err); ok {
 				c.logger.Debug("stream processor unrecoverable error", zap.Error(err))
 				c.skipStreamProcessing = true
 				c.skipStreamProcessingReason = err.Error()

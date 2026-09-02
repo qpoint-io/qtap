@@ -296,8 +296,8 @@ func (b *TestSuiteBuilder) Build() (*TestSuite, error) {
 func (ts *TestSuite) PrintTestPlan() string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("Test Suite: %s\n", ts.name))
-	result.WriteString(fmt.Sprintf("Total Tests: %d\n\n", len(ts.testCases)))
+	fmt.Fprintf(&result, "Test Suite: %s\n", ts.name)
+	fmt.Fprintf(&result, "Total Tests: %d\n\n", len(ts.testCases))
 
 	// Group by OS for readability
 	byOS := make(map[string][]TestCase)
@@ -308,14 +308,14 @@ func (ts *TestSuite) PrintTestPlan() string {
 	for os, cases := range byOS {
 		result.WriteString(os + ":\n")
 		for _, tc := range cases {
-			result.WriteString(fmt.Sprintf("  • %s\n", tc.Name))
+			fmt.Fprintf(&result, "  • %s\n", tc.Name)
 		}
 	}
 
 	if len(ts.skipped) > 0 {
 		result.WriteString("\nSkipped Combinations:\n")
 		for _, skip := range ts.skipped {
-			result.WriteString(fmt.Sprintf("  • %s\n", skip))
+			fmt.Fprintf(&result, "  • %s\n", skip)
 		}
 	}
 

@@ -144,13 +144,13 @@ func (r *TestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc Test
 			r.Logger.Warn("failed to wait for process", zap.Error(err))
 		} else {
 			r.Logger.Debug("🆕 creating readiness signal in container")
-			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
+			if err := container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
 				r.Logger.Warn("failed to create file in container", zap.Error(err))
 			}
 		}
 	}
 
-	var containerResult ContainerResult = <-container.resultCh
+	var containerResult = <-container.resultCh
 
 	r.Logger.Debug("⭕ Container result", zap.String("container_logs", containerResult.Combined()))
 

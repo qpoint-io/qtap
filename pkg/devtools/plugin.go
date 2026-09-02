@@ -426,15 +426,13 @@ func (g *devtoolsGrpcInstance) Destroy() {
 	}
 
 	req := &eventstore.GrpcRequest{
-		Request: eventstore.Request{
-			Timestamp: time.Now().UTC(),
-			Direction: meta.Direction(),
-			URLPath:   urlPath,
-			Status:    200,
-			Duration:  duration,
-			WrBytes:   meta.WriteBytes(),
-			RdBytes:   meta.ReadBytes(),
-		},
+		Timestamp:      time.Now().UTC(),
+		Direction:      meta.Direction(),
+		URLPath:        urlPath,
+		Status:         200,
+		Duration:       duration,
+		WrBytes:        meta.WriteBytes(),
+		RdBytes:        meta.ReadBytes(),
 		GrpcService:    grpcService,
 		GrpcMethod:     grpcMethod,
 		GrpcStatus:     grpcStatus,

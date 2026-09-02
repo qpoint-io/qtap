@@ -226,8 +226,8 @@ func TestOTelEventStore_ConfigTypes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			factory := &Factory{}
 			cfg := config.ServiceEventStore{
-				Type:             "otel",
-				EventStoreConfig: config.EventStoreConfig{EventStoreOTelConfig: tc.config},
+				Type:                 "otel",
+				EventStoreOTelConfig: tc.config,
 			}
 
 			err := factory.Init(t.Context(), cfg)

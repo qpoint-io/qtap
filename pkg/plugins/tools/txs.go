@@ -44,7 +44,7 @@ func (h HeaderMap) Get(key string) (string, bool) {
 func (h HeaderMap) Sprint() string {
 	sb := strings.Builder{}
 	for k, v := range h.headers.All() {
-		sb.WriteString(fmt.Sprintf("Header: %s = Value: %s\n", k, v))
+		fmt.Fprintf(&sb, "Header: %s = Value: %s\n", k, v)
 	}
 
 	return sb.String()

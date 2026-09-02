@@ -13,17 +13,13 @@ func TestFactory_Init_ValidConfig(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "axiom",
-		EventStoreConfig: config.EventStoreConfig{
-			Token: config.ValueSource{
-				Type:  config.ValueSourceType_TEXT,
-				Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
-			},
-			EventStoreAxiomConfig: config.EventStoreAxiomConfig{
-				Dataset: config.ValueSource{
-					Type:  config.ValueSourceType_TEXT,
-					Value: "test-dataset",
-				},
-			},
+		Token: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
+		},
+		Dataset: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "test-dataset",
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -37,14 +33,12 @@ func TestFactory_Init_DefaultDataset(t *testing.T) {
 	f := &Factory{}
 	cfg := config.ServiceEventStore{
 		Type: "axiom",
-		EventStoreConfig: config.EventStoreConfig{
-			Token: config.ValueSource{
-				Type:  config.ValueSourceType_TEXT,
-				Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
-			},
-			EventStoreAxiomConfig: config.EventStoreAxiomConfig{
-				// Dataset not set - should use default
-			},
+		Token: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
+		},
+		EventStoreAxiomConfig: config.EventStoreAxiomConfig{
+			// Dataset not set - should use default
 		},
 	}
 	err := f.Init(t.Context(), cfg)
@@ -57,17 +51,13 @@ func TestFactory_Create(t *testing.T) {
 	// Initialize with valid config first
 	cfg := config.ServiceEventStore{
 		Type: "axiom",
-		EventStoreConfig: config.EventStoreConfig{
-			Token: config.ValueSource{
-				Type:  config.ValueSourceType_TEXT,
-				Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
-			},
-			EventStoreAxiomConfig: config.EventStoreAxiomConfig{
-				Dataset: config.ValueSource{
-					Type:  config.ValueSourceType_TEXT,
-					Value: "test-dataset",
-				},
-			},
+		Token: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "xaat-12345678-1234-1234-1234-123456789012", // Valid-looking Axiom token format
+		},
+		Dataset: config.ValueSource{
+			Type:  config.ValueSourceType_TEXT,
+			Value: "test-dataset",
 		},
 	}
 	err := f.Init(t.Context(), cfg)

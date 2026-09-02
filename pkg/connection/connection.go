@@ -163,9 +163,7 @@ func NewConnection(ctx context.Context, logger *zap.Logger, openEvent *OpenEvent
 
 	logger = logger.With(zap.String("conn_id", id), zap.Any("cookie", openEvent.Cookie))
 	c := &Connection{
-		report: report{
-			ctx: ctx,
-		},
+		ctx:         ctx,
 		cancel:      cancel,
 		logger:      logger,
 		id:          id,
@@ -329,15 +327,15 @@ func (c *Connection) ID() string {
 }
 
 func (c *Connection) CreatedAt() time.Time {
-	return c.report.openTime
+	return c.openTime
 }
 
 func (c *Connection) ClosedAt() *time.Time {
-	if c.report.closeTime.IsZero() {
+	if c.closeTime.IsZero() {
 		return nil
 	}
 
-	return &c.report.closeTime
+	return &c.closeTime
 }
 
 func (c *Connection) watch() {

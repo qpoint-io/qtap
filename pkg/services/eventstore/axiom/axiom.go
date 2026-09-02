@@ -56,7 +56,7 @@ func (s *EventStore) Save(_ context.Context, item any) {
 // submitToAxiom sends a single event to Axiom
 func (s *EventStore) submitToAxiom(ctx context.Context, item any) error {
 	if s.axiomClient == nil {
-		return errors.New("Axiom client not initialized")
+		return errors.New("axiom client not initialized")
 	}
 
 	ctx, span := tracer.Start(ctx, "Axiom.Submit")

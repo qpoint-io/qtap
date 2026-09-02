@@ -117,10 +117,9 @@ func (p *Probe) installAgent(ctx context.Context, hostDir, localDir string, pid 
 
 	probeCloser, err := tls.AttachProbes(ctx, p.logger, &tls.ExeLinkAttachable{
 		Exe: lib,
-		ExeAttachable: tls.ExeAttachable{ // this is used for logging
-			PID:  pid,
-			Path: jvmiPath,
-		},
+		// this is used for logging
+		PID:  pid,
+		Path: jvmiPath,
 	}, syms, binutils.MatchStrategyExact, p.probeFn(), false)
 	if err != nil {
 		return closer, fmt.Errorf("attaching probes: %w", err)

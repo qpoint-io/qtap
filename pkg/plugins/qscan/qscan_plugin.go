@@ -259,8 +259,7 @@ func (f *Factory) shouldSample(fullURL string) (bool, string) {
 
 	// Classify the path to normalize variable segments (e.g., /users/123 -> /users/{id})
 	normalized, err := clf.Classify(path)
-	var insuffErr *classifier.InsufficientDataError
-	if errors.As(err, &insuffErr) {
+	if insuffErr, ok := errors.AsType[*classifier.InsufficientDataError](err); ok {
 		return false, fmt.Sprintf("insufficient_data: %d", insuffErr.Count)
 	}
 	if normalized == "" {

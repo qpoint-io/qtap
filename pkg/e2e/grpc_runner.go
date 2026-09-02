@@ -111,7 +111,7 @@ func (r *GRPCTestSuiteRunner) runSingleTest(t *testing.T, tctx *TestContext, tc 
 			r.Logger.Warn("failed to wait for process", zap.Error(err))
 		} else {
 			r.Logger.Debug("creating readiness signal in container")
-			if err := container.Container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
+			if err := container.CopyToContainer(ctx, []byte("Q"), tc.Request.ReadinessFile+".ready", 0644); err != nil {
 				r.Logger.Warn("failed to create file in container", zap.Error(err))
 			}
 		}

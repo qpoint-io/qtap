@@ -223,7 +223,7 @@ func (h *filterInstance) Destroy() {
 		}
 		if status, ok := h.responseHeaders[":status"]; ok {
 			if s, err := strconv.ParseInt(status, 10, 32); err == nil {
-				var v int = int(s)
+				var v = int(s)
 				responseData.Status = &v
 			}
 		}

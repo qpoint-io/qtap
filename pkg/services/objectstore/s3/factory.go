@@ -46,41 +46,41 @@ func (f *Factory) Init(ctx context.Context, cfg any) error {
 		return fmt.Errorf("invalid object store type: %s", c.Type)
 	}
 
-	if c.ObjectStoreS3Config.Endpoint == "" {
+	if c.Endpoint == "" {
 		// default to amazon endpoint
-		c.ObjectStoreS3Config.Endpoint = "s3.amazonaws.com"
+		c.Endpoint = "s3.amazonaws.com"
 	}
-	if c.ObjectStoreS3Config.Region == "" {
+	if c.Region == "" {
 		// default to us-east-1
-		c.ObjectStoreS3Config.Region = "us-east-1"
+		c.Region = "us-east-1"
 	}
-	if c.ObjectStoreS3Config.Bucket == "" {
+	if c.Bucket == "" {
 		return errors.New("bucket is required")
 	}
-	if c.ObjectStoreS3Config.AccessURL != "" {
-		f.accessURL = c.ObjectStoreS3Config.AccessURL
+	if c.AccessURL != "" {
+		f.accessURL = c.AccessURL
 	}
-	if c.ObjectStoreS3Config.AccessKey.String() == "" {
-		if c.ObjectStoreS3Config.AccessKey.Type == config.ValueSourceType_ENV {
-			return fmt.Errorf("s3 access key env var (%s) is empty or not set", c.ObjectStoreS3Config.AccessKey.Value)
+	if c.AccessKey.String() == "" {
+		if c.AccessKey.Type == config.ValueSourceType_ENV {
+			return fmt.Errorf("s3 access key env var (%s) is empty or not set", c.AccessKey.Value)
 		}
 		return errors.New("access_key is required")
 	}
-	if c.ObjectStoreS3Config.SecretKey.String() == "" {
-		if c.ObjectStoreS3Config.SecretKey.Type == config.ValueSourceType_ENV {
-			return fmt.Errorf("s3 secret key env var (%s) is empty or not set", c.ObjectStoreS3Config.SecretKey.Value)
+	if c.SecretKey.String() == "" {
+		if c.SecretKey.Type == config.ValueSourceType_ENV {
+			return fmt.Errorf("s3 secret key env var (%s) is empty or not set", c.SecretKey.Value)
 		}
 		return errors.New("secret_key is required")
 	}
 
 	s, err := minio.NewS3ObjectStore(
 		f.logger,
-		c.ObjectStoreS3Config.Endpoint,
-		c.ObjectStoreS3Config.Bucket,
-		c.ObjectStoreS3Config.Region,
-		c.ObjectStoreS3Config.AccessKey.String(),
-		c.ObjectStoreS3Config.SecretKey.String(),
-		c.ObjectStoreS3Config.Insecure)
+		c.Endpoint,
+		c.Bucket,
+		c.Region,
+		c.AccessKey.String(),
+		c.SecretKey.String(),
+		c.Insecure)
 	if err != nil {
 		return fmt.Errorf("failed to create s3 object store: %w", err)
 	}

@@ -207,8 +207,8 @@ func (b *GRPCTestSuiteBuilder) Build() (*GRPCTestSuite, error) {
 func (ts *GRPCTestSuite) PrintTestPlan() string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("gRPC Test Suite: %s\n", ts.name))
-	result.WriteString(fmt.Sprintf("Total Tests: %d\n\n", len(ts.testCases)))
+	fmt.Fprintf(&result, "gRPC Test Suite: %s\n", ts.name)
+	fmt.Fprintf(&result, "Total Tests: %d\n\n", len(ts.testCases))
 
 	byOS := make(map[string][]GRPCTestCase)
 	for _, tc := range ts.testCases {
@@ -218,14 +218,14 @@ func (ts *GRPCTestSuite) PrintTestPlan() string {
 	for os, cases := range byOS {
 		result.WriteString(os + ":\n")
 		for _, tc := range cases {
-			result.WriteString(fmt.Sprintf("  • %s\n", tc.Name))
+			fmt.Fprintf(&result, "  • %s\n", tc.Name)
 		}
 	}
 
 	if len(ts.skipped) > 0 {
 		result.WriteString("\nSkipped Combinations:\n")
 		for _, skip := range ts.skipped {
-			result.WriteString(fmt.Sprintf("  • %s\n", skip))
+			fmt.Fprintf(&result, "  • %s\n", skip)
 		}
 	}
 

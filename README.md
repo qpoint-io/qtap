@@ -167,7 +167,7 @@ By submitting contributions to this project, you agree to the [Contributor Licen
 
 ## Licensing
 
-This project is dual-licensed under AGPLv3.0 (for open source use) and a commercial license (for commercial use).
+This project is licensed under the [Apache License 2.0](./LICENSE).
 
 <div align="right">
     <picture>

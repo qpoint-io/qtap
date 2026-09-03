@@ -5,8 +5,6 @@ email, or any other method with a member of the Qpoint technical team before mak
 
 Please note we have a code of conduct, please follow it in all your interactions with the project.
 
-By submitting a pull request or contribution to this project, you are agreeing to the terms outlined in the [Contributor License Agreement](./CLA.md) file.
-
 ## Pull Request Process
 
 1. Ensure any install or build dependencies are removed before the end of the layer when doing a 

@@ -7,7 +7,6 @@
 
      Before submitting a Pull Request, please ensure you've done the following:
      - 📖 Read the Contributing Guide: https://github.com/qpoint-io/qtap/docs/CONTRIBUTING.md
-     - 📖 Read the Contributor License Agreement (CLA): https://github.com/qpoint-io/qtap/docs/CLA.md
      - 👷‍♀️ Create small PRs. In most cases this will be possible.
      - ✅ Provide tests for your changes.
      - 📝 Use descriptive commit messages.

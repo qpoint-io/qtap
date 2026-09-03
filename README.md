@@ -163,11 +163,11 @@ Thank you for checking out our work!
 
 ## Contributing
 
-By submitting contributions to this project, you agree to the [Contributor License Agreement](./.github/CLA.md). This agreement allows us to include your contributions in both the open source and commercial versions.
+See the [Contributing Guide](./.github/CONTRIBUTING.md) to get started. Contributions are accepted under the [Apache License 2.0](./LICENSE).
 
 ## Licensing
 
-This project is dual-licensed under AGPLv3.0 (for open source use) and a commercial license (for commercial use).
+This project is licensed under the [Apache License 2.0](./LICENSE).
 
 <div align="right">
     <picture>

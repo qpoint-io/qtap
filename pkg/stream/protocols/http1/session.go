@@ -44,7 +44,11 @@ type Session struct {
 	reqBytes atomic.Int64
 	resBytes atomic.Int64
 
-	// total bytes written
+	// transactionEnded tells HTTPStream to rotate to a fresh Session on the
+	// next byte event for keep-alive connections.
+	transactionEnded atomic.Bool
+
+	// closed guards one-time teardown of parser/plugin resources.
 	closed atomic.Bool
 }
 
@@ -227,6 +231,17 @@ func (s *Session) OnResponseBody(chunk []byte, isComplete bool) {
 	}
 }
 
+// OnTransactionEnd is called synchronously by the parser as soon as a
+// single HTTP/1.1 transaction is complete. We flip the transaction-ended
+// flag here so that HTTPStream.Process (running on the next byte event)
+// observes the closure and starts a fresh session for the next
+// request on the same TCP/TLS connection. The heavy cleanup
+// (artifact emission, parser shutdown) still happens asynchronously
+// via OnDone.
+func (s *Session) OnTransactionEnd() {
+	s.transactionEnded.Store(true)
+}
+
 // OnError handles HTTP parsing error callbacks
 func (s *Session) OnError(err error) {
 	span := trace.SpanFromContext(s.ctx)
@@ -254,6 +269,8 @@ func (s *Session) OnDone() {
 }
 
 func (s *Session) Close() error {
+	s.transactionEnded.Store(true)
+
 	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -284,5 +301,5 @@ func (s *Session) Close() error {
 }
 
 func (s *Session) Closed() bool {
-	return s.closed.Load()
+	return s.transactionEnded.Load()
 }

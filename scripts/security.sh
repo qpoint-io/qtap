@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Runs govulncheck and filters findings against .govulncheck-allow.
 #
+# Only findings in imported packages are actionable. Module-only findings
+# refer to vulnerable packages that are not imported by the scanned code.
 # A finding is suppressed if its OSV id or any alias (GHSA-*, CVE-*) is listed
 # in the allowlist. Suppressed findings are still printed, but do not affect
-# the exit code. Any non-allowlisted finding causes a non-zero exit.
+# the exit code. Any non-allowlisted imported-package finding causes a
+# non-zero exit, even if no vulnerable symbol is reachable.
 
 set -euo pipefail
 
@@ -18,21 +21,21 @@ fi
 
 allow_json='[]'
 if [[ -f "$ALLOWLIST" ]]; then
-  allow_json="$(sed 's/#.*$//' "$ALLOWLIST" | tr -d '[:blank:]' | grep -v '^$' | jq -R . | jq -sc .)"
+  allow_json="$(jq -Rsc 'split("\n") | map(sub("#.*$"; "") | gsub("\\s"; "") | select(length > 0))' "$ALLOWLIST")"
 fi
 
 raw="$(mktemp)"
-trap 'rm -f "$raw"' EXIT
+trap 'rm -f "$raw" "$raw.parsed"' EXIT
 
-# govulncheck exits non-zero on findings; capture and re-evaluate ourselves.
-set +e
+# JSON mode exits zero even on findings. A non-zero exit means the scan
+# failed, so let set -e stop the check rather than report incomplete results.
 go tool govulncheck -format=json "$PKGS" >"$raw"
-set -e
 
 jq -s --argjson allow "$allow_json" '
   # Index OSV records by id
   (map(select(.osv)) | map({key: .osv.id, value: .osv}) | from_entries) as $osvs
-  | (map(select(.finding)) | map(.finding)) as $findings
+  # Module-only traces have no package; retain package and symbol findings.
+  | (map(select(.finding)) | map(.finding | select((.trace[0].package // "") != ""))) as $findings
   | ($allow | map(ascii_upcase) | unique) as $allow
   | ([$findings[].osv] | unique) as $ids
   | {

@@ -8,27 +8,38 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"structs"
 
 	"github.com/cilium/ebpf"
 )
 
-type TapAddrArgs struct{ Addr uint64 }
+type TapAddrArgs struct {
+	_    structs.HostLayout
+	Addr uint64
+}
 
 type TapAddrPortKey struct {
+	_    structs.HostLayout
 	Addr [4]uint32
 	Port uint16
 	_    [2]byte
 }
 
 type TapCertKey struct {
+	_        structs.HostLayout
 	Pid      uint32
 	FilePath [256]int8
 }
 
-type TapCloseArgs struct{ Fd int32 }
+type TapCloseArgs struct {
+	_  structs.HostLayout
+	Fd int32
+}
 
 type TapConnInfo struct {
+	_         structs.HostLayout
 	ConnPidId struct {
+		_        structs.HostLayout
 		Pid      uint32
 		Tgid     uint32
 		Fd       int32
@@ -37,6 +48,7 @@ type TapConnInfo struct {
 	}
 	Cookie uint64
 	Addr   struct {
+		_        structs.HostLayout
 		SaFamily uint16
 		Addr     [16]uint8
 		Port     uint16
@@ -54,6 +66,7 @@ type TapConnInfo struct {
 }
 
 type TapDataArgs struct {
+	_       structs.HostLayout
 	Fd      int32
 	_       [4]byte
 	Buf     uint64
@@ -64,19 +77,31 @@ type TapDataArgs struct {
 }
 
 type TapFdRequest struct {
+	_     structs.HostLayout
 	Fd    uint32
 	IsSsl bool
 	_     [3]byte
 }
 
-type TapGoRegabiRegs struct{ Regs [9]uint64 }
+type TapGoLocation struct {
+	_        structs.HostLayout
+	Location uint32
+	Offset   int32
+}
+
+type TapGoRegabiRegs struct {
+	_    structs.HostLayout
+	Regs [9]uint64
+}
 
 type TapGoTlsConnArgs struct {
+	_            structs.HostLayout
 	ConnPtr      uint64
 	PlaintextPtr uint64
 }
 
 type TapGoTlsSymaddr struct {
+	_                   structs.HostLayout
 	InternalSyscallConn int64
 	TlsConn             int64
 	NetTcpConn          int64
@@ -87,6 +112,7 @@ type TapGoTlsSymaddr struct {
 }
 
 type TapJavaSslArgs struct {
+	_   structs.HostLayout
 	Fd  int32
 	_   [4]byte
 	Buf uint64
@@ -95,9 +121,12 @@ type TapJavaSslArgs struct {
 }
 
 type TapJavaSslEngineEvent struct {
+	_    structs.HostLayout
 	Data struct {
+		_    structs.HostLayout
 		Type uint64
 		Attr struct {
+			_           structs.HostLayout
 			TimestampNs uint64
 			Pid         uint32
 			_           [4]byte
@@ -112,12 +141,14 @@ type TapJavaSslEngineEvent struct {
 }
 
 type TapMgmtAddrs struct {
+	_    structs.HostLayout
 	Ipv4 uint32
 	Ipv6 [4]uint32
 	Port uint32
 }
 
 type TapNodeTlsSymaddr struct {
+	_                               structs.HostLayout
 	TlsWrapStreamListenerOffset     int32
 	StreamListenerStreamOffset      int32
 	StreamBaseStreamResourceOffset  int32
@@ -128,11 +159,13 @@ type TapNodeTlsSymaddr struct {
 }
 
 type TapPidFdKey struct {
+	_   structs.HostLayout
 	Pid uint32
 	Fd  int32
 }
 
 type TapProcessMeta struct {
+	_              structs.HostLayout
 	RootId         uint64
 	QpointStrategy uint32
 	Filter         uint8
@@ -143,6 +176,7 @@ type TapProcessMeta struct {
 }
 
 type TapRdrSocket struct {
+	_       structs.HostLayout
 	SrcAddr [4]uint32
 	SrcPort uint16
 	_       [2]byte
@@ -160,10 +194,13 @@ const (
 )
 
 type TapSocketDataEvent struct {
+	_    structs.HostLayout
 	Type uint64
 	Attr struct {
+		_           structs.HostLayout
 		TimestampNs uint64
 		ConnPidId   struct {
+			_        structs.HostLayout
 			Pid      uint32
 			Tgid     uint32
 			Fd       int32
@@ -181,10 +218,13 @@ type TapSocketDataEvent struct {
 }
 
 type TapSocketHostnameEvent struct {
+	_    structs.HostLayout
 	Type uint64
 	Attr struct {
+		_           structs.HostLayout
 		TimestampNs uint64
 		ConnPidId   struct {
+			_        structs.HostLayout
 			Pid      uint32
 			Tgid     uint32
 			Fd       int32
@@ -200,19 +240,23 @@ type TapSocketHostnameEvent struct {
 }
 
 type TapSocketOpKey struct {
+	_        structs.HostLayout
 	PidTgid  uint64
 	FuncName uint32
 	_        [4]byte
 }
 
 type TapSocketSettingValue struct {
+	_              structs.HostLayout
 	IgnoreLoopback bool
 	_              [3]byte
 }
 
 type TapSocketTlsClientHelloEvent struct {
+	_    structs.HostLayout
 	Type uint64
 	Attr struct {
+		_      structs.HostLayout
 		Cookie uint64
 		Size   uint32
 		_      [4]byte
@@ -221,8 +265,10 @@ type TapSocketTlsClientHelloEvent struct {
 }
 
 type TapSocketTlsServerHelloEvent struct {
+	_    structs.HostLayout
 	Type uint64
 	Attr struct {
+		_      structs.HostLayout
 		Cookie uint64
 		Size   uint32
 		_      [4]byte
@@ -231,10 +277,169 @@ type TapSocketTlsServerHelloEvent struct {
 }
 
 type TapTgidGoidT struct {
+	_    structs.HostLayout
 	Tgid uint32
 	_    [4]byte
 	Goid int64
 }
+
+// Names of all BPF objects in the ELF.
+//
+// Used for safe lookups in a Collection or CollectionSpec.
+const (
+	TapMapActiveAddrArgsMap                   = "active_addr_args_map"
+	TapMapActiveCloseArgsMap                  = "active_close_args_map"
+	TapMapActiveFdArgsMap                     = "active_fd_args_map"
+	TapMapActiveFileToPidFdMap                = "active_file_to_pid_fd_map"
+	TapMapActiveFileToSockMap                 = "active_file_to_sock_map"
+	TapMapActiveReadArgsMap                   = "active_read_args_map"
+	TapMapActiveSockAllocFileArgs             = "active_sock_alloc_file_args"
+	TapMapActiveSocketArgsMap                 = "active_socket_args_map"
+	TapMapActiveSocketTypes                   = "active_socket_types"
+	TapMapActiveSslReadArgsMap                = "active_ssl_read_args_map"
+	TapMapActiveSslWriteArgsMap               = "active_ssl_write_args_map"
+	TapMapActiveTcpSourceAddrMap              = "active_tcp_source_addr_map"
+	TapMapActiveTlsConnOpMap                  = "active_tls_conn_op_map"
+	TapMapActiveWriteArgsMap                  = "active_write_args_map"
+	TapMapAddrPortToPidMap                    = "addr_port_to_pid_map"
+	TapMapCertEvents                          = "cert_events"
+	TapMapConnInfoMap                         = "conn_info_map"
+	TapMapExitCodeMap                         = "exit_code_map"
+	TapMapGoTlsSymaddrsMap                    = "go_tls_symaddrs_map"
+	TapMapJavaActiveSslReadArgsMap            = "java_active_ssl_read_args_map"
+	TapMapJavaActiveSslSyscallArgsMap         = "java_active_ssl_syscall_args_map"
+	TapMapJavaActiveSslWriteArgsMap           = "java_active_ssl_write_args_map"
+	TapMapJavaProcessPidMap                   = "java_process_pid_map"
+	TapMapJavaSslEngineEventHeap              = "java_ssl_engine_event_heap"
+	TapMapJavaSslEngineEvents                 = "java_ssl_engine_events"
+	TapMapJavaSslEngineSessionIgnoreMap       = "java_ssl_engine_session_ignore_map"
+	TapMapJavaSslEngineSyscallCorrelatedMap   = "java_ssl_engine_syscall_correlated_map"
+	TapMapJavaSslEngineUprobeCorrelatedMap    = "java_ssl_engine_uprobe_correlated_map"
+	TapMapMapPorts                            = "map_ports"
+	TapMapMapSocks                            = "map_socks"
+	TapMapMgmtAddrs                           = "mgmt_addrs"
+	TapMapNodeSslToTlswrapMap                 = "node_ssl_to_tlswrap_map"
+	TapMapNodeTlsSymaddrsMap                  = "node_tls_symaddrs_map"
+	TapMapNodeTlswrapExistsMap                = "node_tlswrap_exists_map"
+	TapMapNodeTlswrapToSslMap                 = "node_tlswrap_to_ssl_map"
+	TapMapPidCertMap                          = "pid_cert_map"
+	TapMapPidFdToSockMap                      = "pid_fd_to_sock_map"
+	TapMapProcEvents                          = "proc_events"
+	TapMapProcessMetaMap                      = "process_meta_map"
+	TapMapRegsHeap                            = "regs_heap"
+	TapMapSocketDataEventBufferHeap           = "socket_data_event_buffer_heap"
+	TapMapSocketEvents                        = "socket_events"
+	TapMapSocketHostnameEventHeap             = "socket_hostname_event_heap"
+	TapMapSocketSettingsMap                   = "socket_settings_map"
+	TapMapSocketTlsClientHelloEventHeap       = "socket_tls_client_hello_event_heap"
+	TapMapSocketTlsServerHelloEventHeap       = "socket_tls_server_hello_event_heap"
+	TapMapSslToFdMap                          = "ssl_to_fd_map"
+	TapMapTraceEvents                         = "trace_events"
+	TapMapTraceToggleMap                      = "trace_toggle_map"
+	TapMapUprobeFdRequests                    = "uprobe_fd_requests"
+	TapProgCgConnect4                         = "cg_connect4"
+	TapProgCgConnect6                         = "cg_connect6"
+	TapProgCgSockOps                          = "cg_sock_ops"
+	TapProgCgSockOpt                          = "cg_sock_opt"
+	TapProgCleanupPidFdFileEntries            = "cleanup_pid_fd_file_entries"
+	TapProgGotlsProbeEntryTlsConnRead         = "gotls__probe_entry_tls_conn_read"
+	TapProgGotlsProbeEntryTlsConnWrite        = "gotls__probe_entry_tls_conn_write"
+	TapProgGotlsProbeRetTlsConnRead           = "gotls__probe_ret_tls_conn_read"
+	TapProgGotlsProbeRetTlsConnWrite          = "gotls__probe_ret_tls_conn_write"
+	TapProgJavaSslEngineSysEnterClose         = "java_ssl_engine_sys_enter_close"
+	TapProgJavaSslEngineSysEnterRead          = "java_ssl_engine_sys_enter_read"
+	TapProgJavaSslEngineSysEnterReadv         = "java_ssl_engine_sys_enter_readv"
+	TapProgJavaSslEngineSysEnterRecvfrom      = "java_ssl_engine_sys_enter_recvfrom"
+	TapProgJavaSslEngineSysEnterSendto        = "java_ssl_engine_sys_enter_sendto"
+	TapProgJavaSslEngineSysEnterWrite         = "java_ssl_engine_sys_enter_write"
+	TapProgJavaSslEngineSysEnterWritev        = "java_ssl_engine_sys_enter_writev"
+	TapProgJavaSslEngineSysExitRead           = "java_ssl_engine_sys_exit_read"
+	TapProgJavaSslEngineSysExitReadv          = "java_ssl_engine_sys_exit_readv"
+	TapProgJavaSslEngineSysExitRecvfrom       = "java_ssl_engine_sys_exit_recvfrom"
+	TapProgJavaSslEngineSysExitSendto         = "java_ssl_engine_sys_exit_sendto"
+	TapProgJavaSslEngineSysExitWrite          = "java_ssl_engine_sys_exit_write"
+	TapProgJavaSslEngineSysExitWritev         = "java_ssl_engine_sys_exit_writev"
+	TapProgJavaSslEngineUnwrapExit            = "java_ssl_engine_unwrap_exit"
+	TapProgJavaSslEngineWrapExit              = "java_ssl_engine_wrap_exit"
+	TapProgJavaSslReadEntry                   = "java_ssl_read_entry"
+	TapProgJavaSslReadExit                    = "java_ssl_read_exit"
+	TapProgJavaSslWriteEntry                  = "java_ssl_write_entry"
+	TapProgJavaSslWriteExit                   = "java_ssl_write_exit"
+	TapProgMonitorCertOpenEntry               = "monitor_cert_open_entry"
+	TapProgNodetlsProbeEntrySSL_free          = "nodetls__probe_entry_SSL_free"
+	TapProgNodetlsProbeEntrySSL_setCertCb     = "nodetls__probe_entry_SSL_set_cert_cb"
+	TapProgNodetlsProbeEntryTLSWrapDestructor = "nodetls__probe_entry_TLSWrap_destructor"
+	TapProgNodetlsProbeEntryTLSWrapMemfn      = "nodetls__probe_entry_TLSWrap_memfn"
+	TapProgOpensslProbeEntrySSL_read          = "openssl__probe_entry_SSL_read"
+	TapProgOpensslProbeEntrySSL_readEx        = "openssl__probe_entry_SSL_read_ex"
+	TapProgOpensslProbeEntrySSL_setFd         = "openssl__probe_entry_SSL_set_fd"
+	TapProgOpensslProbeEntrySSL_write         = "openssl__probe_entry_SSL_write"
+	TapProgOpensslProbeEntrySSL_writeEx       = "openssl__probe_entry_SSL_write_ex"
+	TapProgOpensslProbeRetSSL_read            = "openssl__probe_ret_SSL_read"
+	TapProgOpensslProbeRetSSL_readEx          = "openssl__probe_ret_SSL_read_ex"
+	TapProgOpensslProbeRetSSL_write           = "openssl__probe_ret_SSL_write"
+	TapProgOpensslProbeRetSSL_writeEx         = "openssl__probe_ret_SSL_write_ex"
+	TapProgOpensslProbeEntrySSL_free          = "openssl_probe_entry_SSL_free"
+	TapProgOpensslProbeRetSSL_new             = "openssl_probe_ret_SSL_new"
+	TapProgSyscallProbeEntryAccept            = "syscall__probe_entry_accept"
+	TapProgSyscallProbeEntryAccept4           = "syscall__probe_entry_accept4"
+	TapProgSyscallProbeEntryClose             = "syscall__probe_entry_close"
+	TapProgSyscallProbeEntryConnect           = "syscall__probe_entry_connect"
+	TapProgSyscallProbeEntryExecve            = "syscall__probe_entry_execve"
+	TapProgSyscallProbeEntryExecveat          = "syscall__probe_entry_execveat"
+	TapProgSyscallProbeEntryExitGroup         = "syscall__probe_entry_exit_group"
+	TapProgSyscallProbeEntryRead              = "syscall__probe_entry_read"
+	TapProgSyscallProbeEntryReadv             = "syscall__probe_entry_readv"
+	TapProgSyscallProbeEntryRecvfrom          = "syscall__probe_entry_recvfrom"
+	TapProgSyscallProbeEntryRecvmsg           = "syscall__probe_entry_recvmsg"
+	TapProgSyscallProbeEntrySendmsg           = "syscall__probe_entry_sendmsg"
+	TapProgSyscallProbeEntrySendto            = "syscall__probe_entry_sendto"
+	TapProgSyscallProbeEntrySocket            = "syscall__probe_entry_socket"
+	TapProgSyscallProbeEntryWrite             = "syscall__probe_entry_write"
+	TapProgSyscallProbeEntryWritev            = "syscall__probe_entry_writev"
+	TapProgSyscallProbeRetAccept              = "syscall__probe_ret_accept"
+	TapProgSyscallProbeRetAccept4             = "syscall__probe_ret_accept4"
+	TapProgSyscallProbeRetClose               = "syscall__probe_ret_close"
+	TapProgSyscallProbeRetConnect             = "syscall__probe_ret_connect"
+	TapProgSyscallProbeRetExecve              = "syscall__probe_ret_execve"
+	TapProgSyscallProbeRetExecveat            = "syscall__probe_ret_execveat"
+	TapProgSyscallProbeRetRead                = "syscall__probe_ret_read"
+	TapProgSyscallProbeRetReadInit            = "syscall__probe_ret_read_init"
+	TapProgSyscallProbeRetReadv               = "syscall__probe_ret_readv"
+	TapProgSyscallProbeRetReadvInit           = "syscall__probe_ret_readv_init"
+	TapProgSyscallProbeRetRecvfrom            = "syscall__probe_ret_recvfrom"
+	TapProgSyscallProbeRetRecvfromInit        = "syscall__probe_ret_recvfrom_init"
+	TapProgSyscallProbeRetRecvmsg             = "syscall__probe_ret_recvmsg"
+	TapProgSyscallProbeRetRecvmsgInit         = "syscall__probe_ret_recvmsg_init"
+	TapProgSyscallProbeRetSendmsg             = "syscall__probe_ret_sendmsg"
+	TapProgSyscallProbeRetSendmsgInit         = "syscall__probe_ret_sendmsg_init"
+	TapProgSyscallProbeRetSendto              = "syscall__probe_ret_sendto"
+	TapProgSyscallProbeRetSendtoInit          = "syscall__probe_ret_sendto_init"
+	TapProgSyscallProbeRetSocket              = "syscall__probe_ret_socket"
+	TapProgSyscallProbeRetWrite               = "syscall__probe_ret_write"
+	TapProgSyscallProbeRetWriteInit           = "syscall__probe_ret_write_init"
+	TapProgSyscallProbeRetWritev              = "syscall__probe_ret_writev"
+	TapProgSyscallProbeRetWritevInit          = "syscall__probe_ret_writev_init"
+	TapProgTraceTcpClose                      = "trace_tcp_close"
+	TapProgTraceTcpRecvmsgFexit               = "trace_tcp_recvmsg_fexit"
+	TapProgTraceTcpV4ConnectFexit             = "trace_tcp_v4_connect_fexit"
+	TapProgTraceTcpV6ConnectFexit             = "trace_tcp_v6_connect_fexit"
+	TapProgTracepointSchedProcessExit         = "tracepoint__sched__process_exit"
+	TapProgTrackFdInstallEntry                = "track_fd_install_entry"
+	TapProgTrackSockAllocFileEntry            = "track_sock_alloc_file_entry"
+	TapProgTrackSockAllocFileRet              = "track_sock_alloc_file_ret"
+	TapVarHTTP2PREFACE                        = "HTTP2_PREFACE"
+	TapVarINVALID_FD                          = "INVALID_FD"
+	TapVarQpid                                = "qpid"
+	TapVarReadB_loc                           = "read_b_loc"
+	TapVarReadC_loc                           = "read_c_loc"
+	TapVarReadRetval0Loc                      = "read_retval0_loc"
+	TapVarReadRetval1Loc                      = "read_retval1_loc"
+	TapVarWriteB_loc                          = "write_b_loc"
+	TapVarWriteC_loc                          = "write_c_loc"
+	TapVarWriteRetval0Loc                     = "write_retval0_loc"
+	TapVarWriteRetval1Loc                     = "write_retval1_loc"
+)
 
 // LoadTap returns the embedded CollectionSpec for Tap.
 func LoadTap() (*ebpf.CollectionSpec, error) {
@@ -256,7 +461,7 @@ func LoadTap() (*ebpf.CollectionSpec, error) {
 //	*TapMaps
 //
 // See ebpf.CollectionSpec.LoadAndAssign documentation for details.
-func LoadTapObjects(obj interface{}, opts *ebpf.CollectionOptions) error {
+func LoadTapObjects(obj any, opts *ebpf.CollectionOptions) error {
 	spec, err := LoadTap()
 	if err != nil {
 		return err
@@ -271,9 +476,10 @@ func LoadTapObjects(obj interface{}, opts *ebpf.CollectionOptions) error {
 type TapSpecs struct {
 	TapProgramSpecs
 	TapMapSpecs
+	TapVariableSpecs
 }
 
-// TapSpecs contains programs before they are loaded into the kernel.
+// TapProgramSpecs contains programs before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type TapProgramSpecs struct {
@@ -426,12 +632,30 @@ type TapMapSpecs struct {
 	UprobeFdRequests                  *ebpf.MapSpec `ebpf:"uprobe_fd_requests"`
 }
 
+// TapVariableSpecs contains global variables before they are loaded into the kernel.
+//
+// It can be passed ebpf.CollectionSpec.Assign.
+type TapVariableSpecs struct {
+	HTTP2PREFACE    *ebpf.VariableSpec `ebpf:"HTTP2_PREFACE"`
+	INVALID_FD      *ebpf.VariableSpec `ebpf:"INVALID_FD"`
+	Qpid            *ebpf.VariableSpec `ebpf:"qpid"`
+	ReadB_loc       *ebpf.VariableSpec `ebpf:"read_b_loc"`
+	ReadC_loc       *ebpf.VariableSpec `ebpf:"read_c_loc"`
+	ReadRetval0Loc  *ebpf.VariableSpec `ebpf:"read_retval0_loc"`
+	ReadRetval1Loc  *ebpf.VariableSpec `ebpf:"read_retval1_loc"`
+	WriteB_loc      *ebpf.VariableSpec `ebpf:"write_b_loc"`
+	WriteC_loc      *ebpf.VariableSpec `ebpf:"write_c_loc"`
+	WriteRetval0Loc *ebpf.VariableSpec `ebpf:"write_retval0_loc"`
+	WriteRetval1Loc *ebpf.VariableSpec `ebpf:"write_retval1_loc"`
+}
+
 // TapObjects contains all objects after they have been loaded into the kernel.
 //
 // It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
 type TapObjects struct {
 	TapPrograms
 	TapMaps
+	TapVariables
 }
 
 func (o *TapObjects) Close() error {
@@ -550,6 +774,23 @@ func (m *TapMaps) Close() error {
 		m.TraceToggleMap,
 		m.UprobeFdRequests,
 	)
+}
+
+// TapVariables contains all global variables after they have been loaded into the kernel.
+//
+// It can be passed to LoadTapObjects or ebpf.CollectionSpec.LoadAndAssign.
+type TapVariables struct {
+	HTTP2PREFACE    *ebpf.Variable `ebpf:"HTTP2_PREFACE"`
+	INVALID_FD      *ebpf.Variable `ebpf:"INVALID_FD"`
+	Qpid            *ebpf.Variable `ebpf:"qpid"`
+	ReadB_loc       *ebpf.Variable `ebpf:"read_b_loc"`
+	ReadC_loc       *ebpf.Variable `ebpf:"read_c_loc"`
+	ReadRetval0Loc  *ebpf.Variable `ebpf:"read_retval0_loc"`
+	ReadRetval1Loc  *ebpf.Variable `ebpf:"read_retval1_loc"`
+	WriteB_loc      *ebpf.Variable `ebpf:"write_b_loc"`
+	WriteC_loc      *ebpf.Variable `ebpf:"write_c_loc"`
+	WriteRetval0Loc *ebpf.Variable `ebpf:"write_retval0_loc"`
+	WriteRetval1Loc *ebpf.Variable `ebpf:"write_retval1_loc"`
 }
 
 // TapPrograms contains all programs after they have been loaded into the kernel.

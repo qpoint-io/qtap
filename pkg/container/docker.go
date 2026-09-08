@@ -11,10 +11,9 @@ import (
 
 	"go.uber.org/zap"
 
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
+	containertypes "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -46,7 +45,6 @@ type docker struct {
 func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 	opts := []client.Opt{
 		client.FromEnv,
-		client.WithAPIVersionNegotiation(),
 	}
 
 	// if a unix socket is provided, check if the endpoint exists and is a socket
@@ -67,14 +65,14 @@ func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 		opts = append(opts, client.WithHost(DefaultDockerSocketPath))
 	}
 
-	c, err := client.NewClientWithOpts(opts...)
+	c, err := client.New(opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.TODO(), DefaultStartupTimeout)
 	defer cancel()
-	if _, err := c.Info(ctx); err != nil {
+	if _, err := c.Info(ctx, client.InfoOptions{}); err != nil {
 		return nil, err
 	}
 
@@ -86,13 +84,13 @@ func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 }
 
 func (d *docker) Start(ctx context.Context) error {
-	containers, err := d.client.ContainerList(ctx, containertypes.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("status", "running")),
+	res, err := d.client.ContainerList(ctx, client.ContainerListOptions{
+		Filters: make(client.Filters).Add("status", "running"),
 	})
 	if err != nil {
 		return fmt.Errorf("list containers: %w", err)
 	}
-	for _, cr := range containers {
+	for _, cr := range res.Items {
 		d.handleContainerEvent(ctx, cr.ID)
 	}
 
@@ -162,13 +160,17 @@ func (d *docker) handleContainerRestart(_ context.Context, containerID string) {
 }
 
 func (d *docker) inspectContainer(ctx context.Context, containerID string) (*Container, error) {
-	c := d.client
-
-	data, err := c.ContainerInspect(ctx, containerID)
+	res, err := d.client.ContainerInspect(ctx, containerID, client.ContainerInspectOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("inspect container %s: %w", containerID, err)
 	}
 
+	return containerFromInspect(containerID, res.Container), nil
+}
+
+// containerFromInspect maps a docker inspect response onto our runtime-neutral
+// Container. Every field it reads is optional on the wire, so each is guarded.
+func containerFromInspect(containerID string, data containertypes.InspectResponse) *Container {
 	cr := &Container{
 		ID:          containerID,
 		Name:        data.Name,
@@ -183,13 +185,14 @@ func (d *docker) inspectContainer(ctx context.Context, containerID string) (*Con
 	}
 
 	// extract RootFS path from GraphDriver data
-	if data.GraphDriver.Data != nil {
-		if mergedDir, ok := data.GraphDriver.Data["MergedDir"]; ok {
+	// GraphDriver is a pointer and omitempty as of moby/moby/api, so nil is reachable
+	if gd := data.GraphDriver; gd != nil && gd.Data != nil {
+		if mergedDir, ok := gd.Data["MergedDir"]; ok {
 			cr.RootFS = mergedDir
 		}
 	}
 
-	return cr, nil
+	return cr
 }
 
 func (d *docker) watchContainerEventsWithRetry(ctx context.Context) {
@@ -223,25 +226,21 @@ func (d *docker) watchContainerEventsWithRetry(ctx context.Context) {
 }
 
 func (d *docker) watchContainerEvents(ctx context.Context) bool {
-	c := d.client
-
-	var chMsg <-chan events.Message
-	var chErr <-chan error
 	var msg events.Message
 
-	chMsg, chErr = c.Events(ctx, events.ListOptions{})
+	res := d.client.Events(ctx, client.EventsListOptions{})
 
 	for {
 		select {
 		case <-ctx.Done():
 			return true
-		case err := <-chErr:
+		case err := <-res.Err:
 			if errors.Is(err, context.Canceled) {
 				return true
 			}
 			d.logger.Error("docker event subscription error", zap.Error(err))
 			return false
-		case msg = <-chMsg:
+		case msg = <-res.Messages:
 		}
 
 		if msg.Type != events.ContainerEventType {

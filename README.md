@@ -94,9 +94,10 @@ Converse with Qpoint devs and the contributors in [Github Discussions](https://g
       --pid=host \
       --network=host \
       -v /sys:/sys \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -e TINI_SUBREAPER=1 \
       --ulimit=memlock=-1 \
-      us-docker.pkg.dev/qpoint-edge/public/qpoint:v0 \
-      tap \
+      us-docker.pkg.dev/qpoint-edge/public/qtap:v0 \
       --log-level=info
   ```
 

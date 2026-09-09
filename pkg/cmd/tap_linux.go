@@ -594,23 +594,7 @@ func PrintDevToolsBox(url string) {
 }
 
 func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
-	procManTps := []*common.Tracepoint{
-		common.NewTracepoint("syscalls", "sys_enter_execve", objs.SyscallProbeEntryExecve),
-		common.NewTracepoint("syscalls", "sys_exit_execve", objs.SyscallProbeRetExecve),
-		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.SyscallProbeEntryExecveat),
-		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.SyscallProbeRetExecveat),
-		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
-		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
-	}
-
-	procManRB, err := ringbuf.NewReader(objs.ProcEvents)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create proc event reader: %w", err)
-	}
-
-	procMan := ebpfProcess.New(logger, objs.ProcessMetaMap, procManRB, procManTps)
-
-	return procMan, nil
+	return ebpfProcess.NewFromObjects(logger, objs)
 }
 
 // newRegistrationProvider connects to the managed control plane using the

@@ -112,3 +112,25 @@ sudo go test -tags integration -v -count=1 ./pkg/process/monitor
 These use real BPF resources to force reader setup failure and a failure after
 the first process probe has attached. They verify that owned descriptors are
 closed and that the first probe no longer keeps its program alive in the kernel.
+
+## QTap's shared collection
+
+QTap uses the same process-source constructor with its already-loaded collection.
+That source owns its ring-buffer reader and tracepoint links, but QTap continues
+to own the maps and programs used by its other components. Stopping the source
+must leave those shared resources available; QTap closes them during its normal
+application shutdown. The standalone monitor owns the whole collection because
+it creates it. Neither path starts a second process manager or changes existing
+QTap observers and configuration handling.
+
+From the repository root, run the shared-resource checks and the affected QTap
+process-filtering regression:
+
+```sh
+sudo go test -tags integration -count=1 ./pkg/ebpf/process ./pkg/process/monitor
+sudo go test -tags e2e -run '^TestProcessFiltering$' -count=1 ./e2e
+```
+
+The repository's e2e workflow also runs the public external consumer and resource
+ownership checks. Normal repository tests compile the external module without
+loading BPF.

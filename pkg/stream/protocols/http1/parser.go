@@ -22,6 +22,7 @@ type Callbacks interface {
 	OnResponse(*Response, bool)  // response, noBody
 	OnResponseBody([]byte, bool) // chunk data, isComplete
 	OnError(error)
+	OnTransactionEnd() // called when transaction is logically complete, before OnDone
 	OnDone() // called when transaction is complete
 }
 
@@ -186,13 +187,14 @@ func (p *Parser) processRequestStream() {
 		streamBody(bodyReader, p.callbacks.OnRequestBody, p.callbacks.OnError)
 	}
 
-	// Flush any extra data that may have been written to the request writer
-	// This could be something like a body was longer then the Content-Length header.
-	// TODO(Jon): We may want to note this in our callback for user investgiation.
-	_, _ = io.Copy(io.Discard, p.requestReader)
-
 	// Signal that request is complete
 	close(p.state.requestComplete)
+
+	// Flush any extra data that may have been written to the request writer
+	// (e.g. a body that exceeded Content-Length). This will unblock when the
+	// outer consumer closes the pipe via parser.Close (triggered by OnDone).
+	// TODO(Jon): We may want to note this in our callback for user investgiation.
+	_, _ = io.Copy(io.Discard, p.requestReader)
 }
 
 // processResponseStream runs in its own goroutine, reading from the response pipe
@@ -229,6 +231,7 @@ func (p *Parser) processResponseStream() {
 			// Special case: 101 Switching Protocols ends the HTTP transaction
 			if response.StatusCode == http.StatusSwitchingProtocols {
 				p.callbacks.OnResponse(response, true) // 101 responses have no body
+				p.callbacks.OnTransactionEnd()
 				p.callbacks.OnDone()
 				close(p.state.transactionDone)
 				return
@@ -258,15 +261,33 @@ func (p *Parser) processResponseStream() {
 			streamBody(bodyReader, p.callbacks.OnResponseBody, p.callbacks.OnError)
 		}
 
-		// Flush any extra data that may have been written to the response writer
-		// This could be something like a body was longer then the Content-Length header.
-		// TODO(Jon): We may want to note this in our callback for user investgiation.
-		_, _ = io.Copy(io.Discard, p.responseReader)
+		// Mark the transaction as logically complete *before* releasing
+		// control back to the HTTPStream. On a persistent (keep-alive)
+		// HTTP/1.1 connection the next request's bytes can arrive any
+		// moment, and the HTTPStream decides whether to reuse this session
+		// or build a new one based on Session.Closed(). OnTransactionEnd
+		// flips that flag synchronously so the next request is routed to
+		// a fresh session with a fresh plugin connection.
+		p.callbacks.OnTransactionEnd()
 
 		// TOOD(Jon): Not a fan of this, but it's common for consumers to try and
 		// clean up the parser on OnDone, but if they call Close(), it will end
 		// in a deadlock.
+		//
+		// IMPORTANT: fire OnDone *before* the trailing io.Copy below.
+		// In production, OnDone runs Session.Close → parser.Close, which
+		// closes the response writer and lets the io.Copy below return.
+		// If we fired OnDone after the io.Copy, the parser would block
+		// here forever on keep-alive connections (no further response
+		// bytes ever arrive on this session), and the artifact would
+		// never be emitted.
 		go p.callbacks.OnDone()
+
+		// Flush any extra data that may have been written to the response writer
+		// (e.g. a body longer than the Content-Length header). Unblocks when
+		// the OnDone path above closes the response pipe.
+		// TODO(Jon): We may want to note this in our callback for user investgiation.
+		_, _ = io.Copy(io.Discard, p.responseReader)
 
 		// Transaction complete
 		close(p.state.transactionDone)

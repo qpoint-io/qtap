@@ -39,6 +39,7 @@ type Manager struct {
 	tracepoints []*common.Tracepoint
 	rb          *ringbuf.Reader
 	metaMap     *ebpf.Map
+	readerWG    sync.WaitGroup
 }
 
 var tracer = telemetry.Tracer()
@@ -70,23 +71,24 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	// start the proc event reader
-	go m.readProcEvents(ctx)
+	m.readerWG.Go(func() { m.readProcEvents(ctx) })
 
 	return nil
 }
 
 func (m *Manager) Stop() error {
 	// close the reader
-	m.rb.Close()
+	err := m.rb.Close()
+	m.readerWG.Wait()
 
 	// detach the tracepoints
 	for _, tracepoint := range m.tracepoints {
-		if err := tracepoint.Detach(); err != nil {
-			return fmt.Errorf("detaching tracepoint %s/%s: %w", tracepoint.Group, tracepoint.Name, err)
+		if detachErr := tracepoint.Detach(); detachErr != nil {
+			err = errors.Join(err, fmt.Errorf("detaching tracepoint %s/%s: %w", tracepoint.Group, tracepoint.Name, detachErr))
 		}
 	}
 
-	return nil
+	return err
 }
 
 func (m *Manager) Register(r process.Receiver) {

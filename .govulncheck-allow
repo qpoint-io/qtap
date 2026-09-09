@@ -5,9 +5,5 @@
 #
 # Lines starting with `#` are comments. Use them to document *why* each entry
 # is allowlisted so a reviewer can re-evaluate later.
-
-# golang.org/x/crypto/openpgp is deprecated as a package, but qtap does not
-# import it. govulncheck reports this as a module-only finding because qtap
-# uses other x/crypto packages through validator. There is no fixed x/crypto
-# version; revisit if openpgp ever appears in `go list -deps -test ./...`.
-GO-2026-5932
+#
+# Findings for packages that are not imported do not need an exception.

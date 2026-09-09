@@ -291,20 +291,21 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 		}()
 	}
 
-	// initialize the observers
-	go m.initProcObservers(ctx, p, procChanged)
+	// Capture the executable for asynchronous logging before another exec can
+	// change the shared process.
+	go m.initProcObservers(ctx, p, procChanged, p.Exe)
 
 	return nil
 }
 
-func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool) {
+func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool, exe string) {
 	ctx, span := tracer.Start(context.TODO(), "Manager.initProcObservers",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
 	span.SetAttributes(
 		attribute.Int("pid", p.Pid),
-		attribute.String("exe", p.Exe),
+		attribute.String("exe", exe),
 		attribute.Bool("replace", replace),
 	)
 	defer span.End()
@@ -313,7 +314,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 	if p.Exited() {
 		return
 	}
-	logger := m.Logger.With(zap.Int("pid", p.Pid), zap.String("exe", p.Exe))
+	logger := m.Logger.With(zap.Int("pid", p.Pid), zap.String("exe", exe))
 
 	// we use a wait group to ensure the observers have time to complete
 	// because they all share the same instance of the ELF file which is

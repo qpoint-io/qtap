@@ -11,8 +11,9 @@ go build -o /tmp/qtap-process-monitor .
 sudo /tmp/qtap-process-monitor
 ```
 
-The example registers an existing-style process observer, starts startup
-enumeration and live Linux discovery, and stops when interrupted. It never
+The example registers an existing-style process observer, prints started,
+replaced, and stopped callbacks, and stops when interrupted. It queries the
+registry from a started callback and counts a snapshot after startup. It never
 starts QTap's command, configuration service, container manager, or capture
 managers. It retains QTap's current process model and combined BPF collection.
 
@@ -35,6 +36,42 @@ to the PIDs reported by the probes. The existing combined BPF object is loaded,
 so its verifier, resource, and privilege requirements also apply. A nil logger
 disables logging. Generated BPF assets are included in QTap.
 
+## Callbacks and queries
+
+`ProcessStarted` includes processes found during startup; `PredatesQpoint`
+distinguishes those from live discoveries. `ProcessReplaced` reports executable
+changes recognized by the existing manager. `ProcessStopped` includes the
+manager's recorded exit code. This is startup enumeration plus exec/exit
+observation, not complete process-birth accounting. PID reuse, short-lived
+processes, and dropped kernel records retain their existing limitations.
+
+Callbacks run asynchronously and may overlap across observers and lifecycle
+transitions. There is no ordered or lossless delivery guarantee. The supplied
+`*process.Process` is shared mutable state, not an immutable event snapshot;
+retaining it does not preserve a historical value. Optional container metadata
+and TLS state may be absent. Observer errors use the manager's existing logging
+and error handling; they do not roll back registry changes or reach `Start`.
+
+Register observers before `Start`. There is no unsubscribe operation or atomic
+snapshot-and-subscribe boundary. `Stop` joins the source reader and releases its
+resources, but already-dispatched callbacks may finish afterward. Applications
+own any work their callbacks start and must not rely on discovery resources
+remaining available after shutdown.
+
+The embedded manager provides `Get(pid)`, `Await(ctx, pid)`, and
+`SnapshotProcesses(fn)`. Use a timeout when waiting for an unknown PID:
+
+```go
+ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+defer cancel()
+proc, err := m.Await(ctx, pid)
+```
+
+Waiting is subject to the existing manager's behavior; snapshots are a changing
+registry view of process pointers, not point-in-time copies. A stop callback can
+overlap registry removal, so consumers should use the callback's process value
+when handling exits rather than requiring a lookup to succeed.
+
 ## Verification
 
 ```sh
@@ -44,5 +81,9 @@ sudo go test -mod=readonly -tags integration -v -count=1 ./...
 
 The first command verifies compilation from a separate module without loading
 BPF. The integration test loads real probes, observes a process that existed
-before startup, and checks shutdown. It requires the runtime prerequisites and
-fails rather than silently skipping when discovery cannot start.
+before startup, launches a controlled child, checks registry queries, and asks
+the child to replace itself and exit. Each transition is driven after observing
+the preceding callback; this tests the supported flow without asserting a new
+ordering guarantee. It also checks shutdown. The test requires the runtime
+prerequisites and fails rather than silently skipping when discovery cannot
+start. Each test program constructs only one manager.

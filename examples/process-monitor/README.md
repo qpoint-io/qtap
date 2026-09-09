@@ -72,6 +72,19 @@ registry view of process pointers, not point-in-time copies. A stop callback can
 overlap registry removal, so consumers should use the callback's process value
 when handling exits rather than requiring a lookup to succeed.
 
+## Startup errors and cleanup
+
+`New` returns an error when BPF loading or reader setup fails and releases any
+resources it acquired. A failed `Start` detaches process probes already attached
+and releases the owned collection. You can report the error and keep your
+application running; library code does not exit the process. The example's
+`main` chooses to exit on failure, but that is the caller's decision.
+
+After failed startup, do not reuse the monitor. Its deferred `Stop` is safe and
+does not close resources a second time. Successful construction always requires
+`Stop`, including when startup is never requested. Existing callback work is
+still application-owned, as described above.
+
 ## Verification
 
 ```sh
@@ -87,3 +100,15 @@ the preceding callback; this tests the supported flow without asserting a new
 ordering guarantee. It also checks shutdown. The test requires the runtime
 prerequisites and fails rather than silently skipping when discovery cannot
 start. Each test program constructs only one manager.
+
+The external failure test runs a consumer without BPF privileges and verifies
+that a permission error is returned while the host program continues. Additional
+resource-ownership tests can be run from the repository root:
+
+```sh
+sudo go test -tags integration -v -count=1 ./pkg/process/monitor
+```
+
+These use real BPF resources to force reader setup failure and a failure after
+the first process probe has attached. They verify that owned descriptors are
+closed and that the first probe no longer keeps its program alive in the kernel.

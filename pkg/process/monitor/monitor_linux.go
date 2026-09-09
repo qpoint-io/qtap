@@ -50,6 +50,11 @@ func New(logger *zap.Logger) (*Monitor, error) {
 	if err := spec.LoadAndAssign(objects, nil); err != nil {
 		return nil, fmt.Errorf("loading process BPF collection: %w", err)
 	}
+	return newMonitor(logger, objects)
+}
+
+// newMonitor takes ownership of an already loaded collection, including on error.
+func newMonitor(logger *zap.Logger, objects *tap.TapObjects) (*Monitor, error) {
 	source, err := ebpfProcess.NewFromObjects(logger, objects)
 	if err != nil {
 		return nil, errors.Join(err, objects.Close())

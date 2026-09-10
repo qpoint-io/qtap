@@ -201,7 +201,7 @@ func (c *Connection) SetRequest(req *http.Request) {
 	// TODO(Jon): we should not be setting these
 	req.Header.Set(":authority", req.Host)
 	req.Header.Set(":method", req.Method)
-	req.Header.Set(":path", req.URL.Path)
+	req.Header.Set(":path", req.URL.RequestURI())
 	req.Header.Set(":scheme", req.URL.Scheme)
 
 	// set the request and request body

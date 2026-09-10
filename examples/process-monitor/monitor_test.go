@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/process/monitor"
 )
 
 type observedProcess struct {
@@ -101,7 +100,7 @@ func TestProcessDiscovery(t *testing.T) {
 		_ = target.Wait()
 	})
 
-	m, err := monitor.New(nil)
+	m, err := process.NewMonitor(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

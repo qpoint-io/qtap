@@ -1,6 +1,6 @@
 //go:build integration && linux
 
-package monitor
+package process
 
 import (
 	"os"

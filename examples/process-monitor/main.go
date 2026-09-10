@@ -10,7 +10,6 @@ import (
 	"syscall"
 
 	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/process/monitor"
 )
 
 type observer struct {
@@ -34,7 +33,7 @@ func (*observer) ProcessStopped(_ context.Context, p *process.Process) error {
 }
 
 func run(ctx context.Context) error {
-	m, err := monitor.New(nil)
+	m, err := process.NewMonitor(nil)
 	if err != nil {
 		return err
 	}

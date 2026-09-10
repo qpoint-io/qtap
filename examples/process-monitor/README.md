@@ -1,6 +1,6 @@
 # Process discovery from another Go project
 
-This separate Go module demonstrates `github.com/qpoint-io/qtap/pkg/process/monitor`.
+This separate Go module demonstrates `github.com/qpoint-io/qtap/pkg/process`.
 The local replacement in its module manifest uses this checkout. In your own
 project, require the QTap version you use and omit that replacement.
 
@@ -19,15 +19,15 @@ managers. It retains QTap's current process model and combined BPF collection.
 
 ## Lifecycle and requirements
 
-Call `monitor.New`, register observers using `Observe`, then call `Start`. Always
-call the monitor's `Stop`, even when you never start it. Startup failure releases
+Call `process.NewMonitor`, register observers using `Observe`, then call `Start`.
+Always call the monitor's `Stop`, even when you never start it. Startup failure releases
 the owned resources automatically; a deferred `Stop` remains safe. Call lifecycle
 methods sequentially. Use the monitor's `Stop`, not its embedded manager's `Stop`,
 so that the BPF collection is also released.
 
-Only one monitor is supported per Go process, including successive construction.
-Restarting a stopped monitor is unsupported. The existing process manager
-registers global metrics; creating a second manager can panic.
+Only one monitor may be constructed per Go process. Creating another after
+stopping the first, or restarting a stopped monitor, is unsupported. The existing
+process manager registers global metrics; creating a second manager can panic.
 
 Run on Linux with kernel 5.10 or later, BTF available at
 `/sys/kernel/btf/vmlinux`, access to procfs and tracefs, and permission to load and
@@ -74,8 +74,8 @@ when handling exits rather than requiring a lookup to succeed.
 
 ## Startup errors and cleanup
 
-`New` returns an error when BPF loading or reader setup fails and releases any
-resources it acquired. A failed `Start` detaches process probes already attached
+`NewMonitor` returns an error when BPF loading or reader setup fails and releases
+any resources it acquired. A failed `Start` detaches process probes already attached
 and releases the owned collection. You can report the error and keep your
 application running; library code does not exit the process. The example's
 `main` chooses to exit on failure, but that is the caller's decision.
@@ -106,7 +106,7 @@ that a permission error is returned while the host program continues. Additional
 resource-ownership tests can be run from the repository root:
 
 ```sh
-sudo go test -tags integration -v -count=1 ./pkg/process/monitor
+sudo go test -tags integration -v -count=1 ./pkg/process
 ```
 
 These use real BPF resources to force reader setup failure and a failure after
@@ -115,7 +115,7 @@ closed and that the first probe no longer keeps its program alive in the kernel.
 
 ## QTap's shared collection
 
-QTap uses the same process-source constructor with its already-loaded collection.
+QTap uses `process.NewEventSource` with its already-loaded collection.
 That source owns its ring-buffer reader and tracepoint links, but QTap continues
 to own the maps and programs used by its other components. Stopping the source
 must leave those shared resources available; QTap closes them during its normal
@@ -127,7 +127,7 @@ From the repository root, run the shared-resource checks and the affected QTap
 process-filtering regression:
 
 ```sh
-sudo go test -tags integration -count=1 ./pkg/process ./pkg/process/monitor
+sudo go test -tags integration -count=1 ./pkg/process
 sudo go test -tags e2e -run '^TestProcessFiltering$' -count=1 ./e2e
 ```
 

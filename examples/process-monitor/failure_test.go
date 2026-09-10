@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/qpoint-io/qtap/pkg/process/monitor"
+	"github.com/qpoint-io/qtap/pkg/process"
 )
 
 func TestConstructionFailure(t *testing.T) {
 	if os.Getenv("QTAP_MONITOR_UNPRIVILEGED_CHILD") == "1" {
-		m, err := monitor.New(nil)
+		m, err := process.NewMonitor(nil)
 		if m != nil {
 			_ = m.Stop()
 		}

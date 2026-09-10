@@ -54,7 +54,7 @@ jobs:
         run: make build-jvm
 
       - name: Verify process discovery ownership
-        run: sudo "$(command -v go)" test -tags integration -count=1 ./pkg/process/monitor ./pkg/process
+        run: sudo "$(command -v go)" test -tags integration -count=1 ./pkg/process
 
       - name: Verify external process consumer
         working-directory: examples/process-monitor

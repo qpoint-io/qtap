@@ -103,8 +103,8 @@ Converse with Qpoint devs and the contributors in [Github Discussions](https://g
 
 ## Embedding process discovery
 
-Go applications can use `pkg/process/monitor` to construct one Linux process
-monitor, receive the existing lifecycle callbacks, and release its resources
+Go applications can use `process.NewMonitor` in `pkg/process` to construct one
+Linux process monitor, receive the existing lifecycle callbacks, and release its resources
 without starting the QTap application. See the [separate Go module example](examples/process-monitor)
 for usage, runtime requirements, and callback limitations.
 

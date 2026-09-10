@@ -13,8 +13,6 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,10 +28,10 @@ var recordPool = sync.Pool{
 	},
 }
 
-type Manager struct {
+type eventSource struct {
 	logger   *zap.Logger
-	reciever process.Receiver
-	cache    *lru.Cache[int32, *process.Process]
+	reciever Receiver
+	cache    *lru.Cache[int32, *Process]
 
 	// bridge to the bpf probes
 	tracepoints []*common.Tracepoint
@@ -42,15 +40,13 @@ type Manager struct {
 	readerWG    sync.WaitGroup
 }
 
-var tracer = telemetry.Tracer()
-
-func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *Manager {
-	cache, err := lru.New[int32, *process.Process](cacheSize)
+func newEventSource(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *eventSource {
+	cache, err := lru.New[int32, *Process](cacheSize)
 	if err != nil {
 		panic(err)
 	}
 
-	return &Manager{
+	return &eventSource{
 		logger:      logger,
 		rb:          rb,
 		metaMap:     mmap,
@@ -59,7 +55,7 @@ func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.T
 	}
 }
 
-func (m *Manager) Start(ctx context.Context) error {
+func (m *eventSource) Start(ctx context.Context) error {
 	ctx, span := tracer.WithoutCancel(ctx, "Manager.Start")
 	defer span.End()
 
@@ -76,7 +72,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *Manager) Stop() error {
+func (m *eventSource) Stop() error {
 	// close the reader
 	err := m.rb.Close()
 	m.readerWG.Wait()
@@ -91,11 +87,11 @@ func (m *Manager) Stop() error {
 	return err
 }
 
-func (m *Manager) Register(r process.Receiver) {
+func (m *eventSource) Register(r Receiver) {
 	m.reciever = r
 }
 
-func (m *Manager) readProcEvents(ctx context.Context) {
+func (m *eventSource) readProcEvents(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
 			m.logger.Error("context cancelled", zap.Error(ctx.Err()))
@@ -135,7 +131,7 @@ var (
 	}
 )
 
-func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
+func (m *eventSource) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
 	ctx, span := tracer.Start(context.TODO(), "readProcEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
@@ -179,7 +175,7 @@ func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) err
 	}
 }
 
-func (m *Manager) SetMeta(p *process.Process) error {
+func (m *eventSource) SetMeta(p *Process) error {
 	if p == nil {
 		return nil
 	}

@@ -9,10 +9,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// NewFromObjects creates a process event source using an already loaded QTap
+// NewEventSource creates a process event source using an already loaded QTap
 // collection. The source owns its reader and tracepoint links; the caller retains
 // ownership of the collection's maps and programs.
-func NewFromObjects(logger *zap.Logger, objs *tap.TapObjects) (*Manager, error) {
+func NewEventSource(logger *zap.Logger, objs *tap.TapObjects) (Eventer, error) {
 	reader, err := ringbuf.NewReader(objs.ProcEvents)
 	if err != nil {
 		return nil, fmt.Errorf("creating process event reader: %w", err)
@@ -26,5 +26,5 @@ func NewFromObjects(logger *zap.Logger, objs *tap.TapObjects) (*Manager, error) 
 		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
 		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
 	}
-	return New(logger, objs.ProcessMetaMap, reader, tracepoints), nil
+	return newEventSource(logger, objs.ProcessMetaMap, reader, tracepoints), nil
 }

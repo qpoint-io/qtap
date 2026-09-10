@@ -9,7 +9,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/asm"
 	"github.com/qpoint-io/qtap/internal/tap"
-	processSource "github.com/qpoint-io/qtap/pkg/ebpf/process"
+	"github.com/qpoint-io/qtap/pkg/process"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -39,7 +39,7 @@ func TestSourceStopPreservesSharedObjects(t *testing.T) {
 			SyscallProbeEntryExitGroup: program, TracepointSchedProcessExit: program,
 		},
 	}
-	source, err := processSource.NewFromObjects(zap.NewNop(), objects)
+	source, err := process.NewEventSource(zap.NewNop(), objects)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = source.Stop() })
 	require.NoError(t, source.Start(t.Context()))
@@ -69,7 +69,7 @@ func TestSourceConstructionFailurePreservesSharedObjects(t *testing.T) {
 	m, err := ebpf.NewMap(&ebpf.MapSpec{Type: ebpf.Array, KeySize: 4, ValueSize: 4, MaxEntries: 1})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = m.Close() })
-	source, err := processSource.NewFromObjects(zap.NewNop(), &tap.TapObjects{TapMaps: tap.TapMaps{ProcEvents: m}})
+	source, err := process.NewEventSource(zap.NewNop(), &tap.TapObjects{TapMaps: tap.TapMaps{ProcEvents: m}})
 	require.ErrorContains(t, err, "creating process event reader")
 	require.Nil(t, source)
 	require.NoError(t, m.Put(uint32(0), uint32(42)))

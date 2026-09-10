@@ -127,7 +127,7 @@ From the repository root, run the shared-resource checks and the affected QTap
 process-filtering regression:
 
 ```sh
-sudo go test -tags integration -count=1 ./pkg/ebpf/process ./pkg/process/monitor
+sudo go test -tags integration -count=1 ./pkg/process ./pkg/process/monitor
 sudo go test -tags e2e -run '^TestProcessFiltering$' -count=1 ./e2e
 ```
 

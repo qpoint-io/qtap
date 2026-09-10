@@ -27,7 +27,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/devtools"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/gotls"
@@ -593,8 +592,8 @@ func PrintDevToolsBox(url string) {
 	fmt.Println()
 }
 
-func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
-	return ebpfProcess.NewFromObjects(logger, objs)
+func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (process.Eventer, error) {
+	return process.NewEventSource(logger, objs)
 }
 
 // newRegistrationProvider connects to the managed control plane using the

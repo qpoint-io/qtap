@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/qpoint-io/qtap/internal/tap"
-	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
 	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
 )
@@ -55,7 +54,7 @@ func New(logger *zap.Logger) (*Monitor, error) {
 
 // newMonitor takes ownership of an already loaded collection, including on error.
 func newMonitor(logger *zap.Logger, objects *tap.TapObjects) (*Monitor, error) {
-	source, err := ebpfProcess.NewFromObjects(logger, objects)
+	source, err := process.NewEventSource(logger, objects)
 	if err != nil {
 		return nil, errors.Join(err, objects.Close())
 	}

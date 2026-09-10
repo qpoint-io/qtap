@@ -6,11 +6,51 @@ import (
 	"encoding/binary"
 	"sync"
 
-	"github.com/qpoint-io/qtap/pkg/process"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
+
+// events represents process event types
+type events uint64
+
+// this must align with the events enum in bpf/capture/process.bpf.c
+const (
+	EVENT_EXEC_START events = iota + 1
+	EVENT_EXEC_ARGV
+	EVENT_EXEC_END
+	EVENT_EXIT
+	EVENT_MMAP
+	EVENT_RENAME
+)
+
+// event is the base struct for all events
+type event struct {
+	Type events
+}
+
+// execStartEvent corresponds to exec_start_event
+type execStartEvent struct {
+	Pid     int32
+	ExeSize uint32
+}
+
+// execArgvEvent corresponds to exec_argv_event
+type execArgvEvent struct {
+	Pid      int32
+	ArgvSize uint32
+}
+
+// execEndEvent corresponds to exec_end_event
+type execEndEvent struct {
+	Pid int32
+}
+
+// exitEvent corresponds to exit_info_event
+type exitEvent struct {
+	Pid      int32
+	ExitCode int32
+}
 
 var (
 	execStartEventPool = sync.Pool{
@@ -37,7 +77,7 @@ var (
 
 // handleExecStartEvent handles detecting when a process is being started
 // and adds it to the init procs map
-func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) error {
+func (m *eventSource) handleExecStartEvent(ctx context.Context, r *bytes.Reader) error {
 	ctx, span := tracer.Start(context.TODO(), "handleExecStartEvent", //nolint:ineffassign,wastedassign,staticcheck
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
@@ -77,7 +117,7 @@ func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) err
 
 	if m.reciever != nil {
 		// create process
-		p := process.NewProcess(int(e.Pid), exe, m.logger)
+		p := NewProcess(int(e.Pid), exe, m.logger)
 
 		// set the notifier so the process can indicate when it's changed
 		// and when we should collect data for the ebpf meta map
@@ -93,7 +133,7 @@ func (m *Manager) handleExecStartEvent(ctx context.Context, r *bytes.Reader) err
 
 // handleExecArgvEvent handles detecting when a process's arguments are being set
 // and adds them to the proc init
-func (m *Manager) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) error {
+func (m *eventSource) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) error {
 	ctx, span := tracer.Start(context.TODO(), "handleExecArgvEvent", //nolint:ineffassign,wastedassign,staticcheck
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
@@ -137,7 +177,7 @@ func (m *Manager) handleExecArgvEvent(ctx context.Context, r *bytes.Reader) erro
 
 // handleExecEndEvent handles detecting when a process exec is complete
 // and applies the changes to the process
-func (m *Manager) handleExecEndEvent(ctx context.Context, r *bytes.Reader) error {
+func (m *eventSource) handleExecEndEvent(ctx context.Context, r *bytes.Reader) error {
 	ctx, span := tracer.Start(context.TODO(), "handleExecEndEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
@@ -172,7 +212,7 @@ func (m *Manager) handleExecEndEvent(ctx context.Context, r *bytes.Reader) error
 
 // handleExitEvent handles detecting when a process has exited
 // and removes it from the system
-func (m *Manager) handleExitEvent(ctx context.Context, r *bytes.Reader) error {
+func (m *eventSource) handleExitEvent(ctx context.Context, r *bytes.Reader) error {
 	ctx, span := tracer.Start(context.TODO(), "handleExitEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),

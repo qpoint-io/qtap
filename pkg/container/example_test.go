@@ -53,7 +53,7 @@ func TestNoQTapDependencies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list production dependencies: %v\n%s", err, output)
 	}
-	for _, dependency := range strings.Fields(string(output)) {
+	for dependency := range strings.FieldsSeq(string(output)) {
 		if strings.HasPrefix(dependency, "github.com/qpoint-io/qtap/") && dependency != packagePath {
 			t.Errorf("container discovery depends on another qtap package: %s", dependency)
 		}

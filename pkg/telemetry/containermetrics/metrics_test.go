@@ -27,7 +27,7 @@ func TestMetrics(t *testing.T) {
 	for _, family := range afterStart {
 		if family.GetName() == "qtap_container_active_total" || family.GetName() == "qtap_container_pod_container_count" {
 			require.Len(t, family.Metric, 1)
-			assert.Equal(t, 1.0, family.Metric[0].GetGauge().GetValue())
+			assert.InDelta(t, 1.0, family.Metric[0].GetGauge().GetValue(), 1e-9)
 		}
 	}
 	callbacks.Restarted(c, "docker")

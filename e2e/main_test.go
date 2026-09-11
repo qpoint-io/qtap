@@ -177,7 +177,7 @@ func mainSetup() error {
 
 	// TODO(e2e)
 	// Initialize container detection
-	// containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
+	// containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint, container.Callbacks{})
 	// if err := containerManager.Start(e2ectx); err != nil {
 	// 	return fmt.Errorf("starting container manager: %w", err)
 	// }

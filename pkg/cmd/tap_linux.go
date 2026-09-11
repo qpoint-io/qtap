@@ -58,6 +58,8 @@ import (
 	"github.com/qpoint-io/qtap/pkg/stream"
 	"github.com/qpoint-io/qtap/pkg/tags"
 	"github.com/qpoint-io/qtap/pkg/telemetry"
+	"github.com/qpoint-io/qtap/pkg/telemetry/containermetrics"
+	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
@@ -317,7 +319,8 @@ func runTapCmd(logger *zap.Logger) {
 	defer startPulseHeartbeat(logger, configManager)()
 
 	// Initialize container detection
-	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint)
+	containerCallbacks := containermetrics.New(metrics.ProductRegistry())
+	containerManager := container.NewManager(logger, dockerSocketEndpoint, containerdSocketEndpoint, criRuntimeSocketEndpoint, containerCallbacks)
 	if err := containerManager.Start(ctx); err != nil {
 		logger.Fatal("failed to start container manager", zap.Error(err))
 	}

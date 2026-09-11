@@ -27,14 +27,15 @@ var containerNameLabels = []string{
 }
 
 type Containerd struct {
-	logger   *zap.Logger
-	mu       sync.RWMutex
-	endpoint string
-	client   *containerd.Client
-	cache    map[string]*Container // TODO: convert to our own map
+	logger    *zap.Logger
+	mu        sync.RWMutex
+	endpoint  string
+	client    *containerd.Client
+	cache     map[string]*Container // TODO: convert to our own map
+	callbacks Callbacks
 }
 
-func NewContainerdAccessor(logger *zap.Logger, endpoint string) (*Containerd, error) {
+func NewContainerdAccessor(logger *zap.Logger, endpoint string, callbacks Callbacks) (*Containerd, error) {
 	if endpoint == "" {
 		endpoint = DefaultContainerdSocketPath
 	}
@@ -63,10 +64,11 @@ func NewContainerdAccessor(logger *zap.Logger, endpoint string) (*Containerd, er
 	}
 
 	return &Containerd{
-		logger:   logger,
-		endpoint: endpoint,
-		client:   c,
-		cache:    make(map[string]*Container),
+		logger:    logger,
+		endpoint:  endpoint,
+		client:    c,
+		cache:     make(map[string]*Container),
+		callbacks: callbacks,
 	}, nil
 }
 
@@ -158,37 +160,41 @@ func (c *Containerd) processContainerCreateEvent(ctx context.Context, id string)
 
 func (c *Containerd) processContainerDelete(id string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	humanID := humanContainerID(id)
-	if cr := c.cache[humanID]; cr != nil {
-		reportContainerStopped(cr, "containerd")
-	}
+	cr := c.cache[humanID]
 	delete(c.cache, humanID)
+	c.mu.Unlock()
+
+	if cr != nil && c.callbacks.Stopped != nil {
+		c.callbacks.Stopped(cr, "containerd")
+	}
 }
 
 // addContainer takes a qpoint container and updates the cache record to match using the human
 // friendly container id (first 12 characters of the container id).
 func (c *Containerd) addContainer(cr *Container) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.logger.Debug("discovered containerd container", zap.Any("container", cr), zap.Bool("is_sandbox", cr.isSandbox()))
 
 	if cr.isSandbox() {
 		return
 	}
 
+	c.mu.Lock()
 	humanID := humanContainerID(cr.ID)
 	existing := c.cache[humanID]
 
-	// If this is a new container, set start time and report metrics
+	// If this is a new container, set its discovery time.
 	if existing == nil {
 		cr.SetStartTime(time.Now())
-		reportContainerStarted(cr, "containerd")
 	}
 
 	c.cache[humanID] = cr
+	c.mu.Unlock()
+
+	if existing == nil && c.callbacks.Started != nil {
+		c.callbacks.Started(cr, "containerd")
+	}
 }
 
 // buildContainerRecord builds a qpoint container record from a containerd container.

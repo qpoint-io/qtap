@@ -23,13 +23,23 @@ Started and replaced events print one labeled block per callback:
 
 ```
 started pid=4242 existing=false tracked=true
-  exe:    "/usr/bin/sleep"
-  binary: "sleep"
-  args:   ["30"]
+  exe:       "/usr/bin/sleep"
+  binary:    "sleep"
+  args:      ["30"]
+  user:      "root" uid=0
+  cgroup:    "/user.slice/user-0.slice/session-1.scope"
+  container: "root"
+  pod:       unavailable
+  root:      "/proc/4242/root"
 replaced pid=4242 existing=false
-  exe:    "/usr/bin/cat"
-  binary: "cat"
-  args:   not captured
+  exe:       "/usr/bin/cat"
+  binary:    "cat"
+  args:      not captured
+  user:      "root" uid=0
+  cgroup:    "/user.slice/user-0.slice/session-1.scope"
+  container: "root"
+  pod:       unavailable
+  root:      "/proc/4242/root"
 stopped pid=4242 exit_code=0
 ```
 
@@ -38,18 +48,32 @@ enumeration, and `tracked` is the registry lookup made from the started
 callback. Strings and each argument are quoted with Go syntax, so spaces and
 embedded newlines stay inside their value instead of starting a new line.
 
+`user` comes from the process's lazy `User` lookup, which reads procfs and
+resolves the owner name. It is resolved separately after the other fields are
+read, so it can fail when the process has already exited; the callback still
+succeeds and the line shows `unavailable` with the lookup error. When the UID
+is known but the name is not, the line keeps the UID, including UID zero.
+
+`cgroup`, `container`, `pod`, and `root` are the values the manager discovered
+from procfs and the cgroup path. `container` is the ID parsed from the cgroup
+hierarchy and reads `root` outside a container. `pod` is only present for
+Kubernetes pod cgroups. Any empty value prints as `unavailable`; the example
+does not start QTap's container or Kubernetes services to enrich them, so an
+unavailable value means nothing was discovered, not that enrichment failed.
+
 `args` holds the arguments after the program name, as captured from the exec
 probe. Processes found during startup enumeration have no exec event, so their
 arguments are reported as `not captured`. The same wording is used whenever the
 list is empty; the example does not read the command line from procfs to fill
 the gap, and an empty list does not mean the program ran without arguments.
 
-The observer copies the displayed fields while holding the process mutex
-(`Lock`/`Unlock` on `*process.Process`), the same mutex the manager holds while
-it compares, updates, and rediscovers a process during executable replacement.
-It releases that mutex before querying the registry and before writing, and it
-assembles the whole block before a single write to standard output so blocks
-from concurrent callbacks do not interleave. This is the recommended pattern
+The observer copies the displayed fields and the `User` resolver while holding
+the process mutex (`Lock`/`Unlock` on `*process.Process`), the same mutex the
+manager holds while it compares, updates, and rediscovers a process during
+executable replacement. It releases that mutex before resolving the user,
+querying the registry, or writing, so the lookup never holds up manager
+updates. It assembles the whole block before a single write to standard output
+so blocks from concurrent callbacks do not interleave. This is the recommended pattern
 for reading these fields; other fields and unguarded reads are not covered by
 it.
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -29,18 +30,44 @@ type details struct {
 	args     []string
 	existing bool
 	tracked  bool
+	cgroup   string
+	pod      string
+	root     string
+	// container is the ID the manager derived from the cgroup path. It is
+	// "root" outside a container; runtime enrichment is never started here.
+	container string
+	// user is resolved through the process's lazy lookup after the mutex is
+	// released. A failed lookup can still carry the UID.
+	user    *process.ProcessUser
+	userErr error
 }
 
 func capture(p *process.Process) details {
 	p.Lock()
-	defer p.Unlock()
-	return details{
-		pid:      p.Pid,
-		exe:      p.Exe,
-		binary:   p.Binary,
-		args:     slices.Clone(p.Args),
-		existing: p.PredatesQpoint,
+	d := details{
+		pid:       p.Pid,
+		exe:       p.Exe,
+		binary:    p.Binary,
+		args:      slices.Clone(p.Args),
+		existing:  p.PredatesQpoint,
+		cgroup:    p.Cgroup,
+		container: p.ContainerID,
+		pod:       p.PodID,
+		root:      p.Root,
 	}
+	user := p.User
+	p.Unlock()
+	// The lookup reads procfs and fails once the process has exited. It runs
+	// after unlocking so a slow or failed lookup never holds up the manager.
+	d.user, d.userErr = user()
+	return d
+}
+
+func quoteOr(s string) string {
+	if s == "" {
+		return "unavailable"
+	}
+	return strconv.Quote(s)
 }
 
 // describe renders one event as a single block. Values are quoted so spaces
@@ -51,14 +78,28 @@ func describe(kind string, d details) string {
 	if kind == "started" {
 		fmt.Fprintf(&b, " tracked=%t", d.tracked)
 	}
-	fmt.Fprintf(&b, "\n  exe:    %q\n  binary: %q\n", d.exe, d.binary)
+	fmt.Fprintf(&b, "\n  exe:       %s\n  binary:    %s\n", quoteOr(d.exe), quoteOr(d.binary))
 	if len(d.args) == 0 {
 		// Processes found at startup have no argv event, so an empty list means
 		// the arguments were not captured, not that there were none.
-		b.WriteString("  args:   not captured\n")
+		b.WriteString("  args:      not captured\n")
 	} else {
-		fmt.Fprintf(&b, "  args:   %q\n", d.args)
+		fmt.Fprintf(&b, "  args:      %q\n", d.args)
 	}
+	reason := ""
+	if d.userErr != nil {
+		reason = fmt.Sprintf(" (%v)", d.userErr)
+	}
+	switch {
+	case d.user == nil:
+		fmt.Fprintf(&b, "  user:      unavailable%s\n", reason)
+	case d.user.Username == "":
+		fmt.Fprintf(&b, "  user:      unavailable uid=%d%s\n", d.user.UID, reason)
+	default:
+		fmt.Fprintf(&b, "  user:      %q uid=%d\n", d.user.Username, d.user.UID)
+	}
+	fmt.Fprintf(&b, "  cgroup:    %s\n  container: %s\n  pod:       %s\n  root:      %s\n",
+		quoteOr(d.cgroup), quoteOr(d.container), quoteOr(d.pod), quoteOr(d.root))
 	return b.String()
 }
 

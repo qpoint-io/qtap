@@ -36,13 +36,14 @@ const (
 )
 
 type docker struct {
-	logger *zap.Logger
-	mu     sync.RWMutex
-	client *client.Client
-	cache  map[string]*Container // TODO: convert to our own map
+	logger    *zap.Logger
+	mu        sync.RWMutex
+	client    *client.Client
+	cache     map[string]*Container // TODO: convert to our own map
+	callbacks Callbacks
 }
 
-func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
+func NewDockerAccessor(logger *zap.Logger, endpoint string, callbacks Callbacks) (*docker, error) {
 	opts := []client.Opt{
 		client.FromEnv,
 	}
@@ -77,9 +78,10 @@ func NewDockerAccessor(logger *zap.Logger, endpoint string) (*docker, error) {
 	}
 
 	return &docker{
-		logger: logger,
-		client: c,
-		cache:  make(map[string]*Container),
+		logger:    logger,
+		client:    c,
+		cache:     make(map[string]*Container),
+		callbacks: callbacks,
 	}, nil
 }
 
@@ -125,38 +127,40 @@ func (d *docker) handleContainerEvent(ctx context.Context, containerID string) {
 	}
 
 	d.mu.Lock()
-	defer d.mu.Unlock()
 
 	humanID := humanContainerID(cr.ID)
 	existing := d.cache[humanID]
 
-	// If this is a new container, set start time and report metrics
+	// If this is a new container, set its discovery time.
 	if existing == nil {
 		cr.SetStartTime(time.Now())
-		reportContainerStarted(cr, "docker")
 	}
 
 	d.cache[humanID] = cr
+	d.mu.Unlock()
+
+	if existing == nil && d.callbacks.Started != nil {
+		d.callbacks.Started(cr, "docker")
+	}
 }
 
 func (d *docker) handleContainerStop(_ context.Context, containerID string) {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 
 	humanID := humanContainerID(containerID)
-	if cr := d.cache[humanID]; cr != nil {
-		reportContainerStopped(cr, "docker")
-		delete(d.cache, humanID)
+	cr := d.cache[humanID]
+	delete(d.cache, humanID)
+	d.mu.Unlock()
+
+	if cr != nil && d.callbacks.Stopped != nil {
+		d.callbacks.Stopped(cr, "docker")
 	}
 }
 
 func (d *docker) handleContainerRestart(_ context.Context, containerID string) {
-	d.mu.RLock()
-	humanID := humanContainerID(containerID)
-	if cr := d.cache[humanID]; cr != nil {
-		reportContainerRestarted(cr, "docker")
+	if cr := d.GetByID(containerID); cr != nil && d.callbacks.Restarted != nil {
+		d.callbacks.Restarted(cr, "docker")
 	}
-	d.mu.RUnlock()
 }
 
 func (d *docker) inspectContainer(ctx context.Context, containerID string) (*Container, error) {

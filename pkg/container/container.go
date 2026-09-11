@@ -19,6 +19,16 @@ type Accessor interface {
 	GetByID(containerId string) *Container
 }
 
+// Callbacks receives discovery reporting events, not an authoritative runtime
+// lifecycle stream. Nil handlers are ignored. Handlers run synchronously after
+// cache locks are released and must return promptly and treat records as read-only.
+// Different runtime accessors may invoke handlers concurrently.
+type Callbacks struct {
+	Started   func(c *Container, runtime string)
+	Stopped   func(c *Container, runtime string)
+	Restarted func(c *Container, runtime string)
+}
+
 type Manager struct {
 	logger *zap.Logger
 
@@ -26,7 +36,7 @@ type Manager struct {
 	k8s       *KubernetesAccessor
 }
 
-func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRuntimeEndpoint string) *Manager {
+func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRuntimeEndpoint string, callbacks Callbacks) *Manager {
 	ca := &Manager{logger: logger}
 
 	logger = logger.With(zap.String("package", "container"))
@@ -34,7 +44,7 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 	dockerEndpoint = formatContainerSocketEndpoint(dockerEndpoint)
 	criRuntimeEndpoint = formatContainerSocketEndpoint(criRuntimeEndpoint)
 
-	dr, err := NewDockerAccessor(logger, dockerEndpoint)
+	dr, err := NewDockerAccessor(logger, dockerEndpoint, callbacks)
 	if err != nil {
 		logger.Debug("skipping Docker Engine integration", zap.String("endpoint", dockerEndpoint), zap.String("message", err.Error()))
 	} else {
@@ -42,7 +52,7 @@ func NewManager(logger *zap.Logger, dockerEndpoint, containerdEndpoint, criRunti
 		ca.accessors = append(ca.accessors, dr)
 	}
 
-	cd, err := NewContainerdAccessor(logger, containerdEndpoint)
+	cd, err := NewContainerdAccessor(logger, containerdEndpoint, callbacks)
 	if err != nil {
 		logger.Debug("skipping containerd integration", zap.String("endpoint", containerdEndpoint), zap.String("message", err.Error()))
 	} else {

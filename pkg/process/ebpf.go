@@ -40,21 +40,6 @@ type eventSource struct {
 	readerWG    sync.WaitGroup
 }
 
-func newEventSource(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *eventSource {
-	cache, err := lru.New[int32, *Process](cacheSize)
-	if err != nil {
-		panic(err)
-	}
-
-	return &eventSource{
-		logger:      logger,
-		rb:          rb,
-		metaMap:     mmap,
-		tracepoints: tps,
-		cache:       cache,
-	}
-}
-
 func (m *eventSource) Start(ctx context.Context) error {
 	ctx, span := tracer.WithoutCancel(ctx, "Manager.Start")
 	defer span.End()

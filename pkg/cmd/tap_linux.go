@@ -305,7 +305,7 @@ func runTapCmd(logger *zap.Logger) {
 	defer tapObjs.Close()
 
 	// Initialize process manager
-	procEbpfMan, err := NewEbpfProcManager(logger, &tapObjs)
+	procEbpfMan, err := process.NewEventSource(logger, &tapObjs)
 	if err != nil {
 		logger.Fatal("failed to get ebpf proc objs", zap.Error(err))
 	}
@@ -590,10 +590,6 @@ func PrintDevToolsBox(url string) {
 	fmt.Println()
 	fmt.Println(boxStyle.Render(content))
 	fmt.Println()
-}
-
-func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (process.Eventer, error) {
-	return process.NewEventSource(logger, objs)
 }
 
 // newRegistrationProvider connects to the managed control plane using the

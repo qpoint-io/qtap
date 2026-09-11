@@ -20,7 +20,7 @@ import (
 )
 
 func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (process.Eventer, error) {
-	return cmd.NewEbpfProcManager(logger, objs)
+	return process.NewEventSource(logger, objs)
 }
 
 func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *tap.TapObjects) (*socket.SocketEventManager, error) {

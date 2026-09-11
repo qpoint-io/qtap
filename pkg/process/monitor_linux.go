@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/cilium/ebpf/ringbuf"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/internal/tap"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
 	"go.uber.org/zap"
@@ -76,6 +77,11 @@ func NewEventSource(logger *zap.Logger, objs *tap.TapObjects) (Eventer, error) {
 		return nil, fmt.Errorf("creating process event reader: %w", err)
 	}
 
+	cache, err := lru.New[int32, *Process](cacheSize)
+	if err != nil {
+		panic(err)
+	}
+
 	tracepoints := []*common.Tracepoint{
 		common.NewTracepoint("syscalls", "sys_enter_execve", objs.SyscallProbeEntryExecve),
 		common.NewTracepoint("syscalls", "sys_exit_execve", objs.SyscallProbeRetExecve),
@@ -84,7 +90,13 @@ func NewEventSource(logger *zap.Logger, objs *tap.TapObjects) (Eventer, error) {
 		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
 		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
 	}
-	return newEventSource(logger, objs.ProcessMetaMap, reader, tracepoints), nil
+	return &eventSource{
+		logger:      logger,
+		rb:          reader,
+		metaMap:     objs.ProcessMetaMap,
+		tracepoints: tracepoints,
+		cache:       cache,
+	}, nil
 }
 
 // Start enumerates existing processes and starts live discovery. If startup

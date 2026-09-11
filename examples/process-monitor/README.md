@@ -17,6 +17,48 @@ registry from a started callback and counts a snapshot after startup. It never
 starts QTap's command, configuration service, container manager, or capture
 managers. It retains QTap's current process model and combined BPF collection.
 
+## Displayed process details
+
+Started and replaced events print one labeled block per callback:
+
+```
+started pid=4242 existing=false tracked=true
+  exe:    "/usr/bin/sleep"
+  binary: "sleep"
+  args:   ["30"]
+replaced pid=4242 existing=false
+  exe:    "/usr/bin/cat"
+  binary: "cat"
+  args:   not captured
+stopped pid=4242 exit_code=0
+```
+
+`existing` is the `PredatesQpoint` marker for processes found during startup
+enumeration, and `tracked` is the registry lookup made from the started
+callback. Strings and each argument are quoted with Go syntax, so spaces and
+embedded newlines stay inside their value instead of starting a new line.
+
+`args` holds the arguments after the program name, as captured from the exec
+probe. Processes found during startup enumeration have no exec event, so their
+arguments are reported as `not captured`. The same wording is used whenever the
+list is empty; the example does not read the command line from procfs to fill
+the gap, and an empty list does not mean the program ran without arguments.
+
+The observer copies the displayed fields while holding the process mutex
+(`Lock`/`Unlock` on `*process.Process`), the same mutex the manager holds while
+it compares, updates, and rediscovers a process during executable replacement.
+It releases that mutex before querying the registry and before writing, and it
+assembles the whole block before a single write to standard output so blocks
+from concurrent callbacks do not interleave. This is the recommended pattern
+for reading these fields; other fields and unguarded reads are not covered by
+it.
+
+The values are the shared process state at the time of the read. If another
+exec happens before a callback reads its fields, the block for a started event
+can already show the replacement executable. The output is not a historical
+record of each transition, and the grouping of a block does not add any
+ordering guarantee between callbacks.
+
 ## Lifecycle and requirements
 
 Call `process.NewMonitor`, register observers using `Observe`, then call `Start`.
@@ -95,7 +137,10 @@ sudo go test -mod=readonly -tags integration -v -count=1 ./...
 The first command verifies compilation from a separate module without loading
 BPF. The integration test loads real probes, observes a process that existed
 before startup, launches a controlled child, checks registry queries, and asks
-the child to replace itself and exit. Each transition is driven after observing
+the child to replace itself and exit. The example's printing observer is
+registered alongside the recording observer, so running the test with `-race`
+also checks its field reads against the manager's updates. The formatting test
+in the same package runs without BPF privileges. Each transition is driven after observing
 the preceding callback; this tests the supported flow without asserting a new
 ordering guarantee. It also checks shutdown. The test requires the runtime
 prerequisites and fails rather than silently skipping when discovery cannot

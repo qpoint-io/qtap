@@ -119,6 +119,9 @@ func TestProcessDiscovery(t *testing.T) {
 		events:  make(chan observedProcess, 8),
 	}
 	m.Observe(o)
+	// The example's printing observer reads the shared process fields in the
+	// same event flow, so the race detector covers its access pattern.
+	m.Observe(&observer{manager: m.Manager})
 	if err := m.Start(); err != nil {
 		t.Fatal(err)
 	}

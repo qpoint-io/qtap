@@ -53,6 +53,13 @@ jobs:
       - name: Build JVM assets
         run: make build-jvm
 
+      - name: Verify process discovery ownership
+        run: sudo "$(command -v go)" test -tags integration -count=1 ./pkg/process
+
+      - name: Verify external process consumer
+        working-directory: examples/process-monitor
+        run: sudo "$(command -v go)" test -mod=readonly -tags integration -count=1 ./...
+
       - name: Run E2E tests
         env:
           JUNIT_REPORT: true

@@ -27,7 +27,6 @@ import (
 	"github.com/qpoint-io/qtap/pkg/devtools"
 	"github.com/qpoint-io/qtap/pkg/dns"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls/gotls"
@@ -306,7 +305,7 @@ func runTapCmd(logger *zap.Logger) {
 	defer tapObjs.Close()
 
 	// Initialize process manager
-	procEbpfMan, err := NewEbpfProcManager(logger, &tapObjs)
+	procEbpfMan, err := process.NewEventSource(logger, &tapObjs)
 	if err != nil {
 		logger.Fatal("failed to get ebpf proc objs", zap.Error(err))
 	}
@@ -591,26 +590,6 @@ func PrintDevToolsBox(url string) {
 	fmt.Println()
 	fmt.Println(boxStyle.Render(content))
 	fmt.Println()
-}
-
-func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
-	procManTps := []*common.Tracepoint{
-		common.NewTracepoint("syscalls", "sys_enter_execve", objs.SyscallProbeEntryExecve),
-		common.NewTracepoint("syscalls", "sys_exit_execve", objs.SyscallProbeRetExecve),
-		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.SyscallProbeEntryExecveat),
-		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.SyscallProbeRetExecveat),
-		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
-		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
-	}
-
-	procManRB, err := ringbuf.NewReader(objs.ProcEvents)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create proc event reader: %w", err)
-	}
-
-	procMan := ebpfProcess.New(logger, objs.ProcessMetaMap, procManRB, procManTps)
-
-	return procMan, nil
 }
 
 // newRegistrationProvider connects to the managed control plane using the

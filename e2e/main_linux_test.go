@@ -11,16 +11,16 @@ import (
 	"github.com/qpoint-io/qtap/pkg/cmd"
 	"github.com/qpoint-io/qtap/pkg/config"
 	"github.com/qpoint-io/qtap/pkg/connection"
-	ebpfProcess "github.com/qpoint-io/qtap/pkg/ebpf/process"
 	"github.com/qpoint-io/qtap/pkg/ebpf/socket"
 	"github.com/qpoint-io/qtap/pkg/ebpf/tls"
 	"github.com/qpoint-io/qtap/pkg/egress"
 	egressEbpf "github.com/qpoint-io/qtap/pkg/egress/ebpf"
+	"github.com/qpoint-io/qtap/pkg/process"
 	"go.uber.org/zap"
 )
 
-func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (*ebpfProcess.Manager, error) {
-	return cmd.NewEbpfProcManager(logger, objs)
+func NewEbpfProcManager(logger *zap.Logger, objs *tap.TapObjects) (process.Eventer, error) {
+	return process.NewEventSource(logger, objs)
 }
 
 func NewEbpfSockManager(logger *zap.Logger, connMan *connection.Manager, objs *tap.TapObjects) (*socket.SocketEventManager, error) {

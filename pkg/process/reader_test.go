@@ -2,14 +2,12 @@ package process
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"testing"
 
 	lru "github.com/hashicorp/golang-lru/v2"
-	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/process/mocks"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
 
@@ -39,9 +37,6 @@ func TestHandleExecStartEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			// Create test event data
 			event := execStartEvent{
 				Pid:     tt.pid,
@@ -53,18 +48,18 @@ func TestHandleExecStartEvent(t *testing.T) {
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, []byte(tt.exePath)))
 
-			cache, err := lru.New[int32, *process.Process](cacheSize)
+			cache, err := lru.New[int32, *Process](cacheSize)
 			if err != nil {
 				panic(err)
 			}
 			// Create manager
-			m := &Manager{
+			m := &eventSource{
 				logger: zap.NewNop(),
 				cache:  cache,
 			}
 
 			if tt.receiver {
-				mockRcv := mocks.NewMockReceiver(ctrl)
+				mockRcv := &testReceiver{t: t}
 				m.reciever = mockRcv
 			}
 
@@ -112,9 +107,6 @@ func TestHandleExecArgvEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			// Create test event data
 			event := execArgvEvent{
 				Pid:      tt.pid,
@@ -126,21 +118,21 @@ func TestHandleExecArgvEvent(t *testing.T) {
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, []byte(tt.arg)))
 
-			cache, err := lru.New[int32, *process.Process](cacheSize)
+			cache, err := lru.New[int32, *Process](cacheSize)
 			if err != nil {
 				panic(err)
 			}
 
 			// Create manager with receiver
-			m := &Manager{
+			m := &eventSource{
 				logger:   zap.NewNop(),
 				cache:    cache,
-				reciever: mocks.NewMockReceiver(ctrl),
+				reciever: &testReceiver{t: t},
 			}
 
 			// Setup process in cache if needed
 			if tt.setupPid {
-				p := process.NewProcess(int(tt.pid), "/test/exe", zap.NewNop())
+				p := NewProcess(int(tt.pid), "/test/exe", zap.NewNop())
 				p.Args = make([]string, 0) // Initialize Args slice
 				m.cache.Add(tt.pid, p)
 			}
@@ -194,9 +186,6 @@ func TestHandleExecEndEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			// Create test event data
 			event := execEndEvent{
 				Pid: tt.pid,
@@ -206,19 +195,24 @@ func TestHandleExecEndEvent(t *testing.T) {
 			buf := new(bytes.Buffer)
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 
-			cache, err := lru.New[int32, *process.Process](cacheSize)
+			cache, err := lru.New[int32, *Process](cacheSize)
 			if err != nil {
 				panic(err)
 			}
 
-			// Create mock receiver
-			mockRcv := mocks.NewMockReceiver(ctrl)
+			// Expect one registration only when the process is cached.
+			registered := 0
+			mockRcv := &testReceiver{t: t}
 			if tt.setupPid {
-				mockRcv.EXPECT().RegisterProcess(gomock.Any(), gomock.Any()).Return(tt.addProcErr)
+				mockRcv.register = func(p *Process) error {
+					registered++
+					require.Equal(t, int(tt.pid), p.Pid)
+					return tt.addProcErr
+				}
 			}
 
 			// Create manager
-			m := &Manager{
+			m := &eventSource{
 				logger:   zap.NewNop(),
 				cache:    cache,
 				reciever: mockRcv,
@@ -226,7 +220,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 
 			// Setup process in cache if needed
 			if tt.setupPid {
-				m.cache.Add(tt.pid, process.NewProcess(int(tt.pid), "/test/exe", zap.NewNop()))
+				m.cache.Add(tt.pid, NewProcess(int(tt.pid), "/test/exe", zap.NewNop()))
 			}
 
 			// Test handler
@@ -238,6 +232,7 @@ func TestHandleExecEndEvent(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.setupPid {
+				require.Equal(t, 1, registered)
 				// Verify process was removed from cache
 				_, exists := m.cache.Get(tt.pid)
 				require.False(t, exists)
@@ -268,9 +263,6 @@ func TestHandleExitEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-
 			// Create test event data
 			event := exitEvent{
 				Pid: tt.pid,
@@ -280,17 +272,24 @@ func TestHandleExitEvent(t *testing.T) {
 			buf := new(bytes.Buffer)
 			require.NoError(t, binary.Write(buf, binary.NativeEndian, event))
 
-			cache, err := lru.New[int32, *process.Process](cacheSize)
+			cache, err := lru.New[int32, *Process](cacheSize)
 			if err != nil {
 				panic(err)
 			}
 
-			// Create mock receiver
-			mockRcv := mocks.NewMockReceiver(ctrl)
-			mockRcv.EXPECT().UnregisterProcess(gomock.Any(), int(tt.pid), 0).Return(tt.endProcErr)
+			unregistered := 0
+			mockRcv := &testReceiver{
+				t: t,
+				unregister: func(pid, exitCode int) error {
+					unregistered++
+					require.Equal(t, int(tt.pid), pid)
+					require.Zero(t, exitCode)
+					return tt.endProcErr
+				},
+			}
 
 			// Create manager
-			m := &Manager{
+			m := &eventSource{
 				logger:   zap.NewNop(),
 				cache:    cache,
 				reciever: mockRcv,
@@ -303,6 +302,27 @@ func TestHandleExitEvent(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+			require.Equal(t, 1, unregistered)
 		})
 	}
+}
+
+// testReceiver rejects unexpected calls without importing mocks that depend on
+// this package. Each test checks its expected calls after handling the event.
+type testReceiver struct {
+	t          *testing.T
+	register   func(*Process) error
+	unregister func(pid, exitCode int) error
+}
+
+func (r *testReceiver) RegisterProcess(_ context.Context, p *Process) error {
+	r.t.Helper()
+	require.NotNil(r.t, r.register, "unexpected process registration")
+	return r.register(p)
+}
+
+func (r *testReceiver) UnregisterProcess(_ context.Context, pid, exitCode int) error {
+	r.t.Helper()
+	require.NotNil(r.t, r.unregister, "unexpected process unregistration")
+	return r.unregister(pid, exitCode)
 }

@@ -13,8 +13,6 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/qpoint-io/qtap/pkg/ebpf/common"
-	"github.com/qpoint-io/qtap/pkg/process"
-	"github.com/qpoint-io/qtap/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,35 +28,19 @@ var recordPool = sync.Pool{
 	},
 }
 
-type Manager struct {
+type eventSource struct {
 	logger   *zap.Logger
-	reciever process.Receiver
-	cache    *lru.Cache[int32, *process.Process]
+	reciever Receiver
+	cache    *lru.Cache[int32, *Process]
 
 	// bridge to the bpf probes
 	tracepoints []*common.Tracepoint
 	rb          *ringbuf.Reader
 	metaMap     *ebpf.Map
+	readerWG    sync.WaitGroup
 }
 
-var tracer = telemetry.Tracer()
-
-func New(logger *zap.Logger, mmap *ebpf.Map, rb *ringbuf.Reader, tps []*common.Tracepoint) *Manager {
-	cache, err := lru.New[int32, *process.Process](cacheSize)
-	if err != nil {
-		panic(err)
-	}
-
-	return &Manager{
-		logger:      logger,
-		rb:          rb,
-		metaMap:     mmap,
-		tracepoints: tps,
-		cache:       cache,
-	}
-}
-
-func (m *Manager) Start(ctx context.Context) error {
+func (m *eventSource) Start(ctx context.Context) error {
 	ctx, span := tracer.WithoutCancel(ctx, "Manager.Start")
 	defer span.End()
 
@@ -70,30 +52,31 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 
 	// start the proc event reader
-	go m.readProcEvents(ctx)
+	m.readerWG.Go(func() { m.readProcEvents(ctx) })
 
 	return nil
 }
 
-func (m *Manager) Stop() error {
+func (m *eventSource) Stop() error {
 	// close the reader
-	m.rb.Close()
+	err := m.rb.Close()
+	m.readerWG.Wait()
 
 	// detach the tracepoints
 	for _, tracepoint := range m.tracepoints {
-		if err := tracepoint.Detach(); err != nil {
-			return fmt.Errorf("detaching tracepoint %s/%s: %w", tracepoint.Group, tracepoint.Name, err)
+		if detachErr := tracepoint.Detach(); detachErr != nil {
+			err = errors.Join(err, fmt.Errorf("detaching tracepoint %s/%s: %w", tracepoint.Group, tracepoint.Name, detachErr))
 		}
 	}
 
-	return nil
+	return err
 }
 
-func (m *Manager) Register(r process.Receiver) {
+func (m *eventSource) Register(r Receiver) {
 	m.reciever = r
 }
 
-func (m *Manager) readProcEvents(ctx context.Context) {
+func (m *eventSource) readProcEvents(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
 			m.logger.Error("context cancelled", zap.Error(ctx.Err()))
@@ -133,7 +116,7 @@ var (
 	}
 )
 
-func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
+func (m *eventSource) readProcEvent(ctx context.Context, record *ringbuf.Record) error {
 	ctx, span := tracer.Start(context.TODO(), "readProcEvent",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
@@ -177,7 +160,7 @@ func (m *Manager) readProcEvent(ctx context.Context, record *ringbuf.Record) err
 	}
 }
 
-func (m *Manager) SetMeta(p *process.Process) error {
+func (m *eventSource) SetMeta(p *Process) error {
 	if p == nil {
 		return nil
 	}

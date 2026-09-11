@@ -234,27 +234,31 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 
 	p.envTags = m.envTags
 
+	// Observers may read the shared process while a later exec replaces its
+	// executable and arguments, so compare, update, and discover under the
+	// process mutex. It is released before the registry lock and observer
+	// dispatch to keep a single lock order.
 	var procChanged bool
 	proc, exists := m.procs.Load(p.Pid)
 	if exists {
-		if p.Exe != proc.Exe {
-			procChanged = true
-		}
-		if p.Binary != proc.Binary {
-			procChanged = true
-		}
-		if !slices.Equal(p.Args, proc.Args) {
-			procChanged = true
-		}
+		proc.Lock()
+		procChanged = p.Exe != proc.Exe || p.Binary != proc.Binary || !slices.Equal(p.Args, proc.Args)
 		processRenamedTotal.WithLabelValues(getProcessLabels(p)...).Inc()
 
 		// replace the process
 		proc.Args = p.Args
 		p = proc
+	} else {
+		p.Lock()
 	}
 
 	// discover the process
-	if err := p.Discover(ctx, "/proc", m.envMask); err != nil {
+	err := p.Discover(ctx, "/proc", m.envMask)
+	// Capture the executable for asynchronous logging before another exec can
+	// change the shared process.
+	exe := p.Exe
+	p.Unlock()
+	if err != nil {
 		if _, ok := p.checkProcessError(err); ok {
 			// this happens when processes are exiting quickly, we can ignore
 			return nil
@@ -291,20 +295,19 @@ func (m *Manager) addProc(ctx context.Context, p *Process) error {
 		}()
 	}
 
-	// initialize the observers
-	go m.initProcObservers(ctx, p, procChanged)
+	go m.initProcObservers(ctx, p, procChanged, exe)
 
 	return nil
 }
 
-func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool) {
+func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace bool, exe string) {
 	ctx, span := tracer.Start(context.TODO(), "Manager.initProcObservers",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithNewRoot(),
 	)
 	span.SetAttributes(
 		attribute.Int("pid", p.Pid),
-		attribute.String("exe", p.Exe),
+		attribute.String("exe", exe),
 		attribute.Bool("replace", replace),
 	)
 	defer span.End()
@@ -313,7 +316,7 @@ func (m *Manager) initProcObservers(ctx context.Context, p *Process, replace boo
 	if p.Exited() {
 		return
 	}
-	logger := m.Logger.With(zap.Int("pid", p.Pid), zap.String("exe", p.Exe))
+	logger := m.Logger.With(zap.Int("pid", p.Pid), zap.String("exe", exe))
 
 	// we use a wait group to ensure the observers have time to complete
 	// because they all share the same instance of the ELF file which is

@@ -200,7 +200,26 @@ func buildAuthorityURL(s string, a string, p string) (string, bool) {
 		return "", false
 	}
 
-	u = u.JoinPath(p)
+	if p == "" {
+		return u.String(), true
+	}
+
+	pathAndQuery, fragment, hasFragment := strings.Cut(p, "#")
+	if hasFragment {
+		u.Fragment = fragment
+	}
+
+	path, query, hasQuery := strings.Cut(pathAndQuery, "?")
+	if strings.HasPrefix(path, "//") {
+		path = "/" + strings.TrimLeft(path, "/")
+	}
+	u.Path = path
+	if strings.Contains(path, "%") {
+		u.RawPath = path
+	}
+	if hasQuery {
+		u.RawQuery = query
+	}
 
 	return u.String(), true
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services"
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 )
@@ -69,9 +70,9 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 	}
 
 	// Add event type
-	logAttrs := []log.KeyValue{
-		log.String("event.type", s.getEventType(item)),
-		log.Map("event", attrs...),
+	logAttrs := []attribute.KeyValue{
+		attribute.String("event.type", s.getEventType(item)),
+		attribute.Map("event", attrs...),
 	}
 
 	// Extract timestamp from the item
@@ -80,7 +81,7 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 	record := log.Record{}
 	record.SetTimestamp(timestamp)
 	record.SetSeverity(severity)
-	record.SetBody(log.StringValue(bodyMessage))
+	record.SetBody(attribute.StringValue(bodyMessage))
 	record.AddAttributes(logAttrs...)
 
 	s.logger.Emit(ctx, record)
@@ -88,7 +89,7 @@ func (s *EventStore) logEvent(ctx context.Context, item any, severity log.Severi
 }
 
 // structToAttributes converts any struct to OTEL log attributes using JSON marshaling
-func (s *EventStore) structToAttributes(item any) ([]log.KeyValue, error) {
+func (s *EventStore) structToAttributes(item any) ([]attribute.KeyValue, error) {
 	// Convert struct to map using JSON marshaling
 	data, err := json.Marshal(item)
 	if err != nil {
@@ -107,8 +108,8 @@ func (s *EventStore) structToAttributes(item any) ([]log.KeyValue, error) {
 // mapToAttributes recursively converts a map to OTEL log attributes
 //
 // Note: I'm not sure how I feel about this method of creating attributes.
-func (s *EventStore) mapToAttributes(m map[string]any, prefix string) []log.KeyValue {
-	var attrs []log.KeyValue
+func (s *EventStore) mapToAttributes(m map[string]any, prefix string) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
 
 	for k, v := range m {
 		key := k
@@ -123,51 +124,51 @@ func (s *EventStore) mapToAttributes(m map[string]any, prefix string) []log.KeyV
 
 		switch val := v.(type) {
 		case string:
-			attrs = append(attrs, log.String(key, val))
+			attrs = append(attrs, attribute.String(key, val))
 		case bool:
-			attrs = append(attrs, log.Bool(key, val))
+			attrs = append(attrs, attribute.Bool(key, val))
 		case float64:
 			// JSON unmarshaling converts all numbers to float64
 			if val == float64(int64(val)) {
 				// It's an integer
-				attrs = append(attrs, log.Int64(key, int64(val)))
+				attrs = append(attrs, attribute.Int64(key, int64(val)))
 			} else {
 				// It's a float
-				attrs = append(attrs, log.Float64(key, val))
+				attrs = append(attrs, attribute.Float64(key, val))
 			}
 		case []any:
 			// Convert slice to OTEL slice
-			values := make([]log.Value, len(val))
+			values := make([]attribute.Value, len(val))
 			for i, item := range val {
 				values[i] = s.anyToLogValue(item)
 			}
-			attrs = append(attrs, log.Slice(key, values...))
+			attrs = append(attrs, attribute.Slice(key, values...))
 		case map[string]any:
 			// Recursively handle nested maps
 			attrs = append(attrs, s.mapToAttributes(val, key)...)
 		default:
 			// Fallback to string representation
-			attrs = append(attrs, log.String(key, fmt.Sprintf("%v", val)))
+			attrs = append(attrs, attribute.String(key, fmt.Sprintf("%v", val)))
 		}
 	}
 
 	return attrs
 }
 
-// anyToLogValue converts any value to OTEL log.Value
-func (s *EventStore) anyToLogValue(v any) log.Value {
+// anyToLogValue converts any value to OTEL attribute.Value
+func (s *EventStore) anyToLogValue(v any) attribute.Value {
 	switch val := v.(type) {
 	case string:
-		return log.StringValue(val)
+		return attribute.StringValue(val)
 	case bool:
-		return log.BoolValue(val)
+		return attribute.BoolValue(val)
 	case float64:
 		if val == float64(int64(val)) {
-			return log.Int64Value(int64(val))
+			return attribute.Int64Value(int64(val))
 		}
-		return log.Float64Value(val)
+		return attribute.Float64Value(val)
 	default:
-		return log.StringValue(fmt.Sprintf("%v", val))
+		return attribute.StringValue(fmt.Sprintf("%v", val))
 	}
 }
 

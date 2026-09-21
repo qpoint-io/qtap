@@ -145,7 +145,11 @@ func getRuntimeService(logger *zap.Logger, criRuntimeEndpoint string) (rs cri.Ru
 		var err error
 		logger.Debug("attempting to connect to runtime service", zap.String("endpoint", e))
 
-		rs, err = remote.NewRemoteRuntimeService(context.Background(), e, DefaultRuntimeTimeout, nil, false)
+		rs, err = remote.NewRemoteRuntimeServiceBuilder().
+			WithEndpoint(e).
+			WithConnectionTimeout(DefaultRuntimeTimeout).
+			WithTracerProvider(nil). // nil opts out of the otelgrpc stats handler, same as before
+			Build(context.Background())
 		if err != nil {
 			if os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
 				err = errors.New("no such file or directory")

@@ -9,6 +9,7 @@ import (
 	"github.com/qpoint-io/qtap/pkg/services/eventstore"
 	"github.com/qpoint-io/qtap/pkg/services/objectstore"
 	"github.com/qpoint-io/qtap/pkg/telemetry/metrics"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.uber.org/zap"
 )
@@ -36,31 +37,31 @@ func (s *ObjectStore) Put(ctx context.Context, artifact *eventstore.Artifact) {
 		record := log.Record{}
 		record.SetTimestamp(time.Now())
 		record.SetSeverity(log.SeverityInfo)
-		record.SetBody(log.StringValue(fmt.Sprintf("Artifact: %s (%s, %d bytes)",
+		record.SetBody(attribute.StringValue(fmt.Sprintf("Artifact: %s (%s, %d bytes)",
 			artifact.Type, artifact.ContentType, len(artifact.Data))))
 
-		attrs := []log.KeyValue{
-			log.String("artifact.type", artifact.Type.String()),
-			log.String("artifact.content_type", artifact.ContentType),
-			log.String("artifact.digest", artifact.Digest()),
-			log.Int64("artifact.size_bytes", int64(len(artifact.Data))),
-			log.String("artifact.data", string(artifact.Data)),
+		attrs := []attribute.KeyValue{
+			attribute.String("artifact.type", artifact.Type.String()),
+			attribute.String("artifact.content_type", artifact.ContentType),
+			attribute.String("artifact.digest", artifact.Digest()),
+			attribute.Int64("artifact.size_bytes", int64(len(artifact.Data))),
+			attribute.String("artifact.data", string(artifact.Data)),
 		}
 
 		// Add connection metadata if available
 		if id := artifact.ConnectionID; id != "" {
-			attrs = append(attrs, log.String("connection.id", id))
+			attrs = append(attrs, attribute.String("connection.id", id))
 		}
 		if id := artifact.EndpointId; id != "" {
-			attrs = append(attrs, log.String("connection.endpoint_id", id))
+			attrs = append(attrs, attribute.String("connection.endpoint_id", id))
 		}
 		if id := artifact.RequestId; id != "" {
-			attrs = append(attrs, log.String("connection.request_id", id))
+			attrs = append(attrs, attribute.String("connection.request_id", id))
 		}
 
 		// Add summary as nested attributes
 		for k, v := range artifact.Summary {
-			attrs = append(attrs, log.String("artifact.summary."+k, fmt.Sprintf("%v", v)))
+			attrs = append(attrs, attribute.String("artifact.summary."+k, fmt.Sprintf("%v", v)))
 		}
 
 		record.AddAttributes(attrs...)

@@ -15,7 +15,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/cilium/ebpf v0.22.0
 	github.com/containerd/containerd/api v1.12.0
-	github.com/containerd/containerd/v2 v2.4.0
+	github.com/containerd/containerd/v2 v2.4.1
 	github.com/containerd/typeurl/v2 v2.3.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.19.0

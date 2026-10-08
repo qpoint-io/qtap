@@ -1,6 +1,6 @@
 module example.com/container-monitor
 
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/qpoint-io/qtap v0.0.0

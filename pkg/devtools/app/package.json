@@ -18,7 +18,7 @@
     "@vueuse/core": "^13.9.0",
     "pinia": "^3.0.3",
     "prismjs": "^1.30.0",
-    "vue": "^3.5.22"
+    "vue": "^3.5.43"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",

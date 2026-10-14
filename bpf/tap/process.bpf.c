@@ -222,18 +222,27 @@ int syscall__probe_entry_exit_group(struct trace_event_raw_sys_enter *ctx) {
 	return 0;
 }
 
-// sched_process_exit is called when the process is being removed from the scheduler
+// sched_process_exit is called when a task (thread) is being removed from the scheduler
 // bpftrace -e 'tracepoint:sched:sched_process_exit { printf("pid: %d, comm: %s\n", args->pid, args->comm); }'
 SEC("tracepoint/sched/sched_process_exit")
 int tracepoint__sched__process_exit(struct trace_event_raw_sched_process_template *ctx) {
+	// The tracepoint fires once per exiting thread, after do_exit has decremented
+	// signal->live. Report only the exit that ends the thread group: when a
+	// non-leader thread calls execve, the kernel kills the old leader (tid == tgid)
+	// while the process lives on under the same pid with the new image.
+	struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	if (BPF_CORE_READ(task, signal, live.counter) != 0)
+		return 0;
+
 	struct exit_info_event *exit_event;
 
 	exit_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exit_info_event), 0);
 	if (!exit_event)
 		return 0;
 
+	// The last thread to exit is not necessarily the leader, so report the tgid.
 	int32_t exit_code      = 0;
-	int32_t pid            = ctx->pid;
+	int32_t pid            = bpf_get_current_userspace_pid();
 	int32_t *exit_code_ptr = bpf_map_lookup_elem(&exit_code_map, &pid);
 	if (exit_code_ptr != NULL) {
 		exit_code = *exit_code_ptr;

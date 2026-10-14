@@ -363,6 +363,14 @@ func (s *Session) WriteResponseBody(data []byte, endStream bool) error {
 	// however, some servers provide it anyway.
 	if ce := s.res.Header.Get("Content-Encoding"); ce != "" && !strings.EqualFold(ce, "identity") {
 		s.logger.Debug("response body is encoded, skipping plugins", zap.String("domain", s.domain), zap.String("encoding", ce))
+		// Still tear the session down on end-of-stream — otherwise plugin
+		// instances are never destroyed, no artifact is emitted, and on a
+		// reused connection (HTTP/2 multiplexing, keep-alive) every
+		// subsequent stream that creates a new pluginConn but shares the
+		// same outer Connection leaves a leaked session behind.
+		if endStream {
+			s.Close()
+		}
 		return ErrEncodedBody
 	}
 

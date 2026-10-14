@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
 	"syscall"
 	"testing"
@@ -191,11 +192,25 @@ func TestProcessDiscovery(t *testing.T) {
 	}
 }
 
+func init() {
+	// Keep the main goroutine on the thread-group leader so the child helper's
+	// exec runs on another thread. The kernel then kills the old leader thread
+	// during exec, which must not be reported as the process stopping.
+	if os.Getenv("QTAP_PROCESS_MONITOR_CHILD") == "1" {
+		runtime.LockOSThread()
+	}
+}
+
 // This child blocks until the parent has observed its start, then replaces its
-// executable. The parent closes stdin only after receiving the replaced callback.
+// executable from a non-leader thread. The parent closes stdin only after
+// receiving the replaced callback.
 func TestProcessMonitorChild(t *testing.T) {
 	if os.Getenv("QTAP_PROCESS_MONITOR_CHILD") != "1" {
 		t.Skip("child process helper")
+	}
+	runtime.LockOSThread()
+	if syscall.Gettid() == os.Getpid() {
+		t.Fatal("replacement must exec from a non-leader thread")
 	}
 	if !bufio.NewScanner(os.Stdin).Scan() {
 		t.Fatal("parent did not request replacement")

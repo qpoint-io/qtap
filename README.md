@@ -119,7 +119,7 @@ for usage, runtime requirements, and callback limitations.
 
 #### Tools:
 
-- go1.27.2+
+- go1.27.3+
 - make
 - clang14 (version 14 is required)
 - clang-tidy (optional/recommended)

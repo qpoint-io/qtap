@@ -34,9 +34,8 @@ func TestSourceStopPreservesSharedObjects(t *testing.T) {
 	objects := &tap.TapObjects{
 		TapMaps: tap.TapMaps{ProcEvents: readerMap, ProcessMetaMap: metadata},
 		TapPrograms: tap.TapPrograms{
-			SyscallProbeEntryExecve: program, SyscallProbeRetExecve: program,
-			SyscallProbeEntryExecveat: program, SyscallProbeRetExecveat: program,
-			SyscallProbeEntryExitGroup: program, TracepointSchedProcessExit: program,
+			TracepointSchedProcessExec: program, SyscallProbeEntryExitGroup: program,
+			TracepointSchedProcessExit: program,
 		},
 	}
 	source, err := process.NewEventSource(zap.NewNop(), objects)

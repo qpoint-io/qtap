@@ -52,7 +52,6 @@ static __always_inline struct process_meta *get_process_meta(__u32 pid) {
 #define MAX_EXEC_PATH_SIZE 1024
 #define MAX_ARGV_COUNT     20
 #define MAX_ARGV_SIZE      1024
-#define MAX_ENV_SIZE       1024
 
 // proc events
 // this must align with the events enum in process/event.go
@@ -108,102 +107,88 @@ struct {
 	__uint(max_entries, 64 * 1024 /* 64 KB */);
 } proc_events SEC(".maps");
 
-static int process_exec_ret() {
-	struct exec_info_event *info_event;
-
-	// reserve space in the ring buffer for the event
-	info_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_info_event), 0);
-	if (!info_event)
-		return 0;
-
-	// set the event type and pid
-	info_event->type = PROC_EXEC_END;
-	info_event->pid  = bpf_get_current_pid_tgid() >> 32;
-
-	// notify
-	bpf_ringbuf_submit(info_event, 0);
-
-	return 0;
-}
-
-static int process_exec_entry(struct trace_event_raw_sys_enter *ctx) {
-	// get the pid
+// sched_process_exec fires once per successful exec, after the new image is
+// installed and before the task returns to user space. It reports only execs
+// that succeed, and when a non-leader thread execs it reports the thread-group
+// id. The sys_enter_execve(at) tracepoints are not used: on some kernels
+// (Ubuntu 7.0.0-38-generic and 7.0.0-1017-azure, LP#2170225) BPF programs on
+// syscall-enter tracepoints with user-pointer arguments run only on the CPU
+// the perf event was opened on, so most execs went unreported.
+// bpftrace -e 'tracepoint:sched:sched_process_exec { printf("pid: %d, file: %s\n", args->pid, str(args->filename)); }'
+SEC("tracepoint/sched/sched_process_exec")
+int tracepoint__sched__process_exec(struct trace_event_raw_sched_process_exec *ctx) {
 	int pid = bpf_get_current_pid_tgid() >> 32;
 
-	// reserve space in the ring buffer for the event
 	struct exec_start_event *start_event;
 	start_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_start_event), 0);
 	if (!start_event)
 		return 0;
 
-	// initialize event
-	start_event->type = PROC_EXEC_START;
-	start_event->pid  = pid;
+	start_event->type     = PROC_EXEC_START;
+	start_event->pid      = pid;
+	start_event->exe_size = 0;
 
-	// attempt to read the executable path
-	int read_result = bpf_probe_read_str(start_event->exe, sizeof(start_event->exe), (void *)ctx->args[0]);
+	// the path passed to exec, stored in the tracepoint record
+	unsigned short filename_offset = ctx->__data_loc_filename & 0xFFFF;
+	int read_result                = bpf_probe_read_kernel_str(start_event->exe, sizeof(start_event->exe), (void *)ctx + filename_offset);
 	if (read_result > 0) {
-		// set the path size
 		start_event->exe_size = read_result;
 	}
 	bpf_ringbuf_submit(start_event, 0);
 
-	// extract arguments
-	const char **argv = (const char **)(ctx->args[1]);
-	for (int i = 1; i < MAX_ARGV_COUNT; i++) {
-		const char *arg;
-		if (bpf_probe_read(&arg, sizeof(arg), &argv[i]) != 0 || !arg)
-			break;
+	// The new image's arguments are NUL-separated strings between arg_start and
+	// arg_end, the same memory /proc/<pid>/cmdline reads. argv[0] is skipped
+	// because the executable is reported separately.
+	struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	unsigned long arg        = BPF_CORE_READ(task, mm, arg_start);
+	unsigned long arg_end    = BPF_CORE_READ(task, mm, arg_end);
+	bool skip                = true;
 
-		// reserve space in the ring buffer for the exec argv event
+	for (int i = 0; i < MAX_ARGV_COUNT && arg < arg_end; i++) {
 		struct exec_argv_event *argv_event;
 		argv_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_argv_event), 0);
 		if (!argv_event)
-			return 0;
+			break;
 
-		// initialize event
-		argv_event->type = PROC_EXEC_ARGV;
-		argv_event->pid  = pid;
+		argv_event->type      = PROC_EXEC_ARGV;
+		argv_event->pid       = pid;
+		argv_event->argv_size = 0;
 
-		// set the argument
-		int read_result = bpf_probe_read_str(argv_event->argv, sizeof(argv_event->argv), arg);
-
-		// ensure the argument was read successfully
-		if (read_result > 0) {
-			// set the argument size
-			argv_event->argv_size = read_result;
-
-			// submit the event
-			bpf_ringbuf_submit(argv_event, 0);
-		} else {
-			// discard the event
+		long read_result = bpf_probe_read_user_str(argv_event->argv, sizeof(argv_event->argv), (void *)arg);
+		if (read_result < 0) {
 			bpf_ringbuf_discard(argv_event, 0);
+			break;
 		}
+		// some kernels return 0 rather than 1 for an empty string
+		if (read_result == 0) {
+			argv_event->argv[0] = '\0';
+			read_result         = 1;
+		}
+
+		if (skip) {
+			bpf_ringbuf_discard(argv_event, 0);
+		} else {
+			argv_event->argv_size = read_result;
+			bpf_ringbuf_submit(argv_event, 0);
+		}
+
+		// A full buffer may hold only the start of a longer argument. The next
+		// read resumes at its last byte, the terminator if the argument fit
+		// exactly, and is skipped like any read continuing an argument.
+		skip = read_result == MAX_ARGV_SIZE;
+		arg += skip ? read_result - 1 : read_result;
 	}
 
+	struct exec_info_event *info_event;
+	info_event = bpf_ringbuf_reserve(&proc_events, sizeof(struct exec_info_event), 0);
+	if (!info_event)
+		return 0;
+
+	info_event->type = PROC_EXEC_END;
+	info_event->pid  = pid;
+	bpf_ringbuf_submit(info_event, 0);
+
 	return 0;
-}
-
-SEC("tracepoint/syscalls/sys_enter_execve")
-int syscall__probe_entry_execve(struct trace_event_raw_sys_enter *ctx) {
-	return process_exec_entry(ctx);
-}
-
-SEC("tracepoint/syscalls/sys_enter_execveat")
-int syscall__probe_entry_execveat(struct trace_event_raw_sys_enter *ctx) {
-	return process_exec_entry(ctx);
-}
-
-// bpftrace -e 'tracepoint:syscalls:sys_enter_exec*{ printf("pid: %d, comm: %s, args: ", pid, comm); join(args->argv); }'
-SEC("tracepoint/syscalls/sys_exit_execve")
-int syscall__probe_ret_execve() {
-	return process_exec_ret();
-}
-
-// bpftrace -e 'tracepoint:syscalls:sys_enter_exec*{ printf("pid: %d, comm: %s, args: ", pid, comm); join(args->argv); }'
-SEC("tracepoint/syscalls/sys_exit_execveat")
-int syscall__probe_ret_execveat() {
-	return process_exec_ret();
 }
 
 // sys_enter_exit_group is called when the process is being removed from the system

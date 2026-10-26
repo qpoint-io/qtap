@@ -385,8 +385,6 @@ const (
 	TapProgSyscallProbeEntryAccept4           = "syscall__probe_entry_accept4"
 	TapProgSyscallProbeEntryClose             = "syscall__probe_entry_close"
 	TapProgSyscallProbeEntryConnect           = "syscall__probe_entry_connect"
-	TapProgSyscallProbeEntryExecve            = "syscall__probe_entry_execve"
-	TapProgSyscallProbeEntryExecveat          = "syscall__probe_entry_execveat"
 	TapProgSyscallProbeEntryExitGroup         = "syscall__probe_entry_exit_group"
 	TapProgSyscallProbeEntryRead              = "syscall__probe_entry_read"
 	TapProgSyscallProbeEntryReadv             = "syscall__probe_entry_readv"
@@ -401,8 +399,6 @@ const (
 	TapProgSyscallProbeRetAccept4             = "syscall__probe_ret_accept4"
 	TapProgSyscallProbeRetClose               = "syscall__probe_ret_close"
 	TapProgSyscallProbeRetConnect             = "syscall__probe_ret_connect"
-	TapProgSyscallProbeRetExecve              = "syscall__probe_ret_execve"
-	TapProgSyscallProbeRetExecveat            = "syscall__probe_ret_execveat"
 	TapProgSyscallProbeRetRead                = "syscall__probe_ret_read"
 	TapProgSyscallProbeRetReadInit            = "syscall__probe_ret_read_init"
 	TapProgSyscallProbeRetReadv               = "syscall__probe_ret_readv"
@@ -424,6 +420,7 @@ const (
 	TapProgTraceTcpRecvmsgFexit               = "trace_tcp_recvmsg_fexit"
 	TapProgTraceTcpV4ConnectFexit             = "trace_tcp_v4_connect_fexit"
 	TapProgTraceTcpV6ConnectFexit             = "trace_tcp_v6_connect_fexit"
+	TapProgTracepointSchedProcessExec         = "tracepoint__sched__process_exec"
 	TapProgTracepointSchedProcessExit         = "tracepoint__sched__process_exit"
 	TapProgTrackFdInstallEntry                = "track_fd_install_entry"
 	TapProgTrackSockAllocFileEntry            = "track_sock_alloc_file_entry"
@@ -531,8 +528,6 @@ type TapProgramSpecs struct {
 	SyscallProbeEntryAccept4           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_accept4"`
 	SyscallProbeEntryClose             *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_close"`
 	SyscallProbeEntryConnect           *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_connect"`
-	SyscallProbeEntryExecve            *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execve"`
-	SyscallProbeEntryExecveat          *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_execveat"`
 	SyscallProbeEntryExitGroup         *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_exit_group"`
 	SyscallProbeEntryRead              *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv             *ebpf.ProgramSpec `ebpf:"syscall__probe_entry_readv"`
@@ -547,8 +542,6 @@ type TapProgramSpecs struct {
 	SyscallProbeRetAccept4             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_accept4"`
 	SyscallProbeRetClose               *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_close"`
 	SyscallProbeRetConnect             *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_connect"`
-	SyscallProbeRetExecve              *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execve"`
-	SyscallProbeRetExecveat            *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_execveat"`
 	SyscallProbeRetRead                *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read"`
 	SyscallProbeRetReadInit            *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_read_init"`
 	SyscallProbeRetReadv               *ebpf.ProgramSpec `ebpf:"syscall__probe_ret_readv"`
@@ -570,6 +563,7 @@ type TapProgramSpecs struct {
 	TraceTcpRecvmsgFexit               *ebpf.ProgramSpec `ebpf:"trace_tcp_recvmsg_fexit"`
 	TraceTcpV4ConnectFexit             *ebpf.ProgramSpec `ebpf:"trace_tcp_v4_connect_fexit"`
 	TraceTcpV6ConnectFexit             *ebpf.ProgramSpec `ebpf:"trace_tcp_v6_connect_fexit"`
+	TracepointSchedProcessExec         *ebpf.ProgramSpec `ebpf:"tracepoint__sched__process_exec"`
 	TracepointSchedProcessExit         *ebpf.ProgramSpec `ebpf:"tracepoint__sched__process_exit"`
 	TrackFdInstallEntry                *ebpf.ProgramSpec `ebpf:"track_fd_install_entry"`
 	TrackSockAllocFileEntry            *ebpf.ProgramSpec `ebpf:"track_sock_alloc_file_entry"`
@@ -845,8 +839,6 @@ type TapPrograms struct {
 	SyscallProbeEntryAccept4           *ebpf.Program `ebpf:"syscall__probe_entry_accept4"`
 	SyscallProbeEntryClose             *ebpf.Program `ebpf:"syscall__probe_entry_close"`
 	SyscallProbeEntryConnect           *ebpf.Program `ebpf:"syscall__probe_entry_connect"`
-	SyscallProbeEntryExecve            *ebpf.Program `ebpf:"syscall__probe_entry_execve"`
-	SyscallProbeEntryExecveat          *ebpf.Program `ebpf:"syscall__probe_entry_execveat"`
 	SyscallProbeEntryExitGroup         *ebpf.Program `ebpf:"syscall__probe_entry_exit_group"`
 	SyscallProbeEntryRead              *ebpf.Program `ebpf:"syscall__probe_entry_read"`
 	SyscallProbeEntryReadv             *ebpf.Program `ebpf:"syscall__probe_entry_readv"`
@@ -861,8 +853,6 @@ type TapPrograms struct {
 	SyscallProbeRetAccept4             *ebpf.Program `ebpf:"syscall__probe_ret_accept4"`
 	SyscallProbeRetClose               *ebpf.Program `ebpf:"syscall__probe_ret_close"`
 	SyscallProbeRetConnect             *ebpf.Program `ebpf:"syscall__probe_ret_connect"`
-	SyscallProbeRetExecve              *ebpf.Program `ebpf:"syscall__probe_ret_execve"`
-	SyscallProbeRetExecveat            *ebpf.Program `ebpf:"syscall__probe_ret_execveat"`
 	SyscallProbeRetRead                *ebpf.Program `ebpf:"syscall__probe_ret_read"`
 	SyscallProbeRetReadInit            *ebpf.Program `ebpf:"syscall__probe_ret_read_init"`
 	SyscallProbeRetReadv               *ebpf.Program `ebpf:"syscall__probe_ret_readv"`
@@ -884,6 +874,7 @@ type TapPrograms struct {
 	TraceTcpRecvmsgFexit               *ebpf.Program `ebpf:"trace_tcp_recvmsg_fexit"`
 	TraceTcpV4ConnectFexit             *ebpf.Program `ebpf:"trace_tcp_v4_connect_fexit"`
 	TraceTcpV6ConnectFexit             *ebpf.Program `ebpf:"trace_tcp_v6_connect_fexit"`
+	TracepointSchedProcessExec         *ebpf.Program `ebpf:"tracepoint__sched__process_exec"`
 	TracepointSchedProcessExit         *ebpf.Program `ebpf:"tracepoint__sched__process_exit"`
 	TrackFdInstallEntry                *ebpf.Program `ebpf:"track_fd_install_entry"`
 	TrackSockAllocFileEntry            *ebpf.Program `ebpf:"track_sock_alloc_file_entry"`
@@ -940,8 +931,6 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeEntryAccept4,
 		p.SyscallProbeEntryClose,
 		p.SyscallProbeEntryConnect,
-		p.SyscallProbeEntryExecve,
-		p.SyscallProbeEntryExecveat,
 		p.SyscallProbeEntryExitGroup,
 		p.SyscallProbeEntryRead,
 		p.SyscallProbeEntryReadv,
@@ -956,8 +945,6 @@ func (p *TapPrograms) Close() error {
 		p.SyscallProbeRetAccept4,
 		p.SyscallProbeRetClose,
 		p.SyscallProbeRetConnect,
-		p.SyscallProbeRetExecve,
-		p.SyscallProbeRetExecveat,
 		p.SyscallProbeRetRead,
 		p.SyscallProbeRetReadInit,
 		p.SyscallProbeRetReadv,
@@ -979,6 +966,7 @@ func (p *TapPrograms) Close() error {
 		p.TraceTcpRecvmsgFexit,
 		p.TraceTcpV4ConnectFexit,
 		p.TraceTcpV6ConnectFexit,
+		p.TracepointSchedProcessExec,
 		p.TracepointSchedProcessExit,
 		p.TrackFdInstallEntry,
 		p.TrackSockAllocFileEntry,

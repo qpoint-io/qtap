@@ -44,7 +44,7 @@ func TestReaderFailureReleasesCollection(t *testing.T) {
 	p := newTestProgram(t, ebpf.TracePoint)
 	objects := &tap.TapObjects{
 		TapMaps:     tap.TapMaps{ProcEvents: m},
-		TapPrograms: tap.TapPrograms{SyscallProbeEntryExecve: p},
+		TapPrograms: tap.TapPrograms{TracepointSchedProcessExec: p},
 	}
 	monitor, err := newMonitor(zap.NewNop(), objects)
 	require.ErrorContains(t, err, "creating process event reader")
@@ -66,13 +66,13 @@ func TestStartupFailureReleasesAttachedProbe(t *testing.T) {
 	metadata := newTestMap(t, &ebpf.MapSpec{Type: ebpf.Hash, KeySize: 4, ValueSize: 32, MaxEntries: 5000})
 	objects := &tap.TapObjects{
 		TapMaps:     tap.TapMaps{ProcEvents: readerMap, ProcessMetaMap: metadata},
-		TapPrograms: tap.TapPrograms{SyscallProbeEntryExecve: first, SyscallProbeRetExecve: invalid},
+		TapPrograms: tap.TapPrograms{TracepointSchedProcessExec: first, SyscallProbeEntryExitGroup: invalid},
 	}
 	m, err := newMonitor(zap.NewNop(), objects)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, m.Stop()) })
 	err = m.Start()
-	require.ErrorContains(t, err, "syscalls/sys_exit_execve", "failure must reach the second attachment")
+	require.ErrorContains(t, err, "syscalls/sys_enter_exit_group", "failure must reach the second attachment")
 	requireMapReleased(t, readerMap)
 	requireMapReleased(t, metadata)
 	require.Equal(t, -1, first.FD())

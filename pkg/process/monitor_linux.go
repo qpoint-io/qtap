@@ -83,10 +83,7 @@ func NewEventSource(logger *zap.Logger, objs *tap.TapObjects) (Eventer, error) {
 	}
 
 	tracepoints := []*common.Tracepoint{
-		common.NewTracepoint("syscalls", "sys_enter_execve", objs.SyscallProbeEntryExecve),
-		common.NewTracepoint("syscalls", "sys_exit_execve", objs.SyscallProbeRetExecve),
-		common.NewTracepoint("syscalls", "sys_enter_execveat", objs.SyscallProbeEntryExecveat),
-		common.NewTracepoint("syscalls", "sys_exit_execveat", objs.SyscallProbeRetExecveat),
+		common.NewTracepoint("sched", "sched_process_exec", objs.TracepointSchedProcessExec),
 		common.NewTracepoint("syscalls", "sys_enter_exit_group", objs.SyscallProbeEntryExitGroup),
 		common.NewTracepoint("sched", "sched_process_exit", objs.TracepointSchedProcessExit),
 	}

@@ -17,7 +17,12 @@ on:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is moving to kernel 7.0.0-1017-azure, where BPF programs on
+    # syscall-enter tracepoints with user-pointer arguments (sys_enter_write,
+    # ...) run only on CPU 0, so most captured traffic is lost.
+    # Move back to ubuntu-latest once Ubuntu ships the fix:
+    # https://bugs.launchpad.net/ubuntu/+source/linux/+bug/2170225
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:

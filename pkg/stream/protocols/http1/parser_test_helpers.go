@@ -202,6 +202,11 @@ func (r *TestCallbackRecorder) OnError(err error) {
 	}
 }
 
+// OnTransactionEnd implements Callbacks. It's a synchronous hook with
+// no observable side effects from a test recorder's perspective — the
+// async OnDone event is what consumers wait on.
+func (r *TestCallbackRecorder) OnTransactionEnd() {}
+
 // OnDone implements Callbacks
 func (r *TestCallbackRecorder) OnDone() {
 	r.mu.Lock()
